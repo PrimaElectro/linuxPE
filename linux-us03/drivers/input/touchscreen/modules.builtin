@@ -1,0 +1,4 @@
+kernel/drivers/input/touchscreen/of_touchscreen.ko
+kernel/drivers/input/touchscreen/usbtouchscreen.ko
+kernel/drivers/input/touchscreen/tsc200x-core.ko
+kernel/drivers/input/touchscreen/tsc2004.ko

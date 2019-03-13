@@ -1,0 +1,15 @@
+!<thin>
+//                                              108       `
+coda/coda-common.o/
+coda/coda-bit.o/
+coda/coda-gdi.o/
+coda/coda-h264.o/
+coda/coda-jpeg.o/
+coda/imx-vdoa.o/
+
+/0              0           0     0     644     39248     `
+/20             0           0     0     644     27496     `
+/37             0           0     0     644     1732      `
+/54             0           0     0     644     2448      `
+/72             0           0     0     644     3324      `
+/90             0           0     0     644     9036      `

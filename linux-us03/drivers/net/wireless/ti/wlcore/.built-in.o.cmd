@@ -1,0 +1,1 @@
+cmd_drivers/net/wireless/ti/wlcore/built-in.o :=  rm -f drivers/net/wireless/ti/wlcore/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/wireless/ti/wlcore/built-in.o drivers/net/wireless/ti/wlcore/wlcore.o drivers/net/wireless/ti/wlcore/wlcore_sdio.o 

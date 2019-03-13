@@ -1,0 +1,1 @@
+cmd_drivers/iio/pressure/built-in.o :=  rm -f drivers/iio/pressure/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/iio/pressure/built-in.o drivers/iio/pressure/st_pressure.o drivers/iio/pressure/st_pressure_i2c.o drivers/iio/pressure/st_pressure_spi.o 

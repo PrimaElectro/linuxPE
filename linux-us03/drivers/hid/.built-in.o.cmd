@@ -1,0 +1,1 @@
+cmd_drivers/hid/built-in.o :=  rm -f drivers/hid/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/hid/built-in.o drivers/hid/hid.o drivers/hid/hid-generic.o drivers/hid/hid-multitouch.o drivers/hid/usbhid/built-in.o 

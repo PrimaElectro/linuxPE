@@ -1,0 +1,12 @@
+!<thin>
+//                                              98        `
+st_sensors_i2c.o/
+st_sensors_spi.o/
+st_sensors_core.o/
+st_sensors_buffer.o/
+st_sensors_trigger.o/
+/0              0           0     0     644     2508      `
+/18             0           0     0     644     3036      `
+/36             0           0     0     644     14884     `
+/55             0           0     0     644     2272      `
+/76             0           0     0     644     5676      `

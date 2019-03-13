@@ -1,0 +1,3 @@
+kernel/drivers/iio/pressure/st_pressure.ko
+kernel/drivers/iio/pressure/st_pressure_i2c.ko
+kernel/drivers/iio/pressure/st_pressure_spi.ko

@@ -1,0 +1,113 @@
+!<thin>
+//                                              1058      `
+sound_core.o/
+core/sound.o/
+core/init.o/
+core/memory.o/
+core/control.o/
+core/misc.o/
+core/device.o/
+core/info.o/
+core/ctljack.o/
+core/jack.o/
+core/timer.o/
+core/pcm.o/
+core/pcm_native.o/
+core/pcm_lib.o/
+core/pcm_misc.o/
+core/pcm_memory.o/
+core/memalloc.o/
+core/pcm_timer.o/
+core/pcm_dmaengine.o/
+soc/soc-core.o/
+soc/soc-dapm.o/
+soc/soc-jack.o/
+soc/soc-cache.o/
+soc/soc-utils.o/
+soc/soc-pcm.o/
+soc/soc-io.o/
+soc/soc-devres.o/
+soc/soc-ops.o/
+soc/soc-generic-dmaengine-pcm.o/
+soc/codecs/cs42xx8.o/
+soc/codecs/cs42xx8-i2c.o/
+soc/codecs/mc13783.o/
+soc/codecs/sgtl5000.o/
+soc/codecs/tlv320aic23.o/
+soc/codecs/tlv320aic23-i2c.o/
+soc/codecs/wm8962.o/
+soc/generic/simple-card-utils.o/
+soc/generic/simple-card.o/
+soc/fsl/fsl_asrc.o/
+soc/fsl/fsl_asrc_dma.o/
+soc/fsl/fsl_sai.o/
+soc/fsl/fsl_ssi.o/
+soc/fsl/fsl_ssi_dbg.o/
+soc/fsl/fsl_spdif.o/
+soc/fsl/fsl_esai.o/
+soc/fsl/fsl_utils.o/
+soc/fsl/imx-ssi.o/
+soc/fsl/imx-audmux.o/
+soc/fsl/imx-pcm-dma.o/
+soc/fsl/eukrea-tlv320.o/
+soc/fsl/imx-sgtl5000.o/
+soc/fsl/imx-wm8962.o/
+soc/fsl/imx-spdif.o/
+soc/fsl/imx-mc13783.o/
+last.o/
+
+/0              0           0     0     644     3340      `
+/14             0           0     0     644     11816     `
+/28             0           0     0     644     20424     `
+/41             0           0     0     644     2788      `
+/56             0           0     0     644     29104     `
+/72             0           0     0     644     1796      `
+/85             0           0     0     644     4856      `
+/100            0           0     0     644     14908     `
+/113            0           0     0     644     2312      `
+/129            0           0     0     644     6868      `
+/142            0           0     0     644     32736     `
+/156            0           0     0     644     21228     `
+/168            0           0     0     644     46900     `
+/187            0           0     0     644     37392     `
+/203            0           0     0     644     11852     `
+/220            0           0     0     644     9652      `
+/239            0           0     0     644     5672      `
+/256            0           0     0     644     3112      `
+/274           /0           0     0     644     9684      `
+/296            0           0     0     644     76836     `
+/312            0           0     0     644     62640     `
+/328            0           0     0     644     12960     `
+/344            0           0     0     644     1396      `
+/361            0           0     0     644     14324     `
+/378            0           0     0     644     37200     `
+/393            0           0     0     644     8712      `
+/407            0           0     0     644     4784      `
+/425            0           0     0     644     17940     `
+/440            0           0     0     644     7236      `
+/473            0           0     0     644     22520     `
+/495            0           0     0     644     3528      `
+/521            0           0     0     644     25864     `
+/543            0           0     0     644     26636     `
+/566            0           0     0     644     13648     `
+/592            0           0     0     644     3852      `
+/622            0           0     0     644     77384     `
+/643            0           0     0     644     14560     `
+/676            0           0     0     644     9524      `
+/703            0           0     0     644     21728     `
+/723            0           0     0     644     7436      `
+/747            0           0     0     644     15816     `
+/766            0           0     0     644     19672     `
+/785            0           0     0     644     4228      `
+/808            0           0     0     644     19404     `
+/829            0           0     0     644     15336     `
+/849            0           0     0     644     2444      `
+/870            0           0     0     644     7968      `
+/889            0           0     0     644     10516     `
+/911            0           0     0     644     2312      `
+/934           /0           0     0     644     7192      `
+/959            0           0     0     644     7360      `
+/983            0           0     0     644     8292      `
+/1005           0           0     0     644     4552      `
+/1026           0           0     0     644     5508      `
+/1049           0           0     0     644     1836      `

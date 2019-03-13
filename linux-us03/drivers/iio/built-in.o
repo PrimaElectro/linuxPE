@@ -1,0 +1,37 @@
+!<thin>
+//                                              482       `
+industrialio-core.o/
+industrialio-event.o/
+inkern.o/
+industrialio-buffer.o/
+industrialio-trigger.o/
+adc/vf610_adc.o/
+buffer/industrialio-triggered-buffer.o/
+buffer/kfifo_buf.o/
+common/st_sensors/st_sensors_i2c.o/
+common/st_sensors/st_sensors_spi.o/
+common/st_sensors/st_sensors_core.o/
+common/st_sensors/st_sensors_buffer.o/
+common/st_sensors/st_sensors_trigger.o/
+pressure/st_pressure_core.o/
+pressure/st_pressure_buffer.o/
+pressure/st_pressure_i2c.o/
+pressure/st_pressure_spi.o/
+
+/0              0           0     0     644     37116     `
+/21             0           0     0     644     8028      `
+/43             0           0     0     644     22036     `
+/53             0           0     0     644     17760     `
+/76             0           0     0     644     20488     `
+/100            0           0     0     644     14576     `
+/117            0           0     0     644     5164      `
+/157            0           0     0     644     6116      `
+/177            0           0     0     644     2508      `
+/213            0           0     0     644     3036      `
+/249            0           0     0     644     14884     `
+/286            0           0     0     644     2272      `
+/325            0           0     0     644     5676      `
+/365            0           0     0     644     7880      `
+/394            0           0     0     644     2292      `
+/425            0           0     0     644     4732      `
+/453            0           0     0     644     4724      `

@@ -1,0 +1,73 @@
+!<thin>
+//                                              614       `
+soc-core.o/
+soc-dapm.o/
+soc-jack.o/
+soc-cache.o/
+soc-utils.o/
+soc-pcm.o/
+soc-io.o/
+soc-devres.o/
+soc-ops.o/
+soc-generic-dmaengine-pcm.o/
+codecs/cs42xx8.o/
+codecs/cs42xx8-i2c.o/
+codecs/mc13783.o/
+codecs/sgtl5000.o/
+codecs/tlv320aic23.o/
+codecs/tlv320aic23-i2c.o/
+codecs/wm8962.o/
+generic/simple-card-utils.o/
+generic/simple-card.o/
+fsl/fsl_asrc.o/
+fsl/fsl_asrc_dma.o/
+fsl/fsl_sai.o/
+fsl/fsl_ssi.o/
+fsl/fsl_ssi_dbg.o/
+fsl/fsl_spdif.o/
+fsl/fsl_esai.o/
+fsl/fsl_utils.o/
+fsl/imx-ssi.o/
+fsl/imx-audmux.o/
+fsl/imx-pcm-dma.o/
+fsl/eukrea-tlv320.o/
+fsl/imx-sgtl5000.o/
+fsl/imx-wm8962.o/
+fsl/imx-spdif.o/
+fsl/imx-mc13783.o/
+
+/0              0           0     0     644     76836     `
+/12             0           0     0     644     62640     `
+/24             0           0     0     644     12960     `
+/36             0           0     0     644     1396      `
+/49             0           0     0     644     14324     `
+/62             0           0     0     644     37200     `
+/73             0           0     0     644     8712      `
+/83             0           0     0     644     4784      `
+/97             0           0     0     644     17940     `
+/108            0           0     0     644     7236      `
+/137            0           0     0     644     22520     `
+/155            0           0     0     644     3528      `
+/177            0           0     0     644     25864     `
+/195            0           0     0     644     26636     `
+/214            0           0     0     644     13648     `
+/236            0           0     0     644     3852      `
+/262            0           0     0     644     77384     `
+/279            0           0     0     644     14560     `
+/308            0           0     0     644     9524      `
+/331            0           0     0     644     21728     `
+/347            0           0     0     644     7436      `
+/367            0           0     0     644     15816     `
+/382            0           0     0     644     19672     `
+/397            0           0     0     644     4228      `
+/416            0           0     0     644     19404     `
+/433            0           0     0     644     15336     `
+/449            0           0     0     644     2444      `
+/466            0           0     0     644     7968      `
+/481            0           0     0     644     10516     `
+/499            0           0     0     644     2312      `
+/518           /0           0     0     644     7192      `
+/539            0           0     0     644     7360      `
+/559            0           0     0     644     8292      `
+/577            0           0     0     644     4552      `
+/594            0           0     0     644     5508      `

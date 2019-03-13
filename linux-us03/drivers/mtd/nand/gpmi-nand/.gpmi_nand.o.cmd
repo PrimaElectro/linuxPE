@@ -1,0 +1,1 @@
+cmd_drivers/mtd/nand/gpmi-nand/gpmi_nand.o := rm -f drivers/mtd/nand/gpmi-nand/gpmi_nand.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/mtd/nand/gpmi-nand/gpmi_nand.o drivers/mtd/nand/gpmi-nand/gpmi-nand.o drivers/mtd/nand/gpmi-nand/gpmi-lib.o

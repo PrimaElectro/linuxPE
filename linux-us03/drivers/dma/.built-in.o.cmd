@@ -1,0 +1,1 @@
+cmd_drivers/dma/built-in.o :=  rm -f drivers/dma/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/dma/built-in.o drivers/dma/dmaengine.o drivers/dma/of-dma.o drivers/dma/imx-sdma.o drivers/dma/mxs-dma.o drivers/dma/ipu/built-in.o drivers/dma/qcom/built-in.o drivers/dma/xilinx/built-in.o 

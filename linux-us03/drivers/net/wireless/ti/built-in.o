@@ -1,0 +1,50 @@
+!<thin>
+//                                              368       `
+wlcore/main.o/
+wlcore/cmd.o/
+wlcore/io.o/
+wlcore/event.o/
+wlcore/tx.o/
+wlcore/rx.o/
+wlcore/ps.o/
+wlcore/acx.o/
+wlcore/boot.o/
+wlcore/init.o/
+wlcore/debugfs.o/
+wlcore/scan.o/
+wlcore/sysfs.o/
+wlcore/vendor_cmd.o/
+wlcore/sdio.o/
+wl18xx/main.o/
+wl18xx/acx.o/
+wl18xx/tx.o/
+wl18xx/io.o/
+wl18xx/debugfs.o/
+wl18xx/scan.o/
+wl18xx/cmd.o/
+wl18xx/event.o/
+wilink_platform_data.o/
+/0              0           0     0     644     84828     `
+/15             0           0     0     644     34052     `
+/29             0           0     0     644     7428      `
+/42             0           0     0     644     13960     `
+/58             0           0     0     644     20584     `
+/71             0           0     0     644     5516      `
+/84             0           0     0     644     7920      `
+/97             0           0     0     644     31400     `
+/111            0           0     0     644     10976     `
+/126            0           0     0     644     7504      `
+/141            0           0     0     644     31336     `
+/159            0           0     0     644     8428      `
+/174            0           0     0     644     4028      `
+/190            0           0     0     644     3300      `
+/211            0           0     0     644     11580     `
+/226            0           0     0     644     26492     `
+/241            0           0     0     644     5860      `
+/255            0           0     0     644     3104      `
+/268            0           0     0     644     2676      `
+/281            0           0     0     644     67148     `
+/299            0           0     0     644     5056      `
+/314            0           0     0     644     5356      `
+/328            0           0     0     644     4332      `
+/344            0           0     0     644     2364      `

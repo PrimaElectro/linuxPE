@@ -1,0 +1,23 @@
+!<thin>
+//                                              138       `
+soc-core.o/
+soc-dapm.o/
+soc-jack.o/
+soc-cache.o/
+soc-utils.o/
+soc-pcm.o/
+soc-io.o/
+soc-devres.o/
+soc-ops.o/
+soc-generic-dmaengine-pcm.o/
+
+/0              0           0     0     644     76836     `
+/12             0           0     0     644     62640     `
+/24             0           0     0     644     12960     `
+/36             0           0     0     644     1396      `
+/49             0           0     0     644     14324     `
+/62             0           0     0     644     37200     `
+/73             0           0     0     644     8712      `
+/83             0           0     0     644     4784      `
+/97             0           0     0     644     17940     `
+/108            0           0     0     644     7236      `

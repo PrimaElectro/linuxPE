@@ -1,0 +1,7 @@
+kernel/net/ipv4/netfilter/nf_conntrack_ipv4.ko
+kernel/net/ipv4/netfilter/nf_nat_ipv4.ko
+kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko
+kernel/net/ipv4/netfilter/nf_log_ipv4.ko
+kernel/net/ipv4/netfilter/nf_nat_masquerade_ipv4.ko
+kernel/net/ipv4/netfilter/ip_tables.ko
+kernel/net/ipv4/netfilter/iptable_mangle.ko

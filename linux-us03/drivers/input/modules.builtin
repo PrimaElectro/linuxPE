@@ -1,0 +1,17 @@
+kernel/drivers/input/input-core.ko
+kernel/drivers/input/input-polldev.ko
+kernel/drivers/input/matrix-keymap.ko
+kernel/drivers/input/input-leds.ko
+kernel/drivers/input/mousedev.ko
+kernel/drivers/input/evdev.ko
+kernel/drivers/input/keyboard/atkbd.ko
+kernel/drivers/input/keyboard/gpio_keys.ko
+kernel/drivers/input/keyboard/imx_keypad.ko
+kernel/drivers/input/keyboard/matrix_keypad.ko
+kernel/drivers/input/misc/gpio-beeper.ko
+kernel/drivers/input/misc/pwm-beeper.ko
+kernel/drivers/input/misc/rotary_encoder.ko
+kernel/drivers/input/touchscreen/of_touchscreen.ko
+kernel/drivers/input/touchscreen/usbtouchscreen.ko
+kernel/drivers/input/touchscreen/tsc200x-core.ko
+kernel/drivers/input/touchscreen/tsc2004.ko

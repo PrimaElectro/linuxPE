@@ -1,0 +1,2 @@
+kernel/drivers/rtc/rtc-m41t80.ko
+kernel/drivers/rtc/rtc-mxc.ko

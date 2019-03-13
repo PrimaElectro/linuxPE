@@ -1,0 +1,10 @@
+!<thin>
+//                                              80        `
+st_pressure_core.o/
+st_pressure_buffer.o/
+st_pressure_i2c.o/
+st_pressure_spi.o/
+/0              0           0     0     644     7880      `
+/20             0           0     0     644     2292      `
+/42             0           0     0     644     4732      `
+/61             0           0     0     644     4724      `

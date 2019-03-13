@@ -1,0 +1,1 @@
+cmd_drivers/crypto/caam/caamhash.ko := arm-poky-linux-gnueabi-ld -EL -r  -T ./scripts/module-common.lds --build-id  -o drivers/crypto/caam/caamhash.ko drivers/crypto/caam/caamhash.o drivers/crypto/caam/caamhash.mod.o ;  true

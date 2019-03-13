@@ -1,0 +1,1586 @@
+!<thin>
+//                                              19390     `
+irqchip/irqchip.o/
+irqchip/irq-gic.o/
+irqchip/irq-gic-common.o/
+bus/arm-cci.o/
+bus/imx-weim.o/
+pinctrl/core.o/
+pinctrl/pinctrl-utils.o/
+pinctrl/pinmux.o/
+pinctrl/pinconf.o/
+pinctrl/devicetree.o/
+pinctrl/pinconf-generic.o/
+pinctrl/freescale/pinctrl-imx.o/
+pinctrl/freescale/pinctrl-imx6q.o/
+pinctrl/freescale/pinctrl-imx6dl.o/
+pinctrl/freescale/pinctrl-imx6ul.o/
+gpio/devres.o/
+gpio/gpiolib.o/
+gpio/gpiolib-legacy.o/
+gpio/gpiolib-devprop.o/
+gpio/gpiolib-of.o/
+gpio/gpiolib-sysfs.o/
+gpio/gpio-mmio.o/
+gpio/gpio-74x164.o/
+gpio/gpio-max732x.o/
+gpio/gpio-mxc.o/
+gpio/gpio-pca953x.o/
+pwm/core.o/
+pwm/sysfs.o/
+pwm/pwm-imx.o/
+video/hdmi.o/
+video/console/dummycon.o/
+video/logo/logo.o/
+video/logo/logo_linux_mono.o/
+video/logo/logo_linux_vga16.o/
+video/logo/logo_linux_clut224.o/
+video/backlight/lcd.o/
+video/backlight/l4f00242t03.o/
+video/backlight/platform_lcd.o/
+video/backlight/backlight.o/
+video/backlight/generic_bl.o/
+video/backlight/pwm_bl.o/
+video/fbdev/core/fb_cmdline.o/
+video/fbdev/core/fb_notify.o/
+video/fbdev/core/fbmem.o/
+video/fbdev/core/fbmon.o/
+video/fbdev/core/fbcmap.o/
+video/fbdev/core/fbsysfs.o/
+video/fbdev/core/modedb.o/
+video/fbdev/core/fbcvt.o/
+video/fbdev/core/fb_defio.o/
+video/fbdev/core/fbcon.o/
+video/fbdev/core/bitblit.o/
+video/fbdev/core/softcursor.o/
+video/fbdev/core/cfbfillrect.o/
+video/fbdev/core/cfbcopyarea.o/
+video/fbdev/core/cfbimgblt.o/
+video/fbdev/core/sysfillrect.o/
+video/fbdev/core/syscopyarea.o/
+video/fbdev/core/sysimgblt.o/
+video/fbdev/core/fb_sys_fops.o/
+video/fbdev/mx3fb.o/
+video/fbdev/mxsfb.o/
+video/display_timing.o/
+video/videomode.o/
+video/of_display_timing.o/
+video/of_videomode.o/
+clk/clk-devres.o/
+clk/clk-bulk.o/
+clk/clkdev.o/
+clk/clk.o/
+clk/clk-divider.o/
+clk/clk-fixed-factor.o/
+clk/clk-fixed-rate.o/
+clk/clk-gate.o/
+clk/clk-multiplier.o/
+clk/clk-mux.o/
+clk/clk-composite.o/
+clk/clk-fractional-divider.o/
+clk/clk-gpio.o/
+clk/clk-conf.o/
+clk/imx/clk.o/
+clk/imx/clk-busy.o/
+clk/imx/clk-cpu.o/
+clk/imx/clk-fixup-div.o/
+clk/imx/clk-fixup-mux.o/
+clk/imx/clk-gate-exclusive.o/
+clk/imx/clk-gate2.o/
+clk/imx/clk-pllv1.o/
+clk/imx/clk-pllv2.o/
+clk/imx/clk-pllv3.o/
+clk/imx/clk-pfd.o/
+clk/imx/clk-imx6q.o/
+clk/imx/clk-imx6ul.o/
+dma/dmaengine.o/
+dma/of-dma.o/
+dma/imx-sdma.o/
+dma/mxs-dma.o/
+dma/ipu/ipu_irq.o/
+dma/ipu/ipu_idmac.o/
+soc/imx/gpc.o/
+regulator/core.o/
+regulator/dummy.o/
+regulator/fixed-helper.o/
+regulator/helpers.o/
+regulator/devres.o/
+regulator/of_regulator.o/
+regulator/fixed.o/
+regulator/anatop-regulator.o/
+regulator/da9052-regulator.o/
+regulator/gpio-regulator.o/
+regulator/mc13783-regulator.o/
+regulator/mc13892-regulator.o/
+regulator/mc13xxx-regulator-core.o/
+regulator/pfuze100-regulator.o/
+reset/core.o/
+tty/tty_io.o/
+tty/n_tty.o/
+tty/tty_ioctl.o/
+tty/tty_ldisc.o/
+tty/tty_buffer.o/
+tty/tty_port.o/
+tty/tty_mutex.o/
+tty/tty_ldsem.o/
+tty/tty_baudrate.o/
+tty/tty_jobctrl.o/
+tty/n_null.o/
+tty/pty.o/
+tty/sysrq.o/
+tty/vt/vt_ioctl.o/
+tty/vt/vc_screen.o/
+tty/vt/selection.o/
+tty/vt/keyboard.o/
+tty/vt/consolemap.o/
+tty/vt/consolemap_deftbl.o/
+tty/vt/vt.o/
+tty/vt/defkeymap.o/
+tty/serial/serial_core.o/
+tty/serial/earlycon.o/
+tty/serial/imx.o/
+tty/serial/fsl_lpuart.o/
+tty/serial/serial_mctrl_gpio.o/
+char/mem.o/
+char/random.o/
+char/misc.o/
+char/hw_random/core.o/
+char/hw_random/imx-rngc.o/
+gpu/drm/drm_crtc_helper.o/
+gpu/drm/drm_dp_helper.o/
+gpu/drm/drm_probe_helper.o/
+gpu/drm/drm_plane_helper.o/
+gpu/drm/drm_dp_mst_topology.o/
+gpu/drm/drm_atomic_helper.o/
+gpu/drm/drm_kms_helper_common.o/
+gpu/drm/drm_dp_dual_mode_helper.o/
+gpu/drm/drm_simple_kms_helper.o/
+gpu/drm/drm_modeset_helper.o/
+gpu/drm/drm_scdc_helper.o/
+gpu/drm/drm_gem_framebuffer_helper.o/
+gpu/drm/bridge/panel.o/
+gpu/drm/drm_fb_helper.o/
+gpu/drm/drm_auth.o/
+gpu/drm/drm_bufs.o/
+gpu/drm/drm_cache.o/
+gpu/drm/drm_context.o/
+gpu/drm/drm_dma.o/
+gpu/drm/drm_file.o/
+gpu/drm/drm_gem.o/
+gpu/drm/drm_ioctl.o/
+gpu/drm/drm_irq.o/
+gpu/drm/drm_lock.o/
+gpu/drm/drm_memory.o/
+gpu/drm/drm_drv.o/
+gpu/drm/drm_scatter.o/
+gpu/drm/drm_pci.o/
+gpu/drm/drm_sysfs.o/
+gpu/drm/drm_hashtab.o/
+gpu/drm/drm_mm.o/
+gpu/drm/drm_crtc.o/
+gpu/drm/drm_fourcc.o/
+gpu/drm/drm_modes.o/
+gpu/drm/drm_edid.o/
+gpu/drm/drm_info.o/
+gpu/drm/drm_encoder_slave.o/
+gpu/drm/drm_trace_points.o/
+gpu/drm/drm_global.o/
+gpu/drm/drm_prime.o/
+gpu/drm/drm_rect.o/
+gpu/drm/drm_vma_manager.o/
+gpu/drm/drm_flip_work.o/
+gpu/drm/drm_modeset_lock.o/
+gpu/drm/drm_atomic.o/
+gpu/drm/drm_bridge.o/
+gpu/drm/drm_framebuffer.o/
+gpu/drm/drm_connector.o/
+gpu/drm/drm_blend.o/
+gpu/drm/drm_encoder.o/
+gpu/drm/drm_mode_object.o/
+gpu/drm/drm_property.o/
+gpu/drm/drm_plane.o/
+gpu/drm/drm_color_mgmt.o/
+gpu/drm/drm_print.o/
+gpu/drm/drm_dumb_buffers.o/
+gpu/drm/drm_mode_config.o/
+gpu/drm/drm_vblank.o/
+gpu/drm/drm_syncobj.o/
+gpu/drm/drm_panel.o/
+gpu/drm/drm_of.o/
+gpu/drm/drm_debugfs.o/
+gpu/drm/drm_debugfs_crc.o/
+connector/cn_queue.o/
+connector/connector.o/
+connector/cn_proc.o/
+base/component.o/
+base/core.o/
+base/bus.o/
+base/dd.o/
+base/syscore.o/
+base/driver.o/
+base/class.o/
+base/platform.o/
+base/cpu.o/
+base/firmware.o/
+base/init.o/
+base/map.o/
+base/devres.o/
+base/attribute_container.o/
+base/transport_class.o/
+base/topology.o/
+base/container.o/
+base/property.o/
+base/cacheinfo.o/
+base/devtmpfs.o/
+base/dma-contiguous.o/
+base/power/sysfs.o/
+base/power/generic_ops.o/
+base/power/common.o/
+base/power/qos.o/
+base/power/runtime.o/
+base/power/wakeirq.o/
+base/power/main.o/
+base/power/wakeup.o/
+base/power/opp/core.o/
+base/power/opp/cpu.o/
+base/power/opp/of.o/
+base/power/opp/debugfs.o/
+base/power/domain.o/
+base/power/domain_governor.o/
+base/power/clock_ops.o/
+base/dma-mapping.o/
+base/dma-coherent.o/
+base/firmware_class.o/
+base/module.o/
+base/regmap/regmap.o/
+base/regmap/regcache.o/
+base/regmap/regcache-rbtree.o/
+base/regmap/regcache-flat.o/
+base/regmap/regmap-debugfs.o/
+base/regmap/regmap-i2c.o/
+base/regmap/regmap-spi.o/
+base/regmap/regmap-mmio.o/
+base/regmap/regmap-irq.o/
+base/soc.o/
+base/pinctrl.o/
+base/arch_topology.o/
+block/brd.o/
+block/loop.o/
+misc/eeprom/at24.o/
+misc/eeprom/at25.o/
+misc/sram.o/
+misc/sram-exec.o/
+mfd/stmpe.o/
+mfd/stmpe-i2c.o/
+mfd/wm8994-core.o/
+mfd/wm8994-irq.o/
+mfd/wm8994-regmap.o/
+mfd/mc13xxx-core.o/
+mfd/mc13xxx-spi.o/
+mfd/mc13xxx-i2c.o/
+mfd/mfd-core.o/
+mfd/da9052-irq.o/
+mfd/da9052-core.o/
+mfd/da9052-i2c.o/
+mfd/si476x-cmd.o/
+mfd/si476x-prop.o/
+mfd/si476x-i2c.o/
+mfd/syscon.o/
+dma-buf/dma-buf.o/
+dma-buf/dma-fence.o/
+dma-buf/dma-fence-array.o/
+dma-buf/reservation.o/
+dma-buf/seqno-fence.o/
+dma-buf/sync_file.o/
+scsi/scsi.o/
+scsi/hosts.o/
+scsi/scsi_ioctl.o/
+scsi/scsicam.o/
+scsi/scsi_error.o/
+scsi/scsi_lib.o/
+scsi/scsi_common.o/
+scsi/constants.o/
+scsi/scsi_lib_dma.o/
+scsi/scsi_scan.o/
+scsi/scsi_sysfs.o/
+scsi/scsi_devinfo.o/
+scsi/scsi_sysctl.o/
+scsi/scsi_debugfs.o/
+scsi/scsi_trace.o/
+scsi/scsi_logging.o/
+scsi/scsi_pm.o/
+scsi/sd.o/
+ata/libata-core.o/
+ata/libata-scsi.o/
+ata/libata-eh.o/
+ata/libata-transport.o/
+ata/libata-trace.o/
+ata/libata-sff.o/
+ata/libata-pmp.o/
+ata/ahci_platform.o/
+ata/libahci.o/
+ata/libahci_platform.o/
+ata/ahci_imx.o/
+ata/pata_imx.o/
+mtd/mtdcore.o/
+mtd/mtdsuper.o/
+mtd/mtdconcat.o/
+mtd/mtdpart.o/
+mtd/mtdchar.o/
+mtd/ofpart.o/
+mtd/cmdlinepart.o/
+mtd/mtd_blkdevs.o/
+mtd/mtdblock.o/
+mtd/chips/chipreg.o/
+mtd/chips/cfi_probe.o/
+mtd/chips/cfi_util.o/
+mtd/chips/cfi_cmdset_0020.o/
+mtd/chips/cfi_cmdset_0002.o/
+mtd/chips/cfi_cmdset_0001.o/
+mtd/chips/gen_probe.o/
+mtd/chips/jedec_probe.o/
+mtd/maps/physmap_of_core.o/
+mtd/devices/mtd_dataflash.o/
+mtd/devices/m25p80.o/
+mtd/devices/sst25l.o/
+mtd/nand/nand_base.o/
+mtd/nand/nand_bbt.o/
+mtd/nand/nand_timings.o/
+mtd/nand/nand_ids.o/
+mtd/nand/nand_amd.o/
+mtd/nand/nand_hynix.o/
+mtd/nand/nand_macronix.o/
+mtd/nand/nand_micron.o/
+mtd/nand/nand_samsung.o/
+mtd/nand/nand_toshiba.o/
+mtd/nand/nand_ecc.o/
+mtd/nand/mxc_nand.o/
+mtd/nand/gpmi-nand/gpmi-nand.o/
+mtd/nand/gpmi-nand/gpmi-lib.o/
+mtd/spi-nor/spi-nor.o/
+mtd/spi-nor/fsl-quadspi.o/
+mtd/ubi/vtbl.o/
+mtd/ubi/vmt.o/
+mtd/ubi/upd.o/
+mtd/ubi/build.o/
+mtd/ubi/cdev.o/
+mtd/ubi/kapi.o/
+mtd/ubi/eba.o/
+mtd/ubi/io.o/
+mtd/ubi/wl.o/
+mtd/ubi/attach.o/
+mtd/ubi/misc.o/
+mtd/ubi/debug.o/
+spi/spi.o/
+spi/spidev.o/
+spi/spi-bitbang.o/
+spi/spi-gpio.o/
+spi/spi-imx.o/
+net/mii.o/
+net/Space.o/
+net/loopback.o/
+net/phy/mdio-boardinfo.o/
+net/phy/phy.o/
+net/phy/phy-c45.o/
+net/phy/phy-core.o/
+net/phy/phy_device.o/
+net/phy/mdio_bus.o/
+net/phy/mdio_device.o/
+net/phy/swphy.o/
+net/phy/fixed_phy.o/
+net/phy/icplus.o/
+net/phy/micrel.o/
+net/phy/smsc.o/
+net/can/dev.o/
+net/can/rx-offload.o/
+net/can/flexcan.o/
+net/can/m_can/m_can.o/
+net/ethernet/cirrus/cs89x0.o/
+net/ethernet/freescale/fec_main.o/
+net/ethernet/freescale/fec_ptp.o/
+net/ethernet/smsc/smc91x.o/
+net/ethernet/smsc/smc911x.o/
+net/ethernet/smsc/smsc911x.o/
+net/wireless/ti/wlcore/main.o/
+net/wireless/ti/wlcore/cmd.o/
+net/wireless/ti/wlcore/io.o/
+net/wireless/ti/wlcore/event.o/
+net/wireless/ti/wlcore/tx.o/
+net/wireless/ti/wlcore/rx.o/
+net/wireless/ti/wlcore/ps.o/
+net/wireless/ti/wlcore/acx.o/
+net/wireless/ti/wlcore/boot.o/
+net/wireless/ti/wlcore/init.o/
+net/wireless/ti/wlcore/debugfs.o/
+net/wireless/ti/wlcore/scan.o/
+net/wireless/ti/wlcore/sysfs.o/
+net/wireless/ti/wlcore/vendor_cmd.o/
+net/wireless/ti/wlcore/sdio.o/
+net/wireless/ti/wl18xx/main.o/
+net/wireless/ti/wl18xx/acx.o/
+net/wireless/ti/wl18xx/tx.o/
+net/wireless/ti/wl18xx/io.o/
+net/wireless/ti/wl18xx/debugfs.o/
+net/wireless/ti/wl18xx/scan.o/
+net/wireless/ti/wl18xx/cmd.o/
+net/wireless/ti/wl18xx/event.o/
+net/wireless/ti/wilink_platform_data.o/
+usb/core/usb.o/
+usb/core/hub.o/
+usb/core/hcd.o/
+usb/core/urb.o/
+usb/core/message.o/
+usb/core/driver.o/
+usb/core/config.o/
+usb/core/file.o/
+usb/core/buffer.o/
+usb/core/sysfs.o/
+usb/core/endpoint.o/
+usb/core/devio.o/
+usb/core/notify.o/
+usb/core/generic.o/
+usb/core/quirks.o/
+usb/core/devices.o/
+usb/core/port.o/
+usb/core/of.o/
+usb/phy/phy.o/
+usb/phy/of.o/
+usb/phy/phy-generic.o/
+usb/phy/phy-mxs-usb.o/
+usb/host/ehci-hcd.o/
+usb/host/ehci-mxc.o/
+usb/storage/scsiglue.o/
+usb/storage/protocol.o/
+usb/storage/transport.o/
+usb/storage/usb.o/
+usb/storage/initializers.o/
+usb/storage/sierra_ms.o/
+usb/storage/option_ms.o/
+usb/storage/usual-tables.o/
+usb/misc/ehset.o/
+usb/chipidea/core.o/
+usb/chipidea/otg.o/
+usb/chipidea/debug.o/
+usb/chipidea/udc.o/
+usb/chipidea/host.o/
+usb/chipidea/otg_fsm.o/
+usb/chipidea/ci_hdrc_usb2.o/
+usb/chipidea/ci_hdrc_msm.o/
+usb/chipidea/ci_hdrc_zevio.o/
+usb/chipidea/usbmisc_imx.o/
+usb/chipidea/ci_hdrc_imx.o/
+usb/chipidea/ci_hdrc_tegra.o/
+usb/gadget/udc/core.o/
+usb/gadget/udc/trace.o/
+usb/common/common.o/
+usb/common/usb-otg-fsm.o/
+input/serio/serio.o/
+input/serio/libps2.o/
+input/input.o/
+input/input-compat.o/
+input/input-mt.o/
+input/ff-core.o/
+input/input-polldev.o/
+input/matrix-keymap.o/
+input/input-leds.o/
+input/mousedev.o/
+input/evdev.o/
+input/keyboard/atkbd.o/
+input/keyboard/gpio_keys.o/
+input/keyboard/imx_keypad.o/
+input/keyboard/matrix_keypad.o/
+input/touchscreen/of_touchscreen.o/
+input/touchscreen/usbtouchscreen.o/
+input/touchscreen/tsc200x-core.o/
+input/touchscreen/tsc2004.o/
+input/misc/gpio-beeper.o/
+input/misc/pwm-beeper.o/
+input/misc/rotary_encoder.o/
+rtc/rtc-lib.o/
+rtc/hctosys.o/
+rtc/systohc.o/
+rtc/class.o/
+rtc/interface.o/
+rtc/nvmem.o/
+rtc/rtc-dev.o/
+rtc/rtc-proc.o/
+rtc/rtc-sysfs.o/
+rtc/rtc-m41t80.o/
+rtc/rtc-mxc.o/
+i2c/i2c-boardinfo.o/
+i2c/i2c-core-base.o/
+i2c/i2c-core-smbus.o/
+i2c/i2c-core-of.o/
+i2c/i2c-dev.o/
+i2c/i2c-mux.o/
+i2c/algos/i2c-algo-bit.o/
+i2c/busses/i2c-imx.o/
+media/i2c/ir-kbd-i2c.o/
+media/tuners/tuner-xc2028.o/
+media/tuners/tuner-simple.o/
+media/tuners/tuner-types.o/
+media/tuners/mt20xx.o/
+media/tuners/tda8290.o/
+media/tuners/tea5767.o/
+media/tuners/tea5761.o/
+media/tuners/tda9887.o/
+media/tuners/tda827x.o/
+media/tuners/tda18271-maps.o/
+media/tuners/tda18271-common.o/
+media/tuners/tda18271-fe.o/
+media/tuners/xc5000.o/
+media/tuners/xc4000.o/
+media/tuners/mc44s803.o/
+media/v4l2-core/v4l2-dev.o/
+media/v4l2-core/v4l2-ioctl.o/
+media/v4l2-core/v4l2-device.o/
+media/v4l2-core/v4l2-fh.o/
+media/v4l2-core/v4l2-event.o/
+media/v4l2-core/v4l2-ctrls.o/
+media/v4l2-core/v4l2-subdev.o/
+media/v4l2-core/v4l2-clk.o/
+media/v4l2-core/v4l2-async.o/
+media/v4l2-core/v4l2-common.o/
+media/v4l2-core/v4l2-dv-timings.o/
+media/v4l2-core/v4l2-mem2mem.o/
+media/v4l2-core/videobuf2-core.o/
+media/v4l2-core/videobuf2-v4l2.o/
+media/v4l2-core/videobuf2-memops.o/
+media/v4l2-core/videobuf2-vmalloc.o/
+media/v4l2-core/videobuf2-dma-contig.o/
+media/rc/keymaps/rc-adstech-dvb-t-pci.o/
+media/rc/keymaps/rc-alink-dtu-m.o/
+media/rc/keymaps/rc-anysee.o/
+media/rc/keymaps/rc-apac-viewcomp.o/
+media/rc/keymaps/rc-asus-pc39.o/
+media/rc/keymaps/rc-asus-ps3-100.o/
+media/rc/keymaps/rc-ati-tv-wonder-hd-600.o/
+media/rc/keymaps/rc-ati-x10.o/
+media/rc/keymaps/rc-avermedia-a16d.o/
+media/rc/keymaps/rc-avermedia.o/
+media/rc/keymaps/rc-avermedia-cardbus.o/
+media/rc/keymaps/rc-avermedia-dvbt.o/
+media/rc/keymaps/rc-avermedia-m135a.o/
+media/rc/keymaps/rc-avermedia-m733a-rm-k6.o/
+media/rc/keymaps/rc-avermedia-rm-ks.o/
+media/rc/keymaps/rc-avertv-303.o/
+media/rc/keymaps/rc-azurewave-ad-tu700.o/
+media/rc/keymaps/rc-behold.o/
+media/rc/keymaps/rc-behold-columbus.o/
+media/rc/keymaps/rc-budget-ci-old.o/
+media/rc/keymaps/rc-cec.o/
+media/rc/keymaps/rc-cinergy-1400.o/
+media/rc/keymaps/rc-cinergy.o/
+media/rc/keymaps/rc-d680-dmb.o/
+media/rc/keymaps/rc-delock-61959.o/
+media/rc/keymaps/rc-dib0700-nec.o/
+media/rc/keymaps/rc-dib0700-rc5.o/
+media/rc/keymaps/rc-digitalnow-tinytwin.o/
+media/rc/keymaps/rc-digittrade.o/
+media/rc/keymaps/rc-dm1105-nec.o/
+media/rc/keymaps/rc-dntv-live-dvb-t.o/
+media/rc/keymaps/rc-dntv-live-dvbt-pro.o/
+media/rc/keymaps/rc-dtt200u.o/
+media/rc/keymaps/rc-dvbsky.o/
+media/rc/keymaps/rc-dvico-mce.o/
+media/rc/keymaps/rc-dvico-portable.o/
+media/rc/keymaps/rc-em-terratec.o/
+media/rc/keymaps/rc-encore-enltv2.o/
+media/rc/keymaps/rc-encore-enltv.o/
+media/rc/keymaps/rc-encore-enltv-fm53.o/
+media/rc/keymaps/rc-evga-indtube.o/
+media/rc/keymaps/rc-eztv.o/
+media/rc/keymaps/rc-flydvb.o/
+media/rc/keymaps/rc-flyvideo.o/
+media/rc/keymaps/rc-fusionhdtv-mce.o/
+media/rc/keymaps/rc-gadmei-rm008z.o/
+media/rc/keymaps/rc-geekbox.o/
+media/rc/keymaps/rc-genius-tvgo-a11mce.o/
+media/rc/keymaps/rc-gotview7135.o/
+media/rc/keymaps/rc-imon-mce.o/
+media/rc/keymaps/rc-imon-pad.o/
+media/rc/keymaps/rc-iodata-bctv7e.o/
+media/rc/keymaps/rc-it913x-v1.o/
+media/rc/keymaps/rc-it913x-v2.o/
+media/rc/keymaps/rc-kaiomy.o/
+media/rc/keymaps/rc-kworld-315u.o/
+media/rc/keymaps/rc-kworld-pc150u.o/
+media/rc/keymaps/rc-kworld-plus-tv-analog.o/
+media/rc/keymaps/rc-leadtek-y04g0051.o/
+media/rc/keymaps/rc-lme2510.o/
+media/rc/keymaps/rc-manli.o/
+media/rc/keymaps/rc-medion-x10.o/
+media/rc/keymaps/rc-medion-x10-digitainer.o/
+media/rc/keymaps/rc-medion-x10-or2x.o/
+media/rc/keymaps/rc-msi-digivox-ii.o/
+media/rc/keymaps/rc-msi-digivox-iii.o/
+media/rc/keymaps/rc-msi-tvanywhere.o/
+media/rc/keymaps/rc-msi-tvanywhere-plus.o/
+media/rc/keymaps/rc-nebula.o/
+media/rc/keymaps/rc-nec-terratec-cinergy-xs.o/
+media/rc/keymaps/rc-norwood.o/
+media/rc/keymaps/rc-npgtech.o/
+media/rc/keymaps/rc-pctv-sedna.o/
+media/rc/keymaps/rc-pinnacle-color.o/
+media/rc/keymaps/rc-pinnacle-grey.o/
+media/rc/keymaps/rc-pinnacle-pctv-hd.o/
+media/rc/keymaps/rc-pixelview.o/
+media/rc/keymaps/rc-pixelview-mk12.o/
+media/rc/keymaps/rc-pixelview-002t.o/
+media/rc/keymaps/rc-pixelview-new.o/
+media/rc/keymaps/rc-powercolor-real-angel.o/
+media/rc/keymaps/rc-proteus-2309.o/
+media/rc/keymaps/rc-purpletv.o/
+media/rc/keymaps/rc-pv951.o/
+media/rc/keymaps/rc-hauppauge.o/
+media/rc/keymaps/rc-rc6-mce.o/
+media/rc/keymaps/rc-real-audio-220-32-keys.o/
+media/rc/keymaps/rc-reddo.o/
+media/rc/keymaps/rc-snapstream-firefly.o/
+media/rc/keymaps/rc-streamzap.o/
+media/rc/keymaps/rc-tbs-nec.o/
+media/rc/keymaps/rc-technisat-ts35.o/
+media/rc/keymaps/rc-technisat-usb2.o/
+media/rc/keymaps/rc-terratec-cinergy-c-pci.o/
+media/rc/keymaps/rc-terratec-cinergy-s2-hd.o/
+media/rc/keymaps/rc-terratec-cinergy-xs.o/
+media/rc/keymaps/rc-terratec-slim.o/
+media/rc/keymaps/rc-terratec-slim-2.o/
+media/rc/keymaps/rc-tevii-nec.o/
+media/rc/keymaps/rc-tivo.o/
+media/rc/keymaps/rc-total-media-in-hand.o/
+media/rc/keymaps/rc-total-media-in-hand-02.o/
+media/rc/keymaps/rc-trekstor.o/
+media/rc/keymaps/rc-tt-1500.o/
+media/rc/keymaps/rc-twinhan-dtv-cab-ci.o/
+media/rc/keymaps/rc-twinhan1027.o/
+media/rc/keymaps/rc-videomate-m1f.o/
+media/rc/keymaps/rc-videomate-s350.o/
+media/rc/keymaps/rc-videomate-tv-pvr.o/
+media/rc/keymaps/rc-winfast.o/
+media/rc/keymaps/rc-winfast-usbii-deluxe.o/
+media/rc/keymaps/rc-su3000.o/
+media/rc/keymaps/rc-zx-irdec.o/
+media/rc/rc-main.o/
+media/rc/rc-ir-raw.o/
+media/platform/coda/coda-common.o/
+media/platform/coda/coda-bit.o/
+media/platform/coda/coda-gdi.o/
+media/platform/coda/coda-h264.o/
+media/platform/coda/coda-jpeg.o/
+media/platform/coda/imx-vdoa.o/
+pps/pps.o/
+pps/kapi.o/
+pps/sysfs.o/
+ptp/ptp_clock.o/
+ptp/ptp_chardev.o/
+ptp/ptp_sysfs.o/
+power/reset/gpio-poweroff.o/
+power/reset/syscon-poweroff.o/
+power/supply/power_supply_core.o/
+power/supply/power_supply_sysfs.o/
+power/supply/power_supply_leds.o/
+hwmon/hwmon.o/
+hwmon/lm75.o/
+thermal/thermal_core.o/
+thermal/thermal_sysfs.o/
+thermal/thermal_helpers.o/
+thermal/thermal_hwmon.o/
+thermal/of-thermal.o/
+thermal/step_wise.o/
+thermal/cpu_cooling.o/
+thermal/imx_thermal.o/
+watchdog/watchdog_core.o/
+watchdog/watchdog_dev.o/
+watchdog/imx2_wdt.o/
+cpufreq/cpufreq.o/
+cpufreq/freq_table.o/
+cpufreq/cpufreq_stats.o/
+cpufreq/cpufreq_performance.o/
+cpufreq/cpufreq_powersave.o/
+cpufreq/cpufreq_userspace.o/
+cpufreq/cpufreq_ondemand.o/
+cpufreq/cpufreq_conservative.o/
+cpufreq/cpufreq_governor.o/
+cpufreq/cpufreq_governor_attr_set.o/
+cpufreq/imx6q-cpufreq.o/
+cpuidle/cpuidle.o/
+cpuidle/driver.o/
+cpuidle/governor.o/
+cpuidle/sysfs.o/
+cpuidle/governors/ladder.o/
+cpuidle/governors/menu.o/
+mmc/core/core.o/
+mmc/core/bus.o/
+mmc/core/host.o/
+mmc/core/mmc.o/
+mmc/core/mmc_ops.o/
+mmc/core/sd.o/
+mmc/core/sd_ops.o/
+mmc/core/sdio.o/
+mmc/core/sdio_ops.o/
+mmc/core/sdio_bus.o/
+mmc/core/sdio_cis.o/
+mmc/core/sdio_io.o/
+mmc/core/sdio_irq.o/
+mmc/core/slot-gpio.o/
+mmc/core/pwrseq.o/
+mmc/core/debugfs.o/
+mmc/core/pwrseq_simple.o/
+mmc/core/pwrseq_emmc.o/
+mmc/core/block.o/
+mmc/core/queue.o/
+mmc/host/sdhci.o/
+mmc/host/sdhci-pltfm.o/
+mmc/host/sdhci-esdhc-imx.o/
+leds/led-core.o/
+leds/led-class.o/
+leds/led-triggers.o/
+leds/leds-gpio.o/
+leds/trigger/ledtrig-timer.o/
+leds/trigger/ledtrig-oneshot.o/
+leds/trigger/ledtrig-heartbeat.o/
+leds/trigger/ledtrig-backlight.o/
+leds/trigger/ledtrig-gpio.o/
+crypto/mxs-dcp.o/
+clocksource/timer-of.o/
+clocksource/timer-probe.o/
+clocksource/mmio.o/
+clocksource/arm_arch_timer.o/
+clocksource/dummy_timer.o/
+clocksource/timer-imx-gpt.o/
+hid/hid-core.o/
+hid/hid-input.o/
+hid/hid-debug.o/
+hid/hidraw.o/
+hid/hid-generic.o/
+hid/hid-multitouch.o/
+hid/usbhid/hid-core.o/
+hid/usbhid/hid-quirks.o/
+hid/usbhid/hiddev.o/
+hid/usbhid/hid-pidff.o/
+of/base.o/
+of/device.o/
+of/platform.o/
+of/property.o/
+of/fdt.o/
+of/fdt_address.o/
+of/address.o/
+of/irq.o/
+of/of_net.o/
+of/of_mdio.o/
+of/of_reserved_mem.o/
+extcon/extcon.o/
+extcon/devres.o/
+iio/industrialio-core.o/
+iio/industrialio-event.o/
+iio/inkern.o/
+iio/industrialio-buffer.o/
+iio/industrialio-trigger.o/
+iio/adc/vf610_adc.o/
+iio/buffer/industrialio-triggered-buffer.o/
+iio/buffer/kfifo_buf.o/
+iio/common/st_sensors/st_sensors_i2c.o/
+iio/common/st_sensors/st_sensors_spi.o/
+iio/common/st_sensors/st_sensors_core.o/
+iio/common/st_sensors/st_sensors_buffer.o/
+iio/common/st_sensors/st_sensors_trigger.o/
+iio/pressure/st_pressure_core.o/
+iio/pressure/st_pressure_buffer.o/
+iio/pressure/st_pressure_i2c.o/
+iio/pressure/st_pressure_spi.o/
+perf/arm_pmu.o/
+perf/arm_pmu_platform.o/
+nvmem/core.o/
+/0              0           0     0     644     1608      `
+/19             0           0     0     644     19820     `
+/38             0           0     0     644     2644      `
+/64             0           0     0     644     23512     `
+/79             0           0     0     644     6408      `
+/95             0           0     0     644     47000     `
+/111           /0           0     0     644     5348      `
+/136            0           0     0     644     15528     `
+/154            0           0     0     644     10360     `
+/173            0           0     0     644     5524      `
+/195            0           0     0     644     9512      `
+/222            0           0     0     644     10324     `
+/255           /0           0     0     644     11624     `
+/290            0           0     0     644     11776     `
+/326            0           0     0     644     8504      `
+/362            0           0     0     644     10440     `
+/377            0           0     0     644     65788     `
+/393            0           0     0     644     4564      `
+/416            0           0     0     644     1820      `
+/440            0           0     0     644     8568      `
+/459           /0           0     0     644     13236     `
+/481            0           0     0     644     6716      `
+/499            0           0     0     644     5840      `
+/519            0           0     0     644     8576      `
+/540            0           0     0     644     8768      `
+/557            0           0     0     644     14868     `
+/578            0           0     0     644     20908     `
+/590            0           0     0     644     7860      `
+/603            0           0     0     644     6336      `
+/618            0           0     0     644     18868     `
+/632            0           0     0     644     2396      `
+/658            0           0     0     644     3060      `
+/677            0           0     0     644     1864      `
+/707            0           0     0     644     4268      `
+/738            0           0     0     644     8084      `
+/771            0           0     0     644     9032      `
+/794            0           0     0     644     7100      `
+/825            0           0     0     644     4688      `
+/857            0           0     0     644     16076     `
+/886            0           0     0     644     4232      `
+/916            0           0     0     644     8492      `
+/942            0           0     0     644     4172      `
+/973            0           0     0     644     3160      `
+/1003           0           0     0     644     29184     `
+/1029           0           0     0     644     17716     `
+/1055           0           0     0     644     8236      `
+/1082           0           0     0     644     7544      `
+/1110           0           0     0     644     24720     `
+/1137           0           0     0     644     4564      `
+/1163           0           0     0     644     7384      `
+/1192           0           0     0     644     43704     `
+/1218           0           0     0     644     5592      `
+/1246           0           0     0     644     2244      `
+/1277           0           0     0     644     5060      `
+/1309           0           0     0     644     3796      `
+/1341           0           0     0     644     3216      `
+/1371           0           0     0     644     5064      `
+/1403           0           0     0     644     3756      `
+/1435           0           0     0     644     3200      `
+/1465           0           0     0     644     2784      `
+/1497           0           0     0     644     14972     `
+/1518           0           0     0     644     12692     `
+/1539           0           0     0     644     1824      `
+/1563           0           0     0     644     2392      `
+/1582           0           0     0     644     7280      `
+/1609           0           0     0     644     2080      `
+/1631           0           0     0     644     4560      `
+/1649           0           0     0     644     5332      `
+/1665           0           0     0     644     12144     `
+/1679           0           0     0     644     61176     `
+/1690           0           0     0     644     12696     `
+/1709           0           0     0     644     9204      `
+/1733           0           0     0     644     9064      `
+/1755           0           0     0     644     5976      `
+/1771           0           0     0     644     3000      `
+/1793           0           0     0     644     7732      `
+/1808          /0           0     0     644     4876      `
+/1829           0           0     0     644     4912      `
+/1859           0           0     0     644     9700      `
+/1875           0           0     0     644     3968      `
+/1891           0           0     0     644     3644      `
+/1906           0           0     0     644     2920      `
+/1926           0           0     0     644     2172      `
+/1945          /0           0     0     644     2428      `
+/1970          /0           0     0     644     2248      `
+/1995           0           0     0     644     2180      `
+/2025           0           0     0     644     2704      `
+/2046           0           0     0     644     2028      `
+/2067           0           0     0     644     3020      `
+/2088           0           0     0     644     5652      `
+/2109           0           0     0     644     2632      `
+/2128           0           0     0     644     50828     `
+/2149           0           0     0     644     38684     `
+/2171           0           0     0     644     27420     `
+/2188           0           0     0     644     8044      `
+/2202           0           0     0     644     20784     `
+/2218           0           0     0     644     11240     `
+/2233           0           0     0     644     6148      `
+/2252           0           0     0     644     16744     `
+/2273           0           0     0     644     10192     `
+/2288           0           0     0     644     76800     `
+/2306           0           0     0     644     3628      `
+/2325           0           0     0     644     1788      `
+/2351           0           0     0     644     13352     `
+/2372           0           0     0     644     12212     `
+/2392           0           0     0     644     8256      `
+/2418           0           0     0     644     5300      `
+/2437           0           0     0     644     8920      `
+/2467           0           0     0     644     13448     `
+/2497           0           0     0     644     8780      `
+/2525           0           0     0     644     14556     `
+/2556           0           0     0     644     13956     `
+/2587           0           0     0     644     6468      `
+/2623           0           0     0     644     20144     `
+/2655           0           0     0     644     14400     `
+/2669           0           0     0     644     48076     `
+/2683           0           0     0     644     22328     `
+/2696           0           0     0     644     14968     `
+/2713           0           0     0     644     12216     `
+/2730           0           0     0     644     11672     `
+/2748           0           0     0     644     21240     `
+/2764           0           0     0     644     3356      `
+/2781           0           0     0     644     5144      `
+/2798           0           0     0     644     4452      `
+/2818           0           0     0     644     9220      `
+/2837           0           0     0     644     2972      `
+/2851           0           0     0     644     12208     `
+/2862           0           0     0     644     19572     `
+/2875           0           0     0     644     14672     `
+/2894           0           0     0     644     8848      `
+/2914           0           0     0     644     5884      `
+/2934           0           0     0     644     33432     `
+/2953           0           0     0     644     12152     `
+/2974           0           0     0     644     1700      `
+/3002           0           0     0     644     65520     `
+/3015           0           0     0     644     10416     `
+/3035           0           0     0     644     44404     `
+/3061           0           0     0     644     5772      `
+/3084           0           0     0     644     27244     `
+/3102           0           0     0     644     32424     `
+/3127           0           0     0     644     8672      `
+/3159           0           0     0     644     7616      `
+/3171           0           0     0     644     29360     `
+/3186           0           0     0     644     7224      `
+/3199           0           0     0     644     13964     `
+/3222           0           0     0     644     6888      `
+/3249           0           0     0     644     16740     `
+/3276          /0           0     0     644     25988     `
+/3301           0           0     0     644     13160     `
+/3329           0           0     0     644     10248     `
+/3357           0           0     0     644     47852     `
+/3388           0           0     0     644     63408     `
+/3417           0           0     0     644     2052      `
+/3450           0           0     0     644     11140     `
+/3485           0           0     0     644     5232      `
+/3518           0           0     0     644     4204      `
+/3548           0           0     0     644     5352      `
+/3575           0           0     0     644     7920      `
+/3613           0           0     0     644     5452      `
+/3637          /0           0     0     644     45460     `
+/3662           0           0     0     644     6152      `
+/3682           0           0     0     644     17692     `
+/3702           0           0     0     644     3596      `
+/3723           0           0     0     644     5296      `
+/3746           0           0     0     644     2356      `
+/3765           0           0     0     644     12696     `
+/3785           0           0     0     644     19044     `
+/3804           0           0     0     644     18772     `
+/3825           0           0     0     644     3752      `
+/3844           0           0     0     644     6292      `
+/3864           0           0     0     644     3040      `
+/3886           0           0     0     644     20248     `
+/3905           0           0     0     644     2956      `
+/3928           0           0     0     644     4500      `
+/3947           0           0     0     644     8708      `
+/3968           0           0     0     644     5812      `
+/3991           0           0     0     644     14012     `
+/4009           0           0     0     644     13360     `
+/4029           0           0     0     644     9688      `
+/4051           0           0     0     644     29564     `
+/4072           0           0     0     644     90504     `
+/4092           0           0     0     644     3260      `
+/4112           0           0     0     644     7296      `
+/4141           0           0     0     644     756       `
+/4169           0           0     0     644     3324      `
+/4191           0           0     0     644     13380     `
+/4212           0           0     0     644     8392      `
+/4232           0           0     0     644     6876      `
+/4259          /0           0     0     644     5824      `
+/4284           0           0     0     644     11284     `
+/4312           0           0     0     644     39800     `
+/4334           0           0     0     644     8440      `
+/4356           0           0     0     644     15088     `
+/4383          /0           0     0     644     30864     `
+/4408           0           0     0     644     6988      `
+/4429           0           0     0     644     4224      `
+/4452           0           0     0     644     9732      `
+/4479           0           0     0     644     15752     `
+/4503           0           0     0     644     14896     `
+/4524           0           0     0     644     5012      `
+/4550           0           0     0     644     3608      `
+/4571           0           0     0     644     1752      `
+/4599           0           0     0     644     9692      `
+/4626           0           0     0     644     27872     `
+/4648           0           0     0     644     15580     `
+/4671           0           0     0     644     4828      `
+/4692           0           0     0     644     6036      `
+/4710           0           0     0     644     8728      `
+/4733           0           0     0     644     7244      `
+/4760           0           0     0     644     3184      `
+/4782           0           0     0     644     7428      `
+/4805           0           0     0     644     7664      `
+/4826           0           0     0     644     9812      `
+/4844           0           0     0     644     56820     `
+/4857           0           0     0     644     26192     `
+/4869           0           0     0     644     13752     `
+/4880           0           0     0     644     5668      `
+/4896           0           0     0     644     6684      `
+/4911           0           0     0     644     16060     `
+/4925           0           0     0     644     27264     `
+/4942           0           0     0     644     9252      `
+/4954           0           0     0     644     2072      `
+/4971           0           0     0     644     1600      `
+/4984           0           0     0     644     2584      `
+/4996           0           0     0     644     19584     `
+/5011           0           0     0     644     7712      `
+/5039           0           0     0     644     7880      `
+/5063           0           0     0     644     4024      `
+/5080           0           0     0     644     2308      `
+/5098           0           0     0     644     32984     `
+/5115           0           0     0     644     11020     `
+/5133           0           0     0     644     7604      `
+/5150           0           0     0     644     4908      `
+/5173           0           0     0     644     13540     `
+/5193           0           0     0     644     13872     `
+/5219           0           0     0     644     4832      `
+/5240           0           0     0     644     17024     `
+/5258           0           0     0     644     25768     `
+/5280           0           0     0     644     6792      `
+/5302           0           0     0     644     29364     `
+/5321           0           0     0     644     24488     `
+/5342           0           0     0     644     35596     `
+/5365           0           0     0     644     6432      `
+/5387           0           0     0     644     12400     `
+/5408           0           0     0     644     5504      `
+/5434           0           0     0     644     39060     `
+/5455           0           0     0     644     2644      `
+/5485           0           0     0     644     12376     `
+/5509           0           0     0     644     8964      `
+/5529           0           0     0     644     10188     `
+/5550           0           0     0     644     21796     `
+/5573           0           0     0     644     2396      `
+/5588           0           0     0     644     44796     `
+/5610           0           0     0     644     10748     `
+/5634           0           0     0     644     6240      `
+/5665          /0           0     0     644     1856      `
+/5694           0           0     0     644     11428     `
+/5724           0           0     0     644     5372      `
+/5750           0           0     0     644     3736      `
+/5776           0           0     0     644     5464      `
+/5803           0           0     0     644     14704     `
+/5829           0           0     0     644     5588      `
+/5841           0           0     0     644     1952      `
+/5857          /0           0     0     644     6488      `
+/5879           0           0     0     644     10300     `
+/5892           0           0     0     644     30112     `
+/5906           0           0     0     644     11364     `
+/5926           0           0     0     644     7748      `
+/5946           0           0     0     644     8916      `
+/5959           0           0     0     644     3172      `
+/5977           0           0     0     644     19512     `
+/5990           0           0     0     644     5940      `
+/6007           0           0     0     644     12444     `
+/6026           0           0     0     644     5712      `
+/6044          /0           0     0     644     11776     `
+/6065           0           0     0     644     15416     `
+/6085           0           0     0     644     5792      `
+/6104           0           0     0     644     4568      `
+/6123           0           0     0     644     8372      `
+/6139           0           0     0     644     6224      `
+/6157           0           0     0     644     12232     `
+/6176           0           0     0     644     6952      `
+/6194           0           0     0     644     24532     `
+/6212           0           0     0     644     3920      `
+/6231           0           0     0     644     17568     `
+/6249           0           0     0     644     8372      `
+/6263           0           0     0     644     22272     `
+/6282           0           0     0     644     11928     `
+/6303           0           0     0     644     5532      `
+/6330           0           0     0     644     13672     `
+/6353           0           0     0     644     2624      `
+/6376           0           0     0     644     7948      `
+/6397           0           0     0     644     18048     `
+/6410           0           0     0     644     16112     `
+/6424           0           0     0     644     6272      `
+/6443           0           0     0     644     4080      `
+/6459           0           0     0     644     35472     `
+/6478           0           0     0     644     51284     `
+/6495           0           0     0     644     7788      `
+/6515           0           0     0     644     43144     `
+/6533           0           0     0     644     2540      `
+/6554           0           0     0     644     26548     `
+/6572           0           0     0     644     28568     `
+/6591           0           0     0     644     18712     `
+/6612           0           0     0     644     2460      `
+/6632           0           0     0     644     1652      `
+/6653           0           0     0     644     3200      `
+/6672           0           0     0     644     17240     `
+/6693           0           0     0     644     6848      `
+/6709           0           0     0     644     47004     `
+/6720           0           0     0     644     128704    `
+/6739           0           0     0     644     58704     `
+/6758           0           0     0     644     46028     `
+/6775           0           0     0     644     13312     `
+/6799           0           0     0     644     1436      `
+/6819           0           0     0     644     47988     `
+/6837           0           0     0     644     14572     `
+/6855          /0           0     0     644     6364      `
+/6876           0           0     0     644     42348     `
+/6891           0           0     0     644     16432     `
+/6915           0           0     0     644     13632     `
+/6931           0           0     0     644     7216      `
+/6947           0           0     0     644     43128     `
+/6962           0           0     0     644     3816      `
+/6978           0           0     0     644     11320     `
+/6995           0           0     0     644     16500     `
+/7010           0           0     0     644     13804     `
+/7025           0           0     0     644     5332      `
+/7039           0           0     0     644     6324      `
+/7058           0           0     0     644     13212     `
+/7077           0           0     0     644     5940      `
+/7093           0           0     0     644     4412      `
+/7114           0           0     0     644     5636      `
+/7137           0           0     0     644     10320     `
+/7159           0           0     0     644     21656     `
+/7188           0           0     0     644     37552     `
+/7217           0           0     0     644     31356     `
+/7246           0           0     0     644     4472      `
+/7269           0           0     0     644     15548     `
+/7294           0           0     0     644     8656      `
+/7322          /0           0     0     644     10064     `
+/7351           0           0     0     644     8180      `
+/7373           0           0     0     644     7128      `
+/7395           0           0     0     644     52320     `
+/7417           0           0     0     644     13188     `
+/7438           0           0     0     644     4720      `
+/7463           0           0     0     644     7924      `
+/7484           0           0     0     644     1808      `
+/7505           0           0     0     644     5424      `
+/7528          /0           0     0     644     1648      `
+/7554           0           0     0     644     3652      `
+/7578           0           0     0     644     2444      `
+/7603           0           0     0     644     1908      `
+/7628           0           0     0     644     6116      `
+/7649           0           0     0     644     20084     `
+/7670           0           0     0     644     23356     `
+/7702           0           0     0     644     9932      `
+/7733           0           0     0     644     25492     `
+/7756           0           0     0     644     13784     `
+/7783           0           0     0     644     9616      `
+/7799           0           0     0     644     13180     `
+/7814           0           0     0     644     6236      `
+/7829           0           0     0     644     21916     `
+/7846           0           0     0     644     13584     `
+/7862           0           0     0     644     16680     `
+/7878           0           0     0     644     18112     `
+/7893           0           0     0     644     19452     `
+/7907           0           0     0     644     20808     `
+/7921           0           0     0     644     17652     `
+/7939           0           0     0     644     3336      `
+/7955           0           0     0     644     15472     `
+/7972           0           0     0     644     63576     `
+/7983           0           0     0     644     11376     `
+/7997           0           0     0     644     6648      `
+/8016           0           0     0     644     9800      `
+/8032           0           0     0     644     18616     `
+/8047           0           0     0     644     10780     `
+/8058           0           0     0     644     2000      `
+/8071           0           0     0     644     4936      `
+/8087           0           0     0     644     3152      `
+/8113           0           0     0     644     21868     `
+/8128           0           0     0     644     6824      `
+/8147           0           0     0     644     6316      `
+/8167           0           0     0     644     40444     `
+/8189           0           0     0     644     17800     `
+/8209           0           0     0     644     5956      `
+/8232           0           0     0     644     3320      `
+/8249           0           0     0     644     8744      `
+/8270           0           0     0     644     5220      `
+/8288           0           0     0     644     15132     `
+/8306           0           0     0     644     6552      `
+/8322           0           0     0     644     22248     `
+/8337           0           0     0     644     9200      `
+/8359           0           0     0     644     14456     `
+/8378           0           0     0     644     16352     `
+/8401           0           0     0     644     17040     `
+/8431           0           0     0     644     47380     `
+/8466           0           0     0     644     6376      `
+/8500           0           0     0     644     44576     `
+/8528           0           0     0     644     66752     `
+/8557           0           0     0     644     31800     `
+/8587           0           0     0     644     84828     `
+/8618           0           0     0     644     34052     `
+/8648           0           0     0     644     7428      `
+/8677           0           0     0     644     13960     `
+/8709           0           0     0     644     20584     `
+/8738           0           0     0     644     5516      `
+/8767           0           0     0     644     7920      `
+/8796           0           0     0     644     31400     `
+/8826           0           0     0     644     10976     `
+/8857           0           0     0     644     7504      `
+/8888           0           0     0     644     31336     `
+/8922           0           0     0     644     8428      `
+/8953           0           0     0     644     4028      `
+/8985           0           0     0     644     3300      `
+/9022           0           0     0     644     11580     `
+/9053           0           0     0     644     26492     `
+/9084           0           0     0     644     5860      `
+/9114           0           0     0     644     3104      `
+/9143           0           0     0     644     2676      `
+/9172           0           0     0     644     67148     `
+/9206           0           0     0     644     5056      `
+/9237           0           0     0     644     5356      `
+/9267           0           0     0     644     4332      `
+/9299           0           0     0     644     2364      `
+/9339           0           0     0     644     22480     `
+/9355           0           0     0     644     60408     `
+/9371           0           0     0     644     41764     `
+/9387           0           0     0     644     19008     `
+/9403           0           0     0     644     27928     `
+/9423           0           0     0     644     25648     `
+/9442           0           0     0     644     15292     `
+/9461           0           0     0     644     5864      `
+/9478           0           0     0     644     3308      `
+/9497           0           0     0     644     21032     `
+/9515           0           0     0     644     4632      `
+/9536           0           0     0     644     34912     `
+/9554           0           0     0     644     3140      `
+/9573           0           0     0     644     3828      `
+/9593           0           0     0     644     4156      `
+/9612           0           0     0     644     8096      `
+/9632           0           0     0     644     8688      `
+/9649           0           0     0     644     2876      `
+/9664           0           0     0     644     17468     `
+/9679           0           0     0     644     2296      `
+/9693           0           0     0     644     10556     `
+/9716           0           0     0     644     9388      `
+/9739           0           0     0     644     58200     `
+/9760           0           0     0     644     6108      `
+/9781           0           0     0     644     10428     `
+/9805           0           0     0     644     3848      `
+/9829           0           0     0     644     14368     `
+/9854           0           0     0     644     34824     `
+/9873           0           0     0     644     1796      `
+/9901           0           0     0     644     3232      `
+/9926           0           0     0     644     2860      `
+/9951           0           0     0     644     9272      `
+/9979           0           0     0     644     4392      `
+/9997           0           0     0     644     20220     `
+/10018          0           0     0     644     4068      `
+/10038          0           0     0     644     11612     `
+/10060          0           0     0     644     19288     `
+/10080          0           0     0     644     5032      `
+/10101          0           0     0     644     10952     `
+/10125          0           0     0     644     5036      `
+/10154          0           0     0     644     6900      `
+/10182         /0           0     0     644     3936      `
+/10212          0           0     0     644     10892     `
+/10240          0           0     0     644     11192     `
+/10268         /0           0     0     644     5576      `
+/10298          0           0     0     644     34916     `
+/10321          0           0     0     644     744       `
+/10345          0           0     0     644     8684      `
+/10366          0           0     0     644     8064      `
+/10392          0           0     0     644     21632     `
+/10413          0           0     0     644     10460     `
+/10435          0           0     0     644     47160     `
+/10450          0           0     0     644     3288      `
+/10472          0           0     0     644     9388      `
+/10490          0           0     0     644     6776      `
+/10507         /0           0     0     644     8192      `
+/10530         /0           0     0     644     4556      `
+/10553          0           0     0     644     5496      `
+/10573          0           0     0     644     16416     `
+/10591          0           0     0     644     17300     `
+/10606          0           0     0     644     21720     `
+/10630          0           0     0     644     15436     `
+/10658          0           0     0     644     8668      `
+/10687         /0           0     0     644     11592     `
+/10719          0           0     0     644     4944      `
+/10755          0           0     0     644     10080     `
+/10791          0           0     0     644     11736     `
+/10825          0           0     0     644     4172      `
+/10854          0           0     0     644     4276      `
+/10880          0           0     0     644     6580      `
+/10905          0           0     0     644     8240      `
+/10934          0           0     0     644     6360      `
+/10949          0           0     0     644     2412      `
+/10964          0           0     0     644     1560      `
+/10979          0           0     0     644     12004     `
+/10992          0           0     0     644     16748     `
+/11009          0           0     0     644     2688      `
+/11022          0           0     0     644     8976      `
+/11037          0           0     0     644     4884      `
+/11053          0           0     0     644     4992      `
+/11070          0           0     0     644     13344     `
+/11088          0           0     0     644     8652      `
+/11103         /0           0     0     644     3604      `
+/11124         /0           0     0     644     45324     `
+/11145          0           0     0     644     11456     `
+/11167          0           0     0     644     5992      `
+/11186          0           0     0     644     10996     `
+/11201          0           0     0     644     8660      `
+/11216          0           0     0     644     9072      `
+/11242          0           0     0     644     16616     `
+/11264          0           0     0     644     11300     `
+/11288          0           0     0     644     29256     `
+/11317          0           0     0     644     18592     `
+/11346          0           0     0     644     18564     `
+/11374          0           0     0     644     14780     `
+/11397          0           0     0     644     17980     `
+/11421          0           0     0     644     9260      `
+/11445          0           0     0     644     6836      `
+/11469          0           0     0     644     14768     `
+/11493          0           0     0     644     13508     `
+/11517         /0           0     0     644     13988     `
+/11547          0           0     0     644     16136     `
+/11579          0           0     0     644     27472     `
+/11607          0           0     0     644     24624     `
+/11630          0           0     0     644     30116     `
+/11653          0           0     0     644     4528      `
+/11678          0           0     0     644     21808     `
+/11706          0           0     0     644     62376     `
+/11736          0           0     0     644     8544      `
+/11767          0           0     0     644     6048      `
+/11794          0           0     0     644     10680     `
+/11824          0           0     0     644     83188     `
+/11854          0           0     0     644     5024      `
+/11885          0           0     0     644     10632     `
+/11913          0           0     0     644     7516      `
+/11943          0           0     0     644     10052     `
+/11974          0           0     0     644     29004     `
+/12009          0           0     0     644     27616     `
+/12041          0           0     0     644     45876     `
+/12075          0           0     0     644     27068     `
+/12109          0           0     0     644     3544      `
+/12145          0           0     0     644     7648      `
+/12182          0           0     0     644     13008     `
+/12222          0           0     0     644     2780      `
+/12263          0           0     0     644     2536      `
+/12298          0           0     0     644     2716      `
+/12328          0           0     0     644     2652      `
+/12365          0           0     0     644     2692      `
+/12398          0           0     0     644     2728      `
+/12434          0           0     0     644     2640      `
+/12478          0           0     0     644     2752      `
+/12509          0           0     0     644     2684      `
+/12547          0           0     0     644     2668      `
+/12580          0           0     0     644     2860      `
+/12621          0           0     0     644     2684      `
+/12659          0           0     0     644     3048      `
+/12698          0           0     0     644     2804      `
+/12743          0           0     0     644     2632      `
+/12782         /0           0     0     644     2676      `
+/12816          0           0     0     644     2860      `
+/12858          0           0     0     644     2636      `
+/12888          0           0     0     644     2640      `
+/12927          0           0     0     644     2764      `
+/12964          0           0     0     644     3120      `
+/12991          0           0     0     644     2696      `
+/13027          0           0     0     644     2656      `
+/13058          0           0     0     644     2680      `
+/13090          0           0     0     644     2656      `
+/13126          0           0     0     644     2932      `
+/13161          0           0     0     644     3812      `
+/13196          0           0     0     644     2832      `
+/13239         /0           0     0     644     2612      `
+/13273         /0           0     0     644     2636      `
+/13307          0           0     0     644     2672      `
+/13346          0           0     0     644     2860      `
+/13388          0           0     0     644     2524      `
+/13419          0           0     0     644     2636      `
+/13449          0           0     0     644     2764      `
+/13482          0           0     0     644     2728      `
+/13520          0           0     0     644     2616      `
+/13555          0           0     0     644     2716      `
+/13592          0           0     0     644     2816      `
+/13628          0           0     0     644     2660      `
+/13669          0           0     0     644     2528      `
+/13705          0           0     0     644     2704      `
+/13733          0           0     0     644     2620      `
+/13763          0           0     0     644     2592      `
+/13795          0           0     0     644     2772      `
+/13833          0           0     0     644     2652      `
+/13870          0           0     0     644     2464      `
+/13901          0           0     0     644     2692      `
+/13943          0           0     0     644     2664      `
+/13978          0           0     0     644     2968      `
+/14010          0           0     0     644     3096      `
+/14042          0           0     0     644     2692      `
+/14079          0           0     0     644     2796      `
+/14112          0           0     0     644     2756      `
+/14145          0           0     0     644     2620      `
+/14175          0           0     0     644     2648      `
+/14210          0           0     0     644     2756      `
+/14247          0           0     0     644     2700      `
+/14292          0           0     0     644     2824      `
+/14332          0           0     0     644     2896      `
+/14363          0           0     0     644     2604      `
+/14392         /0           0     0     644     2812      `
+/14426          0           0     0     644     2844      `
+/14471          0           0     0     644     2776      `
+/14510          0           0     0     644     2556      `
+/14548          0           0     0     644     2672      `
+/14587          0           0     0     644     2604      `
+/14625          0           0     0     644     2728      `
+/14668          0           0     0     644     2804      `
+/14698          0           0     0     644     3144      `
+/14745          0           0     0     644     2648      `
+/14776          0           0     0     644     2648      `
+/14807         /0           0     0     644     2644      `
+/14841          0           0     0     644     2748      `
+/14879          0           0     0     644     2732      `
+/14916          0           0     0     644     2632      `
+/14956          0           0     0     644     2636      `
+/14989          0           0     0     644     2652      `
+/15027          0           0     0     644     2612      `
+/15065          0           0     0     644     2652      `
+/15102          0           0     0     644     2732      `
+/15147          0           0     0     644     2592      `
+/15183          0           0     0     644     2656      `
+/15215          0           0     0     644     2604      `
+/15244          0           0     0     644     3788      `
+/15277          0           0     0     644     2880      `
+/15308          0           0     0     644     2684      `
+/15354          0           0     0     644     2540      `
+/15383          0           0     0     644     2820      `
+/15425          0           0     0     644     2660      `
+/15458          0           0     0     644     2640      `
+/15489          0           0     0     644     2644      `
+/15527          0           0     0     644     2644      `
+/15565          0           0     0     644     2844      `
+/15611          0           0     0     644     2844      `
+/15657          0           0     0     644     2816      `
+/15700          0           0     0     644     2628      `
+/15737          0           0     0     644     2560      `
+/15776          0           0     0     644     2756      `
+/15809          0           0     0     644     2712      `
+/15837          0           0     0     644     2720      `
+/15880          0           0     0     644     2740      `
+/15926          0           0     0     644     2600      `
+/15958          0           0     0     644     2680      `
+/15989          0           0     0     644     2860      `
+/16031          0           0     0     644     2828      `
+/16066          0           0     0     644     2816      `
+/16103          0           0     0     644     2764      `
+/16141          0           0     0     644     2720      `
+/16181          0           0     0     644     2816      `
+/16212          0           0     0     644     2672      `
+/16256          0           0     0     644     2644      `
+/16286          0           0     0     644     2712      `
+/16318          0           0     0     644     31204     `
+/16338          0           0     0     644     14676     `
+/16360          0           0     0     644     39248     `
+/16395          0           0     0     644     27496     `
+/16427          0           0     0     644     1732      `
+/16459          0           0     0     644     2448      `
+/16492          0           0     0     644     3324      `
+/16525          0           0     0     644     9036      `
+/16557          0           0     0     644     9116      `
+/16568          0           0     0     644     4936      `
+/16580          0           0     0     644     2720      `
+/16593          0           0     0     644     11288     `
+/16610          0           0     0     644     5692      `
+/16629          0           0     0     644     6340      `
+/16646         /0           0     0     644     4592      `
+/16675          0           0     0     644     4408      `
+/16706          0           0     0     644     28044     `
+/16740          0           0     0     644     10292     `
+/16775          0           0     0     644     2864      `
+/16809          0           0     0     644     16536     `
+/16824          0           0     0     644     11980     `
+/16838          0           0     0     644     26540     `
+/16862         /0           0     0     644     12240     `
+/16887          0           0     0     644     6044      `
+/16914         /0           0     0     644     5224      `
+/16939          0           0     0     644     14788     `
+/16961          0           0     0     644     2600      `
+/16982          0           0     0     644     11148     `
+/17005          0           0     0     644     11036     `
+/17028         /0           0     0     644     9240      `
+/17054          0           0     0     644     12228     `
+/17079          0           0     0     644     9052      `
+/17100          0           0     0     644     53668     `
+/17119          0           0     0     644     9040      `
+/17141         /0           0     0     644     4708      `
+/17166          0           0     0     644     2900      `
+/17197          0           0     0     644     2720      `
+/17226          0           0     0     644     4588      `
+/17255          0           0     0     644     10976     `
+/17283          0           0     0     644     6128      `
+/17315          0           0     0     644     11448     `
+/17343          0           0     0     644     4168      `
+/17380         /0           0     0     644     11724     `
+/17405          0           0     0     644     14308     `
+/17424          0           0     0     644     5316      `
+/17442          0           0     0     644     2548      `
+/17462          0           0     0     644     9572      `
+/17479          0           0     0     644     3500      `
+/17507          0           0     0     644     4648      `
+/17533          0           0     0     644     43652     `
+/17550          0           0     0     644     8684      `
+/17566          0           0     0     644     13384     `
+/17583          0           0     0     644     24032     `
+/17599          0           0     0     644     15676     `
+/17619          0           0     0     644     15332     `
+/17634          0           0     0     644     5344      `
+/17653          0           0     0     644     11824     `
+/17670          0           0     0     644     3436      `
+/17691          0           0     0     644     7612      `
+/17712          0           0     0     644     4972      `
+/17733          0           0     0     644     15040     `
+/17753          0           0     0     644     6032      `
+/17774          0           0     0     644     7972      `
+/17796          0           0     0     644     3928      `
+/17815          0           0     0     644     7136      `
+/17835         /0           0     0     644     5328      `
+/17861          0           0     0     644     4432      `
+/17885          0           0     0     644     32848     `
+/17903          0           0     0     644     5420      `
+/17921          0           0     0     644     62220     `
+/17939          0           0     0     644     11140     `
+/17963          0           0     0     644     17560     `
+/17991          0           0     0     644     10340     `
+/18008          0           0     0     644     10888     `
+/18026          0           0     0     644     13972     `
+/18047          0           0     0     644     6588      `
+/18065         /0           0     0     644     3924      `
+/18095          0           0     0     644     4816      `
+/18127          0           0     0     644     5364      `
+/18161          0           0     0     644     4216      `
+/18195          0           0     0     644     5596      `
+/18224          0           0     0     644     16576     `
+/18242          0           0     0     644     3156      `
+/18266          0           0     0     644     2284      `
+/18293          0           0     0     644     2068      `
+/18313          0           0     0     644     17324     `
+/18343          0           0     0     644     2736      `
+/18370         /0           0     0     644     9896      `
+/18399          0           0     0     644     46408     `
+/18415          0           0     0     644     44372     `
+/18432          0           0     0     644     42732     `
+/18449          0           0     0     644     11304     `
+/18463          0           0     0     644     2664      `
+/18482          0           0     0     644     16484     `
+/18504          0           0     0     644     25740     `
+/18527          0           0     0     644     5240      `
+/18552          0           0     0     644     12376     `
+/18573          0           0     0     644     14396     `
+/18597          0           0     0     644     35856     `
+/18608          0           0     0     644     10320     `
+/18621          0           0     0     644     13504     `
+/18636          0           0     0     644     22932     `
+/18651          0           0     0     644     18512     `
+/18661          0           0     0     644     3440      `
+/18679          0           0     0     644     10824     `
+/18693          0           0     0     644     12212     `
+/18703          0           0     0     644     3716      `
+/18716          0           0     0     644     13448     `
+/18730          0           0     0     644     8224      `
+/18752          0           0     0     644     24564     `
+/18769          0           0     0     644     7916      `
+/18786          0           0     0     644     37116     `
+/18811          0           0     0     644     8028      `
+/18837          0           0     0     644     22036     `
+/18851          0           0     0     644     17760     `
+/18878          0           0     0     644     20488     `
+/18906          0           0     0     644     14576     `
+/18927          0           0     0     644     5164      `
+/18971          0           0     0     644     6116      `
+/18995          0           0     0     644     2508      `
+/19035          0           0     0     644     3036      `
+/19075          0           0     0     644     14884     `
+/19116          0           0     0     644     2272      `
+/19159          0           0     0     644     5676      `
+/19203          0           0     0     644     7880      `
+/19236          0           0     0     644     2292      `
+/19271          0           0     0     644     4732      `
+/19303          0           0     0     644     4724      `
+/19335          0           0     0     644     12580     `
+/19351          0           0     0     644     4704      `
+/19376          0           0     0     644     22784     `

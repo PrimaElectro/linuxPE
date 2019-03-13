@@ -1,0 +1,1 @@
+cmd_arch/arm/boot/compressed/piggy_data := (cat arch/arm/boot/compressed/../Image | lzop -9 && printf \\000\\240\\304\\000) > arch/arm/boot/compressed/piggy_data || (rm -f arch/arm/boot/compressed/piggy_data ; false)

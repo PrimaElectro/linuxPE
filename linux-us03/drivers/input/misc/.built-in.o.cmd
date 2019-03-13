@@ -1,0 +1,1 @@
+cmd_drivers/input/misc/built-in.o :=  rm -f drivers/input/misc/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/input/misc/built-in.o drivers/input/misc/gpio-beeper.o drivers/input/misc/pwm-beeper.o drivers/input/misc/rotary_encoder.o 
