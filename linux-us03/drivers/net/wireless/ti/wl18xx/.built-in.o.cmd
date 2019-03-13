@@ -1,1 +1,0 @@
-cmd_drivers/net/wireless/ti/wl18xx/built-in.o :=  rm -f drivers/net/wireless/ti/wl18xx/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/wireless/ti/wl18xx/built-in.o drivers/net/wireless/ti/wl18xx/wl18xx.o 

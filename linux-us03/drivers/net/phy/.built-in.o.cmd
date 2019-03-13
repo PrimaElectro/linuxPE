@@ -1,1 +1,0 @@
-cmd_drivers/net/phy/built-in.o :=  rm -f drivers/net/phy/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/phy/built-in.o drivers/net/phy/mdio-boardinfo.o drivers/net/phy/libphy.o drivers/net/phy/fixed_phy.o drivers/net/phy/icplus.o drivers/net/phy/micrel.o drivers/net/phy/smsc.o 

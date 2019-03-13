@@ -1,0 +1,3 @@
+kernel/drivers/input/misc/gpio-beeper.ko
+kernel/drivers/input/misc/pwm-beeper.ko
+kernel/drivers/input/misc/rotary_encoder.ko

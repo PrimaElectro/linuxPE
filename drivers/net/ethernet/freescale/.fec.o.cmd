@@ -1,0 +1,1 @@
+cmd_drivers/net/ethernet/freescale/fec.o := rm -f drivers/net/ethernet/freescale/fec.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/ethernet/freescale/fec.o drivers/net/ethernet/freescale/fec_main.o drivers/net/ethernet/freescale/fec_ptp.o

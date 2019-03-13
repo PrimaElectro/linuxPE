@@ -1,1 +1,0 @@
-cmd_drivers/iio/pressure/st_pressure.o := rm -f drivers/iio/pressure/st_pressure.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/iio/pressure/st_pressure.o drivers/iio/pressure/st_pressure_core.o drivers/iio/pressure/st_pressure_buffer.o
