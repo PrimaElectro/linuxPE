@@ -1,1 +1,0 @@
-cmd_drivers/net/ethernet/cirrus/built-in.o :=  rm -f drivers/net/ethernet/cirrus/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/ethernet/cirrus/built-in.o drivers/net/ethernet/cirrus/cs89x0.o 

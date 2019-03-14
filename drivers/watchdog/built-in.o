@@ -1,9 +1,0 @@
-!<thin>
-//                                              46        `
-watchdog_core.o/
-watchdog_dev.o/
-imx2_wdt.o/
-
-/0             /0           0     0     644     9240      `
-/17             0           0     0     644     12228     `
-/33             0           0     0     644     9052      `

@@ -1,1 +1,0 @@
-cmd_drivers/crypto/caam/caamalg_desc.ko := arm-poky-linux-gnueabi-ld -EL -r  -T ./scripts/module-common.lds --build-id  -o drivers/crypto/caam/caamalg_desc.ko drivers/crypto/caam/caamalg_desc.o drivers/crypto/caam/caamalg_desc.mod.o ;  true

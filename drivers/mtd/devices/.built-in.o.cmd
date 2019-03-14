@@ -1,1 +1,0 @@
-cmd_drivers/mtd/devices/built-in.o :=  rm -f drivers/mtd/devices/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/mtd/devices/built-in.o drivers/mtd/devices/mtd_dataflash.o drivers/mtd/devices/m25p80.o drivers/mtd/devices/sst25l.o 

@@ -1,1 +1,0 @@
-cmd_drivers/net/wireless/ti/wlcore/wlcore_sdio.o := rm -f drivers/net/wireless/ti/wlcore/wlcore_sdio.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/net/wireless/ti/wlcore/wlcore_sdio.o drivers/net/wireless/ti/wlcore/sdio.o

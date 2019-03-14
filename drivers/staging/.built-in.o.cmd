@@ -1,1 +1,0 @@
-cmd_drivers/staging/built-in.o :=  rm -f drivers/staging/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/staging/built-in.o drivers/staging/media/built-in.o drivers/staging/typec/built-in.o drivers/staging/iio/built-in.o 

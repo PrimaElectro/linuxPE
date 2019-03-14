@@ -1,1 +1,0 @@
-cmd_drivers/input/touchscreen/built-in.o :=  rm -f drivers/input/touchscreen/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/input/touchscreen/built-in.o drivers/input/touchscreen/of_touchscreen.o drivers/input/touchscreen/usbtouchscreen.o drivers/input/touchscreen/tsc200x-core.o drivers/input/touchscreen/tsc2004.o 

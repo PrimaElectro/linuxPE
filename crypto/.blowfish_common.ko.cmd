@@ -1,1 +1,0 @@
-cmd_crypto/blowfish_common.ko := arm-poky-linux-gnueabi-ld -EL -r  -T ./scripts/module-common.lds --build-id  -o crypto/blowfish_common.ko crypto/blowfish_common.o crypto/blowfish_common.mod.o ;  true

@@ -1,1 +1,0 @@
-cmd_drivers/pinctrl/freescale/built-in.o :=  rm -f drivers/pinctrl/freescale/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/pinctrl/freescale/built-in.o drivers/pinctrl/freescale/pinctrl-imx.o drivers/pinctrl/freescale/pinctrl-imx6q.o drivers/pinctrl/freescale/pinctrl-imx6dl.o drivers/pinctrl/freescale/pinctrl-imx6ul.o 

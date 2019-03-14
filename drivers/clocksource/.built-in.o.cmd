@@ -1,1 +1,0 @@
-cmd_drivers/clocksource/built-in.o :=  rm -f drivers/clocksource/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/clocksource/built-in.o drivers/clocksource/timer-of.o drivers/clocksource/timer-probe.o drivers/clocksource/mmio.o drivers/clocksource/arm_arch_timer.o drivers/clocksource/dummy_timer.o drivers/clocksource/timer-imx-gpt.o 

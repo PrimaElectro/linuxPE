@@ -1,1 +1,0 @@
-cmd_drivers/video/logo/built-in.o :=  rm -f drivers/video/logo/built-in.o; arm-poky-linux-gnueabi-ar rcSTPD drivers/video/logo/built-in.o drivers/video/logo/logo.o drivers/video/logo/logo_linux_mono.o drivers/video/logo/logo_linux_vga16.o drivers/video/logo/logo_linux_clut224.o 
