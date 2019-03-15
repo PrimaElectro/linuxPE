@@ -171,7 +171,7 @@ import datetime
 #		SELECT * FROM samples_view WHERE event = 'transactions' AND branch_type_name = 'transaction abort';
 #
 # To print a call stack requires walking the call_paths table.  For example this python script:
-#   #!/usr/bin/env python
+#   #!/usr/bin/python2
 #
 #   import sys
 #   from PySide.QtSql import *
