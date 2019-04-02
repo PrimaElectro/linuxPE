@@ -31,9 +31,9 @@
  */
 
 #define DEBUG_SUBSYSTEM S_RPC
-#include <obd_support.h>
-#include <obd_class.h>
-#include <lustre_net.h>
+#include "../include/obd_support.h"
+#include "../include/obd_class.h"
+#include "../include/lustre_net.h"
 
 #include "ptlrpc_internal.h"
 
@@ -41,7 +41,7 @@ static struct cfs_hash *conn_hash;
 static struct cfs_hash_ops conn_hash_ops;
 
 struct ptlrpc_connection *
-ptlrpc_connection_get(struct lnet_process_id peer, lnet_nid_t self,
+ptlrpc_connection_get(lnet_process_id_t peer, lnet_nid_t self,
 		      struct obd_uuid *uuid)
 {
 	struct ptlrpc_connection *conn, *conn2;
@@ -152,17 +152,17 @@ void ptlrpc_connection_fini(void)
 /*
  * Hash operations for net_peer<->connection
  */
-static unsigned int
-conn_hashfn(struct cfs_hash *hs, const void *key, unsigned int mask)
+static unsigned
+conn_hashfn(struct cfs_hash *hs, const void *key, unsigned mask)
 {
-	return cfs_hash_djb2_hash(key, sizeof(struct lnet_process_id), mask);
+	return cfs_hash_djb2_hash(key, sizeof(lnet_process_id_t), mask);
 }
 
 static int
 conn_keycmp(const void *key, struct hlist_node *hnode)
 {
 	struct ptlrpc_connection *conn;
-	const struct lnet_process_id *conn_key;
+	const lnet_process_id_t *conn_key;
 
 	LASSERT(key);
 	conn_key = key;

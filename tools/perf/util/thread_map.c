@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <dirent.h>
-#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -8,7 +6,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include "string2.h"
 #include "strlist.h"
 #include <string.h>
 #include <api/fs/fs.h>
@@ -69,7 +66,7 @@ struct thread_map *thread_map__new_by_pid(pid_t pid)
 		for (i = 0; i < items; i++)
 			thread_map__set_pid(threads, i, atoi(namelist[i]->d_name));
 		threads->nr = items;
-		refcount_set(&threads->refcnt, 1);
+		atomic_set(&threads->refcnt, 1);
 	}
 
 	for (i=0; i<items; i++)
@@ -86,7 +83,7 @@ struct thread_map *thread_map__new_by_tid(pid_t tid)
 	if (threads != NULL) {
 		thread_map__set_pid(threads, 0, tid);
 		threads->nr = 1;
-		refcount_set(&threads->refcnt, 1);
+		atomic_set(&threads->refcnt, 1);
 	}
 
 	return threads;
@@ -108,7 +105,7 @@ struct thread_map *thread_map__new_by_uid(uid_t uid)
 		goto out_free_threads;
 
 	threads->nr = 0;
-	refcount_set(&threads->refcnt, 1);
+	atomic_set(&threads->refcnt, 1);
 
 	while ((dirent = readdir(proc)) != NULL) {
 		char *end;
@@ -238,7 +235,7 @@ static struct thread_map *thread_map__new_by_pid_str(const char *pid_str)
 out:
 	strlist__delete(slist);
 	if (threads)
-		refcount_set(&threads->refcnt, 1);
+		atomic_set(&threads->refcnt, 1);
 	return threads;
 
 out_free_namelist:
@@ -258,7 +255,7 @@ struct thread_map *thread_map__new_dummy(void)
 	if (threads != NULL) {
 		thread_map__set_pid(threads, 0, -1);
 		threads->nr = 1;
-		refcount_set(&threads->refcnt, 1);
+		atomic_set(&threads->refcnt, 1);
 	}
 	return threads;
 }
@@ -303,7 +300,7 @@ struct thread_map *thread_map__new_by_tid_str(const char *tid_str)
 	}
 out:
 	if (threads)
-		refcount_set(&threads->refcnt, 1);
+		atomic_set(&threads->refcnt, 1);
 	return threads;
 
 out_free_threads:
@@ -329,7 +326,7 @@ static void thread_map__delete(struct thread_map *threads)
 	if (threads) {
 		int i;
 
-		WARN_ONCE(refcount_read(&threads->refcnt) != 0,
+		WARN_ONCE(atomic_read(&threads->refcnt) != 0,
 			  "thread map refcnt unbalanced\n");
 		for (i = 0; i < threads->nr; i++)
 			free(thread_map__comm(threads, i));
@@ -340,13 +337,13 @@ static void thread_map__delete(struct thread_map *threads)
 struct thread_map *thread_map__get(struct thread_map *map)
 {
 	if (map)
-		refcount_inc(&map->refcnt);
+		atomic_inc(&map->refcnt);
 	return map;
 }
 
 void thread_map__put(struct thread_map *map)
 {
-	if (map && refcount_dec_and_test(&map->refcnt))
+	if (map && atomic_dec_and_test(&map->refcnt))
 		thread_map__delete(map);
 }
 
@@ -426,7 +423,7 @@ static void thread_map__copy_event(struct thread_map *threads,
 		threads->map[i].comm = strndup(event->entries[i].comm, 16);
 	}
 
-	refcount_set(&threads->refcnt, 1);
+	atomic_set(&threads->refcnt, 1);
 }
 
 struct thread_map *thread_map__new_event(struct thread_map_event *event)
@@ -450,26 +447,4 @@ bool thread_map__has(struct thread_map *threads, pid_t pid)
 	}
 
 	return false;
-}
-
-int thread_map__remove(struct thread_map *threads, int idx)
-{
-	int i;
-
-	if (threads->nr < 1)
-		return -EINVAL;
-
-	if (idx >= threads->nr)
-		return -EINVAL;
-
-	/*
-	 * Free the 'idx' item and shift the rest up.
-	 */
-	free(threads->map[idx].comm);
-
-	for (i = idx; i < threads->nr - 1; i++)
-		threads->map[i] = threads->map[i + 1];
-
-	threads->nr--;
-	return 0;
 }

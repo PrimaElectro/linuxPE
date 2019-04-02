@@ -69,12 +69,11 @@ static ssize_t driver_override_show(struct device *_dev,
 				    struct device_attribute *attr, char *buf)
 {
 	struct amba_device *dev = to_amba_device(_dev);
-	ssize_t len;
 
-	device_lock(_dev);
-	len = sprintf(buf, "%s\n", dev->driver_override);
-	device_unlock(_dev);
-	return len;
+	if (!dev->driver_override)
+		return 0;
+
+	return sprintf(buf, "%s\n", dev->driver_override);
 }
 
 static ssize_t driver_override_store(struct device *_dev,
@@ -82,10 +81,9 @@ static ssize_t driver_override_store(struct device *_dev,
 				     const char *buf, size_t count)
 {
 	struct amba_device *dev = to_amba_device(_dev);
-	char *driver_override, *old, *cp;
+	char *driver_override, *old = dev->driver_override, *cp;
 
-	/* We need to keep extra room for a newline */
-	if (count >= (PAGE_SIZE - 1))
+	if (count > PATH_MAX)
 		return -EINVAL;
 
 	driver_override = kstrndup(buf, count, GFP_KERNEL);
@@ -96,21 +94,17 @@ static ssize_t driver_override_store(struct device *_dev,
 	if (cp)
 		*cp = '\0';
 
-	device_lock(_dev);
-	old = dev->driver_override;
 	if (strlen(driver_override)) {
 		dev->driver_override = driver_override;
 	} else {
 	       kfree(driver_override);
 	       dev->driver_override = NULL;
 	}
-	device_unlock(_dev);
 
 	kfree(old);
 
 	return count;
 }
-static DEVICE_ATTR_RW(driver_override);
 
 #define amba_attr_func(name,fmt,arg...)					\
 static ssize_t name##_show(struct device *_dev,				\
@@ -118,23 +112,25 @@ static ssize_t name##_show(struct device *_dev,				\
 {									\
 	struct amba_device *dev = to_amba_device(_dev);			\
 	return sprintf(buf, fmt, arg);					\
-}									\
-static DEVICE_ATTR_RO(name)
+}
+
+#define amba_attr(name,fmt,arg...)	\
+amba_attr_func(name,fmt,arg)		\
+static DEVICE_ATTR(name, S_IRUGO, name##_show, NULL)
 
 amba_attr_func(id, "%08x\n", dev->periphid);
-amba_attr_func(irq0, "%u\n", dev->irq[0]);
-amba_attr_func(irq1, "%u\n", dev->irq[1]);
+amba_attr(irq0, "%u\n", dev->irq[0]);
+amba_attr(irq1, "%u\n", dev->irq[1]);
 amba_attr_func(resource, "\t%016llx\t%016llx\t%016lx\n",
 	 (unsigned long long)dev->res.start, (unsigned long long)dev->res.end,
 	 dev->res.flags);
 
-static struct attribute *amba_dev_attrs[] = {
-	&dev_attr_id.attr,
-	&dev_attr_resource.attr,
-	&dev_attr_driver_override.attr,
-	NULL,
+static struct device_attribute amba_dev_attrs[] = {
+	__ATTR_RO(id),
+	__ATTR_RO(resource),
+	__ATTR_RW(driver_override),
+	__ATTR_NULL,
 };
-ATTRIBUTE_GROUPS(amba_dev);
 
 #ifdef CONFIG_PM
 /*
@@ -196,7 +192,7 @@ static const struct dev_pm_ops amba_pm = {
  */
 struct bus_type amba_bustype = {
 	.name		= "amba",
-	.dev_groups	= amba_dev_groups,
+	.dev_attrs	= amba_dev_attrs,
 	.match		= amba_match,
 	.uevent		= amba_uevent,
 	.pm		= &amba_pm,

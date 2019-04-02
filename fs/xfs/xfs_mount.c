@@ -45,7 +45,6 @@
 #include "xfs_rmap_btree.h"
 #include "xfs_refcount_btree.h"
 #include "xfs_reflink.h"
-#include "xfs_extent_busy.h"
 
 
 static DEFINE_MUTEX(xfs_uuid_table_mutex);
@@ -73,20 +72,17 @@ xfs_uuid_mount(
 	uuid_t			*uuid = &mp->m_sb.sb_uuid;
 	int			hole, i;
 
-	/* Publish UUID in struct super_block */
-	uuid_copy(&mp->m_super->s_uuid, uuid);
-
 	if (mp->m_flags & XFS_MOUNT_NOUUID)
 		return 0;
 
-	if (uuid_is_null(uuid)) {
-		xfs_warn(mp, "Filesystem has null UUID - can't mount");
+	if (uuid_is_nil(uuid)) {
+		xfs_warn(mp, "Filesystem has nil UUID - can't mount");
 		return -EINVAL;
 	}
 
 	mutex_lock(&xfs_uuid_table_mutex);
 	for (i = 0, hole = -1; i < xfs_uuid_table_size; i++) {
-		if (uuid_is_null(&xfs_uuid_table[i])) {
+		if (uuid_is_nil(&xfs_uuid_table[i])) {
 			hole = i;
 			continue;
 		}
@@ -123,7 +119,7 @@ xfs_uuid_unmount(
 
 	mutex_lock(&xfs_uuid_table_mutex);
 	for (i = 0; i < xfs_uuid_table_size; i++) {
-		if (uuid_is_null(&xfs_uuid_table[i]))
+		if (uuid_is_nil(&xfs_uuid_table[i]))
 			continue;
 		if (!uuid_equal(uuid, &xfs_uuid_table[i]))
 			continue;
@@ -161,7 +157,6 @@ xfs_free_perag(
 		spin_unlock(&mp->m_perag_lock);
 		ASSERT(pag);
 		ASSERT(atomic_read(&pag->pag_ref) == 0);
-		xfs_buf_hash_destroy(pag);
 		call_rcu(&pag->rcu_head, __xfs_free_perag);
 	}
 }
@@ -173,7 +168,7 @@ xfs_free_perag(
 int
 xfs_sb_validate_fsb_count(
 	xfs_sb_t	*sbp,
-	uint64_t	nblocks)
+	__uint64_t	nblocks)
 {
 	ASSERT(PAGE_SHIFT >= sbp->sb_blocklog);
 	ASSERT(sbp->sb_blocklog >= BBSHIFT);
@@ -191,7 +186,7 @@ xfs_initialize_perag(
 	xfs_agnumber_t	*maxagi)
 {
 	xfs_agnumber_t	index;
-	xfs_agnumber_t	first_initialised = NULLAGNUMBER;
+	xfs_agnumber_t	first_initialised = 0;
 	xfs_perag_t	*pag;
 	int		error = -ENOMEM;
 
@@ -206,21 +201,22 @@ xfs_initialize_perag(
 			xfs_perag_put(pag);
 			continue;
 		}
+		if (!first_initialised)
+			first_initialised = index;
 
 		pag = kmem_zalloc(sizeof(*pag), KM_MAYFAIL);
 		if (!pag)
-			goto out_unwind_new_pags;
+			goto out_unwind;
 		pag->pag_agno = index;
 		pag->pag_mount = mp;
 		spin_lock_init(&pag->pag_ici_lock);
 		mutex_init(&pag->pag_ici_reclaim_lock);
 		INIT_RADIX_TREE(&pag->pag_ici_root, GFP_ATOMIC);
-		if (xfs_buf_hash_init(pag))
-			goto out_free_pag;
-		init_waitqueue_head(&pag->pagb_wait);
+		spin_lock_init(&pag->pag_buf_lock);
+		pag->pag_buf_tree = RB_ROOT;
 
 		if (radix_tree_preload(GFP_NOFS))
-			goto out_hash_destroy;
+			goto out_unwind;
 
 		spin_lock(&mp->m_perag_lock);
 		if (radix_tree_insert(&mp->m_perag_tree, index, pag)) {
@@ -228,13 +224,10 @@ xfs_initialize_perag(
 			spin_unlock(&mp->m_perag_lock);
 			radix_tree_preload_end();
 			error = -EEXIST;
-			goto out_hash_destroy;
+			goto out_unwind;
 		}
 		spin_unlock(&mp->m_perag_lock);
 		radix_tree_preload_end();
-		/* first new pag is fully initialized */
-		if (first_initialised == NULLAGNUMBER)
-			first_initialised = index;
 	}
 
 	index = xfs_set_inode_alloc(mp, agcount);
@@ -245,17 +238,10 @@ xfs_initialize_perag(
 	mp->m_ag_prealloc_blocks = xfs_prealloc_blocks(mp);
 	return 0;
 
-out_hash_destroy:
-	xfs_buf_hash_destroy(pag);
-out_free_pag:
+out_unwind:
 	kmem_free(pag);
-out_unwind_new_pags:
-	/* unwind any prior newly initialized pags */
-	for (index = first_initialised; index < agcount; index++) {
+	for (; index > first_initialised; index--) {
 		pag = radix_tree_delete(&mp->m_perag_tree, index);
-		if (!pag)
-			break;
-		xfs_buf_hash_destroy(pag);
 		kmem_free(pag);
 	}
 	return error;
@@ -435,7 +421,7 @@ STATIC void
 xfs_set_maxicount(xfs_mount_t *mp)
 {
 	xfs_sb_t	*sbp = &(mp->m_sb);
-	uint64_t	icount;
+	__uint64_t	icount;
 
 	if (sbp->sb_imax_pct) {
 		/*
@@ -501,7 +487,7 @@ xfs_set_low_space_thresholds(
 	int i;
 
 	for (i = 0; i < XFS_LOWSP_MAX; i++) {
-		uint64_t space = mp->m_sb.sb_dblocks;
+		__uint64_t space = mp->m_sb.sb_dblocks;
 
 		do_div(space, 100);
 		mp->m_low_space[i] = space * (i + 1);
@@ -597,10 +583,10 @@ xfs_mount_reset_sbqflags(
 	return xfs_sync_sb(mp, false);
 }
 
-uint64_t
+__uint64_t
 xfs_default_resblks(xfs_mount_t *mp)
 {
-	uint64_t resblks;
+	__uint64_t resblks;
 
 	/*
 	 * We default to 5% or 8192 fsbs of space reserved, whichever is
@@ -611,7 +597,7 @@ xfs_default_resblks(xfs_mount_t *mp)
 	 */
 	resblks = mp->m_sb.sb_dblocks;
 	do_div(resblks, 20);
-	resblks = min_t(uint64_t, resblks, 8192);
+	resblks = min_t(__uint64_t, resblks, 8192);
 	return resblks;
 }
 
@@ -631,7 +617,7 @@ xfs_mountfs(
 {
 	struct xfs_sb		*sbp = &(mp->m_sb);
 	struct xfs_inode	*rip;
-	uint64_t		resblks;
+	__uint64_t		resblks;
 	uint			quotamount = 0;
 	uint			quotaflags = 0;
 	int			error = 0;
@@ -704,7 +690,7 @@ xfs_mountfs(
 	xfs_set_maxicount(mp);
 
 	/* enable fail_at_unmount as default */
-	mp->m_fail_unmount = true;
+	mp->m_fail_unmount = 1;
 
 	error = xfs_sysfs_init(&mp->m_kobj, &xfs_mp_ktype, NULL, mp->m_fsname);
 	if (error)
@@ -719,13 +705,10 @@ xfs_mountfs(
 	if (error)
 		goto out_del_stats;
 
-	error = xfs_errortag_init(mp);
-	if (error)
-		goto out_remove_error_sysfs;
 
 	error = xfs_uuid_mount(mp);
 	if (error)
-		goto out_remove_errortag;
+		goto out_remove_error_sysfs;
 
 	/*
 	 * Set the minimum read and write sizes
@@ -795,10 +778,7 @@ xfs_mountfs(
 	 *  Copies the low order bits of the timestamp and the randomly
 	 *  set "sequence" number out of a UUID.
 	 */
-	mp->m_fixedfsid[0] =
-		(get_unaligned_be16(&sbp->sb_uuid.b[8]) << 16) |
-		 get_unaligned_be16(&sbp->sb_uuid.b[4]);
-	mp->m_fixedfsid[1] = get_unaligned_be32(&sbp->sb_uuid.b[0]);
+	uuid_getnodeuniq(&sbp->sb_uuid, mp->m_fixedfsid);
 
 	mp->m_dmevmask = 0;	/* not persistent; set after each mount */
 
@@ -1039,8 +1019,6 @@ xfs_mountfs(
 	xfs_da_unmount(mp);
  out_remove_uuid:
 	xfs_uuid_unmount(mp);
- out_remove_errortag:
-	xfs_errortag_del(mp);
  out_remove_error_sysfs:
 	xfs_error_sysfs_del(mp);
  out_del_stats:
@@ -1059,7 +1037,7 @@ void
 xfs_unmountfs(
 	struct xfs_mount	*mp)
 {
-	uint64_t		resblks;
+	__uint64_t		resblks;
 	int			error;
 
 	cancel_delayed_work_sync(&mp->m_eofblocks_work);
@@ -1081,13 +1059,6 @@ xfs_unmountfs(
 	 * need to force the log first.
 	 */
 	xfs_log_force(mp, XFS_LOG_SYNC);
-
-	/*
-	 * Wait for all busy extents to be freed, including completion of
-	 * any discard operation.
-	 */
-	xfs_extent_busy_wait_all(mp);
-	flush_workqueue(xfs_discard_wq);
 
 	/*
 	 * We now need to tell the world we are unmounting. This will allow
@@ -1144,11 +1115,10 @@ xfs_unmountfs(
 	xfs_uuid_unmount(mp);
 
 #if defined(DEBUG)
-	xfs_errortag_clearall(mp);
+	xfs_errortag_clearall(mp, 0);
 #endif
 	xfs_free_perag(mp);
 
-	xfs_errortag_del(mp);
 	xfs_error_sysfs_del(mp);
 	xfs_sysfs_del(&mp->m_stats.xs_kobj);
 	xfs_sysfs_del(&mp->m_kobj);
@@ -1209,7 +1179,7 @@ xfs_mod_icount(
 	struct xfs_mount	*mp,
 	int64_t			delta)
 {
-	percpu_counter_add_batch(&mp->m_icount, delta, XFS_ICOUNT_BATCH);
+	__percpu_counter_add(&mp->m_icount, delta, XFS_ICOUNT_BATCH);
 	if (__percpu_counter_compare(&mp->m_icount, 0, XFS_ICOUNT_BATCH) < 0) {
 		ASSERT(0);
 		percpu_counter_add(&mp->m_icount, -delta);
@@ -1288,7 +1258,7 @@ xfs_mod_fdblocks(
 	else
 		batch = XFS_FDBLOCKS_BATCH;
 
-	percpu_counter_add_batch(&mp->m_fdblocks, delta, batch);
+	__percpu_counter_add(&mp->m_fdblocks, delta, batch);
 	if (__percpu_counter_compare(&mp->m_fdblocks, mp->m_alloc_set_aside,
 				     XFS_FDBLOCKS_BATCH) >= 0) {
 		/* we had space! */

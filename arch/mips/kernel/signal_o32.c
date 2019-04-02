@@ -11,7 +11,6 @@
 #include <linux/compiler.h>
 #include <linux/errno.h>
 #include <linux/signal.h>
-#include <linux/sched/signal.h>
 #include <linux/uaccess.h>
 
 #include <asm/abi.h>

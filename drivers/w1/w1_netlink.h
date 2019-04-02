@@ -1,5 +1,8 @@
 /*
+ * w1_netlink.h
+ *
  * Copyright (c) 2003 Evgeniy Polyakov <zbr@ioremap.net>
+ *
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -10,6 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
 #ifndef __W1_NETLINK_H
@@ -18,7 +25,7 @@
 #include <asm/types.h>
 #include <linux/connector.h>
 
-#include "w1_internal.h"
+#include "w1.h"
 
 /**
  * enum w1_cn_msg_flags - bitfield flags for struct cn_msg.flags

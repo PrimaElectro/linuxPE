@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __LINUX_DCACHE_H
 #define __LINUX_DCACHE_H
 
@@ -56,11 +55,6 @@ struct qstr {
 
 #define QSTR_INIT(n,l) { { { .len = l } }, .name = n }
 
-extern const char empty_string[];
-extern const struct qstr empty_name;
-extern const char slash_string[];
-extern const struct qstr slash_name;
-
 struct dentry_stat_t {
 	long nr_dentry;
 	long nr_unused;
@@ -107,7 +101,7 @@ struct dentry {
 
 	union {
 		struct list_head d_lru;		/* LRU list */
-		wait_queue_head_t *d_wait;	/* in-lookup ones only */
+		struct swait_queue_head *d_wait;	/* in-lookup ones only */
 	};
 	struct list_head d_child;	/* child of parent list */
 	struct list_head d_subdirs;	/* our children */
@@ -119,7 +113,7 @@ struct dentry {
 		struct hlist_bl_node d_in_lookup_hash;	/* only for in-lookup ones */
 	 	struct rcu_head d_rcu;
 	} d_u;
-} __randomize_layout;
+};
 
 /*
  * dentry->d_lock spinlock nesting subclasses:
@@ -146,9 +140,9 @@ struct dentry_operations {
 	void (*d_iput)(struct dentry *, struct inode *);
 	char *(*d_dname)(struct dentry *, char *, int);
 	struct vfsmount *(*d_automount)(struct path *);
-	int (*d_manage)(const struct path *, bool);
+	int (*d_manage)(struct dentry *, bool);
 	struct dentry *(*d_real)(struct dentry *, const struct inode *,
-				 unsigned int, unsigned int);
+				 unsigned int);
 } ____cacheline_aligned;
 
 /*
@@ -226,7 +220,6 @@ extern seqlock_t rename_lock;
  * These are the low-level FS interfaces to the dcache..
  */
 extern void d_instantiate(struct dentry *, struct inode *);
-extern void d_instantiate_new(struct dentry *, struct inode *);
 extern struct dentry * d_instantiate_unique(struct dentry *, struct inode *);
 extern int d_instantiate_no_diralias(struct dentry *, struct inode *);
 extern void __d_drop(struct dentry *dentry);
@@ -238,7 +231,7 @@ extern void d_set_d_op(struct dentry *dentry, const struct dentry_operations *op
 extern struct dentry * d_alloc(struct dentry *, const struct qstr *);
 extern struct dentry * d_alloc_pseudo(struct super_block *, const struct qstr *);
 extern struct dentry * d_alloc_parallel(struct dentry *, const struct qstr *,
-					wait_queue_head_t *);
+					struct swait_queue_head *);
 extern struct dentry * d_splice_alias(struct inode *, struct dentry *);
 extern struct dentry * d_add_ci(struct dentry *, struct inode *, struct qstr *);
 extern struct dentry * d_exact_alias(struct dentry *, struct inode *);
@@ -262,7 +255,7 @@ extern struct dentry *d_find_alias(struct inode *);
 extern void d_prune_aliases(struct inode *);
 
 /* test whether we have any submounts in a subdir tree */
-extern int path_has_submounts(const struct path *);
+extern int have_submounts(struct dentry *);
 
 /*
  * This adds the entry to the hash queues.
@@ -564,27 +557,23 @@ static inline struct dentry *d_backing_dentry(struct dentry *upper)
 	return upper;
 }
 
-/* d_real() flags */
-#define D_REAL_UPPER	0x2	/* return upper dentry or NULL if non-upper */
-
 /**
  * d_real - Return the real dentry
  * @dentry: the dentry to query
  * @inode: inode to select the dentry from multiple layers (can be NULL)
- * @open_flags: open flags to control copy-up behavior
- * @flags: flags to control what is returned by this function
+ * @flags: open flags to control copy-up behavior
  *
- * If dentry is on a union/overlay, then return the underlying, real dentry.
+ * If dentry is on an union/overlay, then return the underlying, real dentry.
  * Otherwise return the dentry itself.
  *
  * See also: Documentation/filesystems/vfs.txt
  */
 static inline struct dentry *d_real(struct dentry *dentry,
 				    const struct inode *inode,
-				    unsigned int open_flags, unsigned int flags)
+				    unsigned int flags)
 {
 	if (unlikely(dentry->d_flags & DCACHE_OP_REAL))
-		return dentry->d_op->d_real(dentry, inode, open_flags, flags);
+		return dentry->d_op->d_real(dentry, inode, flags);
 	else
 		return dentry;
 }
@@ -593,18 +582,18 @@ static inline struct dentry *d_real(struct dentry *dentry,
  * d_real_inode - Return the real inode
  * @dentry: The dentry to query
  *
- * If dentry is on a union/overlay, then return the underlying, real inode.
+ * If dentry is on an union/overlay, then return the underlying, real inode.
  * Otherwise return d_inode().
  */
 static inline struct inode *d_real_inode(const struct dentry *dentry)
 {
 	/* This usage of d_real() results in const dentry */
-	return d_backing_inode(d_real((struct dentry *) dentry, NULL, 0, 0));
+	return d_backing_inode(d_real((struct dentry *) dentry, NULL, 0));
 }
 
 struct name_snapshot {
-	const unsigned char *name;
-	unsigned char inline_name[DNAME_INLINE_LEN];
+	const char *name;
+	char inline_name[DNAME_INLINE_LEN];
 };
 void take_dentry_name_snapshot(struct name_snapshot *, struct dentry *);
 void release_dentry_name_snapshot(struct name_snapshot *);

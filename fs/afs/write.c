@@ -84,27 +84,21 @@ void afs_put_writeback(struct afs_writeback *wb)
  * partly or wholly fill a page that's under preparation for writing
  */
 static int afs_fill_page(struct afs_vnode *vnode, struct key *key,
-			 loff_t pos, unsigned int len, struct page *page)
+			 loff_t pos, struct page *page)
 {
-	struct afs_read *req;
+	loff_t i_size;
 	int ret;
+	int len;
 
 	_enter(",,%llu", (unsigned long long)pos);
 
-	req = kzalloc(sizeof(struct afs_read) + sizeof(struct page *),
-		      GFP_KERNEL);
-	if (!req)
-		return -ENOMEM;
+	i_size = i_size_read(&vnode->vfs_inode);
+	if (pos + PAGE_SIZE > i_size)
+		len = i_size - pos;
+	else
+		len = PAGE_SIZE;
 
-	atomic_set(&req->usage, 1);
-	req->pos = pos;
-	req->len = len;
-	req->nr_pages = 1;
-	req->pages[0] = page;
-	get_page(page);
-
-	ret = afs_vnode_fetch_data(vnode, key, req);
-	afs_put_read(req);
+	ret = afs_vnode_fetch_data(vnode, key, pos, len, page);
 	if (ret < 0) {
 		if (ret == -ENOENT) {
 			_debug("got NOENT from server"
@@ -156,7 +150,7 @@ int afs_write_begin(struct file *file, struct address_space *mapping,
 	}
 
 	if (!PageUptodate(page) && len != PAGE_SIZE) {
-		ret = afs_fill_page(vnode, key, pos & PAGE_MASK, PAGE_SIZE, page);
+		ret = afs_fill_page(vnode, key, index << PAGE_SHIFT, page);
 		if (ret < 0) {
 			unlock_page(page);
 			put_page(page);
@@ -231,7 +225,7 @@ flush_conflicting_wb:
 	if (wb->state == AFS_WBACK_PENDING)
 		wb->state = AFS_WBACK_CONFLICTING;
 	spin_unlock(&vnode->writeback_lock);
-	if (clear_page_dirty_for_io(page)) {
+	if (PageDirty(page)) {
 		ret = afs_write_back_from_locked_page(wb, page);
 		if (ret < 0) {
 			afs_put_writeback(candidate);
@@ -255,9 +249,7 @@ int afs_write_end(struct file *file, struct address_space *mapping,
 		  struct page *page, void *fsdata)
 {
 	struct afs_vnode *vnode = AFS_FS_I(file_inode(file));
-	struct key *key = file->private_data;
 	loff_t i_size, maybe_i_size;
-	int ret;
 
 	_enter("{%x:%u},{%lx}",
 	       vnode->fid.vid, vnode->fid.vnode, page->index);
@@ -273,29 +265,13 @@ int afs_write_end(struct file *file, struct address_space *mapping,
 		spin_unlock(&vnode->writeback_lock);
 	}
 
-	if (!PageUptodate(page)) {
-		if (copied < len) {
-			/* Try and load any missing data from the server.  The
-			 * unmarshalling routine will take care of clearing any
-			 * bits that are beyond the EOF.
-			 */
-			ret = afs_fill_page(vnode, key, pos + copied,
-					    len - copied, page);
-			if (ret < 0)
-				goto out;
-		}
-		SetPageUptodate(page);
-	}
-
 	set_page_dirty(page);
 	if (PageDirty(page))
 		_debug("dirtied");
-	ret = copied;
-
-out:
 	unlock_page(page);
 	put_page(page);
-	return ret;
+
+	return copied;
 }
 
 /*
@@ -355,6 +331,8 @@ static int afs_write_back_from_locked_page(struct afs_writeback *wb,
 	_enter(",%lx", primary_page->index);
 
 	count = 1;
+	if (!clear_page_dirty_for_io(primary_page))
+		BUG();
 	if (test_set_page_writeback(primary_page))
 		BUG();
 
@@ -520,16 +498,17 @@ static int afs_writepages_region(struct address_space *mapping,
 		 */
 		lock_page(page);
 
-		if (page->mapping != mapping || !PageDirty(page)) {
+		if (page->mapping != mapping) {
 			unlock_page(page);
 			put_page(page);
 			continue;
 		}
 
-		if (PageWriteback(page)) {
+		if (wbc->sync_mode != WB_SYNC_NONE)
+			wait_on_page_writeback(page);
+
+		if (PageWriteback(page) || !PageDirty(page)) {
 			unlock_page(page);
-			if (wbc->sync_mode != WB_SYNC_NONE)
-				wait_on_page_writeback(page);
 			put_page(page);
 			continue;
 		}
@@ -541,8 +520,6 @@ static int afs_writepages_region(struct address_space *mapping,
 		wb->state = AFS_WBACK_WRITING;
 		spin_unlock(&wb->vnode->writeback_lock);
 
-		if (!clear_page_dirty_for_io(page))
-			BUG();
 		ret = afs_write_back_from_locked_page(wb, page);
 		unlock_page(page);
 		put_page(page);
@@ -716,7 +693,7 @@ int afs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 	       vnode->fid.vid, vnode->fid.vnode, file,
 	       datasync);
 
-	ret = file_write_and_wait_range(file, start, end);
+	ret = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (ret)
 		return ret;
 	inode_lock(inode);

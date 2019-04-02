@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0
+ccflags-y := -Iinclude/drm
 ifeq (, $(findstring -W,$(EXTRA_CFLAGS)))
 	ccflags-y += -Werror
 endif

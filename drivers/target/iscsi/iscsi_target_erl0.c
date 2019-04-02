@@ -17,8 +17,6 @@
  * GNU General Public License for more details.
  ******************************************************************************/
 
-#include <linux/sched/signal.h>
-
 #include <scsi/iscsi_proto.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>

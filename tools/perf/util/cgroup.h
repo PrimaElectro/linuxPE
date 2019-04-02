@@ -1,15 +1,14 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __CGROUP_H__
 #define __CGROUP_H__
 
-#include <linux/refcount.h>
+#include <linux/atomic.h>
 
 struct option;
 
 struct cgroup_sel {
 	char *name;
 	int fd;
-	refcount_t refcnt;
+	atomic_t refcnt;
 };
 
 

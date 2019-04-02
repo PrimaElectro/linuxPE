@@ -1,7 +1,7 @@
 /*
- * fsl-mc object allocator driver
+ * Freescale MC object device allocator driver
  *
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2013 Freescale Semiconductor, Inc.
  *
  * This file is licensed under the terms of the GNU General Public
  * License version 2. This program is licensed "as is" without any
@@ -10,24 +10,28 @@
 
 #include <linux/module.h>
 #include <linux/msi.h>
-#include "../include/mc.h"
+#include "../include/mc-bus.h"
+#include "../include/mc-sys.h"
+#include "../include/dpbp-cmd.h"
+#include "../include/dpcon-cmd.h"
 
 #include "fsl-mc-private.h"
 
-static bool __must_check fsl_mc_is_allocatable(const char *obj_type)
-{
-	return strcmp(obj_type, "dpbp") == 0 ||
-	       strcmp(obj_type, "dpmcp") == 0 ||
-	       strcmp(obj_type, "dpcon") == 0;
-}
+#define FSL_MC_IS_ALLOCATABLE(_obj_type) \
+	(strcmp(_obj_type, "dpbp") == 0 || \
+	 strcmp(_obj_type, "dpmcp") == 0 || \
+	 strcmp(_obj_type, "dpcon") == 0)
 
 /**
- * fsl_mc_resource_pool_add_device - add allocatable object to a resource
- * pool of a given fsl-mc bus
+ * fsl_mc_resource_pool_add_device - add allocatable device to a resource
+ * pool of a given MC bus
  *
- * @mc_bus: pointer to the fsl-mc bus
- * @pool_type: pool type
- * @mc_dev: pointer to allocatable fsl-mc device
+ * @mc_bus: pointer to the MC bus
+ * @pool_type: MC bus pool type
+ * @mc_dev: Pointer to allocatable MC object device
+ *
+ * It adds an allocatable MC object device to a container's resource pool of
+ * the given resource type
  */
 static int __must_check fsl_mc_resource_pool_add_device(struct fsl_mc_bus
 								*mc_bus,
@@ -43,7 +47,7 @@ static int __must_check fsl_mc_resource_pool_add_device(struct fsl_mc_bus
 
 	if (WARN_ON(pool_type < 0 || pool_type >= FSL_MC_NUM_POOL_TYPES))
 		goto out;
-	if (WARN_ON(!fsl_mc_is_allocatable(mc_dev->obj_desc.type)))
+	if (WARN_ON(!FSL_MC_IS_ALLOCATABLE(mc_dev->obj_desc.type)))
 		goto out;
 	if (WARN_ON(mc_dev->resource))
 		goto out;
@@ -91,10 +95,10 @@ out:
  * fsl_mc_resource_pool_remove_device - remove an allocatable device from a
  * resource pool
  *
- * @mc_dev: pointer to allocatable fsl-mc device
+ * @mc_dev: Pointer to allocatable MC object device
  *
- * It permanently removes an allocatable fsl-mc device from the resource
- * pool. It's an error if the device is in use.
+ * It permanently removes an allocatable MC object device from the resource
+ * pool, the device is currently in, as long as it is in the pool's free list.
  */
 static int __must_check fsl_mc_resource_pool_remove_device(struct fsl_mc_device
 								   *mc_dev)
@@ -105,7 +109,7 @@ static int __must_check fsl_mc_resource_pool_remove_device(struct fsl_mc_device
 	struct fsl_mc_resource *resource;
 	int error = -EINVAL;
 
-	if (WARN_ON(!fsl_mc_is_allocatable(mc_dev->obj_desc.type)))
+	if (WARN_ON(!FSL_MC_IS_ALLOCATABLE(mc_dev->obj_desc.type)))
 		goto out;
 
 	resource = mc_dev->resource;
@@ -251,18 +255,17 @@ out_unlock:
 EXPORT_SYMBOL_GPL(fsl_mc_resource_free);
 
 /**
- * fsl_mc_object_allocate - Allocates an fsl-mc object of the given
- * pool type from a given fsl-mc bus instance
+ * fsl_mc_object_allocate - Allocates a MC object device of the given
+ * pool type from a given MC bus
  *
- * @mc_dev: fsl-mc device which is used in conjunction with the
- * allocated object
- * @pool_type: pool type
- * @new_mc_dev: pointer to area where the pointer to the allocated device
- * is to be returned
+ * @mc_dev: MC device for which the MC object device is to be allocated
+ * @pool_type: MC bus resource pool type
+ * @new_mc_dev: Pointer to area where the pointer to the allocated
+ * MC object device is to be returned
  *
- * Allocatable objects are always used in conjunction with some functional
- * device.  This function allocates an object of the specified type from
- * the DPRC containing the functional device.
+ * This function allocates a MC object device from the device's parent DPRC,
+ * from the corresponding MC bus' pool of allocatable MC object devices of
+ * the given resource type. mc_dev cannot be a DPRC itself.
  *
  * NOTE: pool_type must be different from FSL_MC_POOL_MCP, since MC
  * portals are allocated using fsl_mc_portal_allocate(), instead of
@@ -309,9 +312,10 @@ error:
 EXPORT_SYMBOL_GPL(fsl_mc_object_allocate);
 
 /**
- * fsl_mc_object_free - Returns an fsl-mc object to the resource
- * pool where it came from.
- * @mc_adev: Pointer to the fsl-mc device
+ * fsl_mc_object_free - Returns an allocatable MC object device to the
+ * corresponding resource pool of a given MC bus.
+ *
+ * @mc_adev: Pointer to the MC object device
  */
 void fsl_mc_object_free(struct fsl_mc_device *mc_adev)
 {
@@ -328,14 +332,8 @@ void fsl_mc_object_free(struct fsl_mc_device *mc_adev)
 EXPORT_SYMBOL_GPL(fsl_mc_object_free);
 
 /*
- * A DPRC and the devices in the DPRC all share the same GIC-ITS device
- * ID.  A block of IRQs is pre-allocated and maintained in a pool
- * from which devices can allocate them when needed.
- */
-
-/*
- * Initialize the interrupt pool associated with an fsl-mc bus.
- * It allocates a block of IRQs from the GIC-ITS.
+ * Initialize the interrupt pool associated with a MC bus.
+ * It allocates a block of IRQs from the GIC-ITS
  */
 int fsl_mc_populate_irq_pool(struct fsl_mc_bus *mc_bus,
 			     unsigned int irq_count)
@@ -397,7 +395,7 @@ cleanup_msi_irqs:
 EXPORT_SYMBOL_GPL(fsl_mc_populate_irq_pool);
 
 /**
- * Teardown the interrupt pool associated with an fsl-mc bus.
+ * Teardown the interrupt pool associated with an MC bus.
  * It frees the IRQs that were allocated to the pool, back to the GIC-ITS.
  */
 void fsl_mc_cleanup_irq_pool(struct fsl_mc_bus *mc_bus)
@@ -424,7 +422,11 @@ void fsl_mc_cleanup_irq_pool(struct fsl_mc_bus *mc_bus)
 EXPORT_SYMBOL_GPL(fsl_mc_cleanup_irq_pool);
 
 /**
- * Allocate the IRQs required by a given fsl-mc device.
+ * It allocates the IRQs required by a given MC object device. The
+ * IRQs are allocated from the interrupt pool associated with the
+ * MC bus that contains the device, if the device is not a DPRC device.
+ * Otherwise, the IRQs are allocated from the interrupt pool associated
+ * with the MC bus that represents the DPRC device itself.
  */
 int __must_check fsl_mc_allocate_irqs(struct fsl_mc_device *mc_dev)
 {
@@ -493,7 +495,8 @@ error_resource_alloc:
 EXPORT_SYMBOL_GPL(fsl_mc_allocate_irqs);
 
 /*
- * Frees the IRQs that were allocated for an fsl-mc device.
+ * It frees the IRQs that were allocated for a MC object device, by
+ * returning them to the corresponding interrupt pool.
  */
 void fsl_mc_free_irqs(struct fsl_mc_device *mc_dev)
 {
@@ -585,7 +588,7 @@ static int fsl_mc_allocator_probe(struct fsl_mc_device *mc_dev)
 	struct fsl_mc_bus *mc_bus;
 	int error;
 
-	if (WARN_ON(!fsl_mc_is_allocatable(mc_dev->obj_desc.type)))
+	if (WARN_ON(!FSL_MC_IS_ALLOCATABLE(mc_dev->obj_desc.type)))
 		return -EINVAL;
 
 	mc_bus_dev = to_fsl_mc_device(mc_dev->dev.parent);
@@ -602,7 +605,7 @@ static int fsl_mc_allocator_probe(struct fsl_mc_device *mc_dev)
 		return error;
 
 	dev_dbg(&mc_dev->dev,
-		"Allocatable fsl-mc device bound to fsl_mc_allocator driver");
+		"Allocatable MC object device bound to fsl_mc_allocator driver");
 	return 0;
 }
 
@@ -614,7 +617,7 @@ static int fsl_mc_allocator_remove(struct fsl_mc_device *mc_dev)
 {
 	int error;
 
-	if (WARN_ON(!fsl_mc_is_allocatable(mc_dev->obj_desc.type)))
+	if (WARN_ON(!FSL_MC_IS_ALLOCATABLE(mc_dev->obj_desc.type)))
 		return -EINVAL;
 
 	if (mc_dev->resource) {
@@ -624,7 +627,7 @@ static int fsl_mc_allocator_remove(struct fsl_mc_device *mc_dev)
 	}
 
 	dev_dbg(&mc_dev->dev,
-		"Allocatable fsl-mc device unbound from fsl_mc_allocator driver");
+		"Allocatable MC object device unbound from fsl_mc_allocator driver");
 	return 0;
 }
 

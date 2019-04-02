@@ -32,7 +32,6 @@
 #include <linux/module.h>
 #include <linux/vmalloc.h>
 #include <linux/falloc.h>
-#include <linux/uio.h>
 #include <scsi/scsi_proto.h>
 #include <asm/unaligned.h>
 
@@ -237,17 +236,13 @@ static void fd_dev_call_rcu(struct rcu_head *p)
 
 static void fd_free_device(struct se_device *dev)
 {
-	call_rcu(&dev->rcu_head, fd_dev_call_rcu);
-}
-
-static void fd_destroy_device(struct se_device *dev)
-{
 	struct fd_dev *fd_dev = FD_DEV(dev);
 
 	if (fd_dev->fd_file) {
 		filp_close(fd_dev->fd_file, NULL);
 		fd_dev->fd_file = NULL;
 	}
+	call_rcu(&dev->rcu_head, fd_dev_call_rcu);
 }
 
 static int fd_do_rw(struct se_cmd *cmd, struct file *fd,
@@ -277,15 +272,16 @@ static int fd_do_rw(struct se_cmd *cmd, struct file *fd,
 
 	iov_iter_bvec(&iter, ITER_BVEC, bvec, sgl_nents, len);
 	if (is_write)
-		ret = vfs_iter_write(fd, &iter, &pos, 0);
+		ret = vfs_iter_write(fd, &iter, &pos);
 	else
-		ret = vfs_iter_read(fd, &iter, &pos, 0);
+		ret = vfs_iter_read(fd, &iter, &pos);
+
+	kfree(bvec);
 
 	if (is_write) {
 		if (ret < 0 || ret != data_length) {
 			pr_err("%s() write returned %d\n", __func__, ret);
-			if (ret >= 0)
-				ret = -EINVAL;
+			return (ret < 0 ? ret : -EINVAL);
 		}
 	} else {
 		/*
@@ -298,29 +294,17 @@ static int fd_do_rw(struct se_cmd *cmd, struct file *fd,
 				pr_err("%s() returned %d, expecting %u for "
 						"S_ISBLK\n", __func__, ret,
 						data_length);
-				if (ret >= 0)
-					ret = -EINVAL;
+				return (ret < 0 ? ret : -EINVAL);
 			}
 		} else {
 			if (ret < 0) {
 				pr_err("%s() returned %d for non S_ISBLK\n",
 						__func__, ret);
-			} else if (ret != data_length) {
-				/*
-				 * Short read case:
-				 * Probably some one truncate file under us.
-				 * We must explicitly zero sg-pages to prevent
-				 * expose uninizialized pages to userspace.
-				 */
-				if (ret < data_length)
-					ret += iov_iter_zero(data_length - ret, &iter);
-				else
-					ret = -EINVAL;
+				return ret;
 			}
 		}
 	}
-	kfree(bvec);
-	return ret;
+	return 1;
 }
 
 static sense_reason_t
@@ -413,7 +397,7 @@ fd_execute_write_same(struct se_cmd *cmd)
 	}
 
 	iov_iter_bvec(&iter, ITER_BVEC, bvec, nolb, len);
-	ret = vfs_iter_write(fd_dev->fd_file, &iter, &pos, 0);
+	ret = vfs_iter_write(fd_dev->fd_file, &iter, &pos);
 
 	kfree(bvec);
 	if (ret < 0 || ret != len) {
@@ -443,7 +427,7 @@ fd_do_prot_fill(struct se_device *se_dev, sector_t lba, sector_t nolb,
 
 	for (prot = 0; prot < prot_length;) {
 		sector_t len = min_t(sector_t, bufsize, prot_length - prot);
-		ssize_t ret = kernel_write(prot_fd, buf, len, &pos);
+		ssize_t ret = kernel_write(prot_fd, buf, len, pos + prot);
 
 		if (ret != len) {
 			pr_err("vfs_write to prot file failed: %zd\n", ret);
@@ -562,8 +546,7 @@ fd_execute_rw(struct se_cmd *cmd, struct scatterlist *sgl, u32 sgl_nents,
 		ret = fd_do_rw(cmd, file, dev->dev_attrib.block_size,
 			       sgl, sgl_nents, cmd->data_length, 0);
 
-		if (ret > 0 && cmd->prot_type && dev->dev_attrib.pi_prot_type &&
-		    dev->dev_attrib.pi_prot_verify) {
+		if (ret > 0 && cmd->prot_type && dev->dev_attrib.pi_prot_type) {
 			u32 sectors = cmd->data_length >>
 					ilog2(dev->dev_attrib.block_size);
 
@@ -573,8 +556,7 @@ fd_execute_rw(struct se_cmd *cmd, struct scatterlist *sgl, u32 sgl_nents,
 				return rc;
 		}
 	} else {
-		if (cmd->prot_type && dev->dev_attrib.pi_prot_type &&
-		    dev->dev_attrib.pi_prot_verify) {
+		if (cmd->prot_type && dev->dev_attrib.pi_prot_type) {
 			u32 sectors = cmd->data_length >>
 					ilog2(dev->dev_attrib.block_size);
 
@@ -834,7 +816,6 @@ static const struct target_backend_ops fileio_ops = {
 	.detach_hba		= fd_detach_hba,
 	.alloc_device		= fd_alloc_device,
 	.configure_device	= fd_configure_device,
-	.destroy_device		= fd_destroy_device,
 	.free_device		= fd_free_device,
 	.parse_cdb		= fd_parse_cdb,
 	.set_configfs_dev_params = fd_set_configfs_dev_params,

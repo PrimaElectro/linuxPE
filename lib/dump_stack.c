@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Provide a default dump_stack() function for architectures
  * which don't implement their own.
@@ -7,7 +6,6 @@
 #include <linux/kernel.h>
 #include <linux/export.h>
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
 #include <linux/smp.h>
 #include <linux/atomic.h>
 

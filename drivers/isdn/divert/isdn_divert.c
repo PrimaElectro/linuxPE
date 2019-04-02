@@ -157,8 +157,10 @@ int cf_command(int drvid, int mode,
 	/* allocate mem for information struct */
 	if (!(cs = kmalloc(sizeof(struct call_struc), GFP_ATOMIC)))
 		return (-ENOMEM); /* no memory */
-	setup_timer(&cs->timer, deflect_timer_expire, (ulong)cs);
+	init_timer(&cs->timer);
 	cs->info[0] = '\0';
+	cs->timer.function = deflect_timer_expire;
+	cs->timer.data = (ulong) cs; /* pointer to own structure */
 	cs->ics.driver = drvid;
 	cs->ics.command = ISDN_CMD_PROT_IO; /* protocol specific io */
 	cs->ics.arg = DSS1_CMD_INVOKE; /* invoke supplementary service */
@@ -450,9 +452,10 @@ static int isdn_divert_icall(isdn_ctrl *ic)
 					return (0); /* no external deflection needed */
 			if (!(cs = kmalloc(sizeof(struct call_struc), GFP_ATOMIC)))
 				return (0); /* no memory */
-			setup_timer(&cs->timer, deflect_timer_expire,
-				    (ulong)cs);
+			init_timer(&cs->timer);
 			cs->info[0] = '\0';
+			cs->timer.function = deflect_timer_expire;
+			cs->timer.data = (ulong) cs; /* pointer to own structure */
 
 			cs->ics = *ic; /* copy incoming data */
 			if (!cs->ics.parm.setup.phone[0]) strcpy(cs->ics.parm.setup.phone, "0");
@@ -485,19 +488,18 @@ static int isdn_divert_icall(isdn_ctrl *ic)
 				cs->deflect_dest[0] = '\0';
 				retval = 4; /* only proceed */
 			}
-			snprintf(cs->info, sizeof(cs->info),
-				 "%d 0x%lx %s %s %s %s 0x%x 0x%x %d %d %s\n",
-				 cs->akt_state,
-				 cs->divert_id,
-				 divert_if.drv_to_name(cs->ics.driver),
-				 (ic->command == ISDN_STAT_ICALLW) ? "1" : "0",
-				 cs->ics.parm.setup.phone,
-				 cs->ics.parm.setup.eazmsn,
-				 cs->ics.parm.setup.si1,
-				 cs->ics.parm.setup.si2,
-				 cs->ics.parm.setup.screen,
-				 dv->rule.waittime,
-				 cs->deflect_dest);
+			sprintf(cs->info, "%d 0x%lx %s %s %s %s 0x%x 0x%x %d %d %s\n",
+				cs->akt_state,
+				cs->divert_id,
+				divert_if.drv_to_name(cs->ics.driver),
+				(ic->command == ISDN_STAT_ICALLW) ? "1" : "0",
+				cs->ics.parm.setup.phone,
+				cs->ics.parm.setup.eazmsn,
+				cs->ics.parm.setup.si1,
+				cs->ics.parm.setup.si2,
+				cs->ics.parm.setup.screen,
+				dv->rule.waittime,
+				cs->deflect_dest);
 			if ((dv->rule.action == DEFLECT_REPORT) ||
 			    (dv->rule.action == DEFLECT_REJECT)) {
 				put_info_buffer(cs->info);

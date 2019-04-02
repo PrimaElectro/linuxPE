@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/module.h>
 #include <linux/smp.h>
 #include <linux/user.h>
@@ -9,7 +8,7 @@
 #include <linux/string.h>
 
 #include <asm/processor.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/checksum.h>
 #include <asm/io.h>
 #include <asm/delay.h>
@@ -24,8 +23,11 @@ EXPORT_SYMBOL(__ioremap);
 EXPORT_SYMBOL(iounmap);
 
 EXPORT_SYMBOL(strncpy_from_user);
+EXPORT_SYMBOL(__strncpy_from_user);
 EXPORT_SYMBOL(clear_user);
 EXPORT_SYMBOL(__clear_user);
+EXPORT_SYMBOL(__generic_copy_from_user);
+EXPORT_SYMBOL(__generic_copy_to_user);
 EXPORT_SYMBOL(strnlen_user);
 
 #ifdef CONFIG_SMP

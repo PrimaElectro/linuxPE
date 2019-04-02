@@ -23,6 +23,13 @@
 #include "bfa_modules.h"
 
 BFA_TRC_FILE(HAL, FCXP);
+BFA_MODULE(fcdiag);
+BFA_MODULE(fcxp);
+BFA_MODULE(sgpg);
+BFA_MODULE(lps);
+BFA_MODULE(fcport);
+BFA_MODULE(rport);
+BFA_MODULE(uf);
 
 /*
  * LPS related definitions
@@ -114,6 +121,15 @@ static void	bfa_fcxp_queue(struct bfa_fcxp_s *fcxp,
 /*
  * forward declarations for LPS functions
  */
+static void bfa_lps_meminfo(struct bfa_iocfc_cfg_s *cfg,
+		struct bfa_meminfo_s *minfo, struct bfa_s *bfa);
+static void bfa_lps_attach(struct bfa_s *bfa, void *bfad,
+				struct bfa_iocfc_cfg_s *cfg,
+				struct bfa_pcidev_s *pcidev);
+static void bfa_lps_detach(struct bfa_s *bfa);
+static void bfa_lps_start(struct bfa_s *bfa);
+static void bfa_lps_stop(struct bfa_s *bfa);
+static void bfa_lps_iocdisable(struct bfa_s *bfa);
 static void bfa_lps_login_rsp(struct bfa_s *bfa,
 				struct bfi_lps_login_rsp_s *rsp);
 static void bfa_lps_no_res(struct bfa_lps_s *first_lps, u8 count);
@@ -350,8 +366,8 @@ bfa_plog_str(struct bfa_plog_s *plog, enum bfa_plog_mid mid,
 		lp.eid = event;
 		lp.log_type = BFA_PL_LOG_TYPE_STRING;
 		lp.misc = misc;
-		strlcpy(lp.log_entry.string_log, log_str,
-			BFA_PL_STRING_LOG_SZ);
+		strncpy(lp.log_entry.string_log, log_str,
+			BFA_PL_STRING_LOG_SZ - 1);
 		lp.log_entry.string_log[BFA_PL_STRING_LOG_SZ - 1] = '\0';
 		bfa_plog_add(plog, &lp);
 	}
@@ -468,7 +484,7 @@ claim_fcxps_mem(struct bfa_fcxp_mod_s *mod)
 	bfa_mem_kva_curp(mod) = (void *)fcxp;
 }
 
-void
+static void
 bfa_fcxp_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		struct bfa_s *bfa)
 {
@@ -506,7 +522,7 @@ bfa_fcxp_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		cfg->fwcfg.num_fcxp_reqs * sizeof(struct bfa_fcxp_s));
 }
 
-void
+static void
 bfa_fcxp_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -528,7 +544,22 @@ bfa_fcxp_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	claim_fcxps_mem(mod);
 }
 
-void
+static void
+bfa_fcxp_detach(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_fcxp_start(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_fcxp_stop(struct bfa_s *bfa)
+{
+}
+
+static void
 bfa_fcxp_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_fcxp_mod_s *mod = BFA_FCXP_MOD(bfa);
@@ -1479,7 +1510,7 @@ bfa_lps_sm_logowait(struct bfa_lps_s *lps, enum bfa_lps_event event)
 /*
  * return memory requirement
  */
-void
+static void
 bfa_lps_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		struct bfa_s *bfa)
 {
@@ -1496,7 +1527,7 @@ bfa_lps_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 /*
  * bfa module attach at initialization time
  */
-void
+static void
 bfa_lps_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	struct bfa_pcidev_s *pcidev)
 {
@@ -1526,10 +1557,25 @@ bfa_lps_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	}
 }
 
+static void
+bfa_lps_detach(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_lps_start(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_lps_stop(struct bfa_s *bfa)
+{
+}
+
 /*
  * IOC in disabled state -- consider all lps offline
  */
-void
+static void
 bfa_lps_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_lps_mod_s	*mod = BFA_LPS_MOD(bfa);
@@ -3009,7 +3055,7 @@ bfa_fcport_queue_cb(struct bfa_fcport_ln_s *ln, enum bfa_port_linkstate event)
 #define FCPORT_STATS_DMA_SZ (BFA_ROUNDUP(sizeof(union bfa_fcport_stats_u), \
 							BFA_CACHELINE_SZ))
 
-void
+static void
 bfa_fcport_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		   struct bfa_s *bfa)
 {
@@ -3040,7 +3086,7 @@ bfa_fcport_mem_claim(struct bfa_fcport_s *fcport)
 /*
  * Memory initialization.
  */
-void
+static void
 bfa_fcport_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -3085,16 +3131,34 @@ bfa_fcport_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	bfa_reqq_winit(&fcport->reqq_wait, bfa_fcport_qresume, fcport);
 }
 
-void
+static void
+bfa_fcport_detach(struct bfa_s *bfa)
+{
+}
+
+/*
+ * Called when IOC is ready.
+ */
+static void
 bfa_fcport_start(struct bfa_s *bfa)
 {
 	bfa_sm_send_event(BFA_FCPORT_MOD(bfa), BFA_FCPORT_SM_START);
 }
 
 /*
+ * Called before IOC is stopped.
+ */
+static void
+bfa_fcport_stop(struct bfa_s *bfa)
+{
+	bfa_sm_send_event(BFA_FCPORT_MOD(bfa), BFA_FCPORT_SM_STOP);
+	bfa_trunk_iocdisable(bfa);
+}
+
+/*
  * Called when IOC failure is detected.
  */
-void
+static void
 bfa_fcport_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_fcport_s *fcport = BFA_FCPORT_MOD(bfa);
@@ -4822,7 +4886,7 @@ bfa_rport_qresume(void *cbarg)
 	bfa_sm_send_event(rp, BFA_RPORT_SM_QRESUME);
 }
 
-void
+static void
 bfa_rport_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		struct bfa_s *bfa)
 {
@@ -4836,7 +4900,7 @@ bfa_rport_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		cfg->fwcfg.num_rports * sizeof(struct bfa_rport_s));
 }
 
-void
+static void
 bfa_rport_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -4876,7 +4940,22 @@ bfa_rport_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	bfa_mem_kva_curp(mod) = (u8 *) rp;
 }
 
-void
+static void
+bfa_rport_detach(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_rport_start(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_rport_stop(struct bfa_s *bfa)
+{
+}
+
+static void
 bfa_rport_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_rport_mod_s *mod = BFA_RPORT_MOD(bfa);
@@ -5167,7 +5246,7 @@ bfa_rport_unset_lunmask(struct bfa_s *bfa, struct bfa_rport_s *rp)
 /*
  * Compute and return memory needed by FCP(im) module.
  */
-void
+static void
 bfa_sgpg_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		struct bfa_s *bfa)
 {
@@ -5202,7 +5281,7 @@ bfa_sgpg_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		cfg->drvcfg.num_sgpgs * sizeof(struct bfa_sgpg_s));
 }
 
-void
+static void
 bfa_sgpg_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -5263,6 +5342,26 @@ bfa_sgpg_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	}
 
 	bfa_mem_kva_curp(mod) = (u8 *) hsgpg;
+}
+
+static void
+bfa_sgpg_detach(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_sgpg_start(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_sgpg_stop(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_sgpg_iocdisable(struct bfa_s *bfa)
+{
 }
 
 bfa_status_t
@@ -5448,7 +5547,7 @@ uf_mem_claim(struct bfa_uf_mod_s *ufm)
 	claim_uf_post_msgs(ufm);
 }
 
-void
+static void
 bfa_uf_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		struct bfa_s *bfa)
 {
@@ -5476,7 +5575,7 @@ bfa_uf_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *minfo,
 		(sizeof(struct bfa_uf_s) + sizeof(struct bfi_uf_buf_post_s)));
 }
 
-void
+static void
 bfa_uf_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -5489,6 +5588,11 @@ bfa_uf_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	INIT_LIST_HEAD(&ufm->uf_unused_q);
 
 	uf_mem_claim(ufm);
+}
+
+static void
+bfa_uf_detach(struct bfa_s *bfa)
+{
 }
 
 static struct bfa_uf_s *
@@ -5578,7 +5682,12 @@ uf_recv(struct bfa_s *bfa, struct bfi_uf_frm_rcvd_s *m)
 		bfa_cb_queue(bfa, &uf->hcb_qe, __bfa_cb_uf_recv, uf);
 }
 
-void
+static void
+bfa_uf_stop(struct bfa_s *bfa)
+{
+}
+
+static void
 bfa_uf_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_uf_mod_s *ufm = BFA_UF_MOD(bfa);
@@ -5595,7 +5704,7 @@ bfa_uf_iocdisable(struct bfa_s *bfa)
 	}
 }
 
-void
+static void
 bfa_uf_start(struct bfa_s *bfa)
 {
 	bfa_uf_post_all(BFA_UF_MOD(bfa));
@@ -5736,7 +5845,13 @@ bfa_fcdiag_set_busy_status(struct bfa_fcdiag_s *fcdiag)
 		fcport->diag_busy = BFA_FALSE;
 }
 
-void
+static void
+bfa_fcdiag_meminfo(struct bfa_iocfc_cfg_s *cfg, struct bfa_meminfo_s *meminfo,
+		struct bfa_s *bfa)
+{
+}
+
+static void
 bfa_fcdiag_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 		struct bfa_pcidev_s *pcidev)
 {
@@ -5755,7 +5870,7 @@ bfa_fcdiag_attach(struct bfa_s *bfa, void *bfad, struct bfa_iocfc_cfg_s *cfg,
 	memset(&dport->result, 0, sizeof(struct bfa_diag_dport_result_s));
 }
 
-void
+static void
 bfa_fcdiag_iocdisable(struct bfa_s *bfa)
 {
 	struct bfa_fcdiag_s *fcdiag = BFA_FCDIAG_MOD(bfa);
@@ -5770,6 +5885,21 @@ bfa_fcdiag_iocdisable(struct bfa_s *bfa)
 	}
 
 	bfa_sm_send_event(dport, BFA_DPORT_SM_HWFAIL);
+}
+
+static void
+bfa_fcdiag_detach(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_fcdiag_start(struct bfa_s *bfa)
+{
+}
+
+static void
+bfa_fcdiag_stop(struct bfa_s *bfa)
+{
 }
 
 static void

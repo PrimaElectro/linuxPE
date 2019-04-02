@@ -32,7 +32,6 @@
 static struct snd_soc_jack skylake_headset;
 static struct snd_soc_card skylake_audio_card;
 static const struct snd_pcm_hw_constraint_list *dmic_constraints;
-static struct snd_soc_jack skylake_hdmi[3];
 
 struct skl_hdmi_pcm {
 	struct list_head head;
@@ -112,8 +111,8 @@ static const struct snd_soc_dapm_widget skylake_widgets[] = {
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_SPK("Spk", NULL),
 	SND_SOC_DAPM_MIC("SoC DMIC", NULL),
-	SND_SOC_DAPM_SPK("DP1", NULL),
-	SND_SOC_DAPM_SPK("DP2", NULL),
+	SND_SOC_DAPM_SPK("DP", NULL),
+	SND_SOC_DAPM_SPK("HDMI", NULL),
 	SND_SOC_DAPM_SUPPLY("Platform Clock", SND_SOC_NOPM, 0, 0,
 			platform_clock_control, SND_SOC_DAPM_PRE_PMU |
 			SND_SOC_DAPM_POST_PMD),
@@ -130,6 +129,9 @@ static const struct snd_soc_dapm_route skylake_map[] = {
 	/* other jacks */
 	{ "MIC", NULL, "Headset Mic" },
 	{ "DMic", NULL, "SoC DMIC" },
+
+	{"HDMI", NULL, "hif5 Output"},
+	{"DP", NULL, "hif6 Output"},
 
 	/* CODEC BE connections */
 	{ "HiFi Playback", NULL, "ssp0 Tx" },
@@ -266,21 +268,21 @@ static int skylake_nau8825_fe_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
-static const unsigned int rates[] = {
+static unsigned int rates[] = {
 	48000,
 };
 
-static const struct snd_pcm_hw_constraint_list constraints_rates = {
+static struct snd_pcm_hw_constraint_list constraints_rates = {
 	.count = ARRAY_SIZE(rates),
 	.list  = rates,
 	.mask = 0,
 };
 
-static const unsigned int channels[] = {
+static unsigned int channels[] = {
 	2,
 };
 
-static const struct snd_pcm_hw_constraint_list constraints_channels = {
+static struct snd_pcm_hw_constraint_list constraints_channels = {
 	.count = ARRAY_SIZE(channels),
 	.list = channels,
 	.mask = 0,
@@ -330,7 +332,7 @@ static int skylake_nau8825_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static const struct snd_soc_ops skylake_nau8825_ops = {
+static struct snd_soc_ops skylake_nau8825_ops = {
 	.hw_params = skylake_nau8825_hw_params,
 };
 
@@ -348,11 +350,11 @@ static int skylake_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-static const unsigned int channels_dmic[] = {
+static unsigned int channels_dmic[] = {
 	2, 4,
 };
 
-static const struct snd_pcm_hw_constraint_list constraints_dmic_channels = {
+static struct snd_pcm_hw_constraint_list constraints_dmic_channels = {
 	.count = ARRAY_SIZE(channels_dmic),
 	.list = channels_dmic,
 	.mask = 0,
@@ -380,15 +382,15 @@ static int skylake_dmic_startup(struct snd_pcm_substream *substream)
 			SNDRV_PCM_HW_PARAM_RATE, &constraints_rates);
 }
 
-static const struct snd_soc_ops skylake_dmic_ops = {
+static struct snd_soc_ops skylake_dmic_ops = {
 	.startup = skylake_dmic_startup,
 };
 
-static const unsigned int rates_16000[] = {
+static unsigned int rates_16000[] = {
 	16000,
 };
 
-static const struct snd_pcm_hw_constraint_list constraints_16000 = {
+static struct snd_pcm_hw_constraint_list constraints_16000 = {
 	.count = ARRAY_SIZE(rates_16000),
 	.list  = rates_16000,
 };
@@ -414,7 +416,7 @@ static int skylake_refcap_startup(struct snd_pcm_substream *substream)
 				&constraints_16000);
 }
 
-static const struct snd_soc_ops skylaye_refcap_ops = {
+static struct snd_soc_ops skylaye_refcap_ops = {
 	.startup = skylake_refcap_startup,
 };
 
@@ -601,39 +603,19 @@ static struct snd_soc_dai_link skylake_dais[] = {
 	},
 };
 
-#define NAME_SIZE	32
 static int skylake_card_late_probe(struct snd_soc_card *card)
 {
 	struct skl_nau8825_private *ctx = snd_soc_card_get_drvdata(card);
 	struct skl_hdmi_pcm *pcm;
-	struct snd_soc_codec *codec = NULL;
-	int err, i = 0;
-	char jack_name[NAME_SIZE];
+	int err;
 
 	list_for_each_entry(pcm, &ctx->hdmi_pcm_list, head) {
-		codec = pcm->codec_dai->codec;
-		snprintf(jack_name, sizeof(jack_name),
-			"HDMI/DP, pcm=%d Jack", pcm->device);
-		err = snd_soc_card_jack_new(card, jack_name,
-					SND_JACK_AVOUT,
-					&skylake_hdmi[i],
-					NULL, 0);
-
-		if (err)
-			return err;
-
-		err = hdac_hdmi_jack_init(pcm->codec_dai, pcm->device,
-						&skylake_hdmi[i]);
+		err = hdac_hdmi_jack_init(pcm->codec_dai, pcm->device);
 		if (err < 0)
 			return err;
-
-		i++;
 	}
 
-	if (!codec)
-		return -EINVAL;
-
-	return hdac_hdmi_jack_port_init(codec, &card->dapm);
+	return 0;
 }
 
 /* skylake audio machine driver for SPT + NAU88L25 */

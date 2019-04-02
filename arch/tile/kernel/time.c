@@ -20,7 +20,6 @@
 #include <linux/clockchips.h>
 #include <linux/hardirq.h>
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
 #include <linux/smp.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -38,7 +37,7 @@
  */
 
 /* How many cycles per second we are running at. */
-static cycles_t cycles_per_sec __ro_after_init;
+static cycles_t cycles_per_sec __write_once;
 
 cycles_t get_clock_rate(void)
 {
@@ -69,7 +68,7 @@ EXPORT_SYMBOL(get_cycles);
  */
 #define SCHED_CLOCK_SHIFT 10
 
-static unsigned long sched_clock_mult __ro_after_init;
+static unsigned long sched_clock_mult __write_once;
 
 static cycles_t clocksource_get_cycles(struct clocksource *cs)
 {
@@ -155,14 +154,11 @@ static DEFINE_PER_CPU(struct clock_event_device, tile_timer) = {
 	.name = "tile timer",
 	.features = CLOCK_EVT_FEAT_ONESHOT,
 	.min_delta_ns = 1000,
-	.min_delta_ticks = 1,
-	.max_delta_ticks = MAX_TICK,
 	.rating = 100,
 	.irq = -1,
 	.set_next_event = tile_timer_set_next_event,
 	.set_state_shutdown = tile_timer_shutdown,
 	.set_state_oneshot = tile_timer_shutdown,
-	.set_state_oneshot_stopped = tile_timer_shutdown,
 	.tick_resume = tile_timer_shutdown,
 };
 

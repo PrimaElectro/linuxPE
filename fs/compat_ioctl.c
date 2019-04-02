@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * ioctl32.c: Conversion between 32bit and 64bit native ioctls.
  *
@@ -77,7 +76,7 @@
 #include <scsi/sg.h>
 #endif
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/ethtool.h>
 #include <linux/mii.h>
 #include <linux/if_bonding.h>
@@ -740,22 +739,23 @@ static int do_i2c_smbus_ioctl(struct file *file,
 		unsigned int cmd, struct i2c_smbus_ioctl_data32   __user *udata)
 {
 	struct i2c_smbus_ioctl_data	__user *tdata;
-	union {
-		/* beginnings of those have identical layouts */
-		struct i2c_smbus_ioctl_data32	data32;
-		struct i2c_smbus_ioctl_data	data;
-	} v;
+	compat_caddr_t			datap;
 
 	tdata = compat_alloc_user_space(sizeof(*tdata));
 	if (tdata == NULL)
 		return -ENOMEM;
-
-	memset(&v, 0, sizeof(v));
-	if (copy_from_user(&v.data32, udata, sizeof(v.data32)))
+	if (!access_ok(VERIFY_WRITE, tdata, sizeof(*tdata)))
 		return -EFAULT;
-	v.data.data = compat_ptr(v.data32.data);
 
-	if (copy_to_user(tdata, &v.data, sizeof(v.data)))
+	if (!access_ok(VERIFY_READ, udata, sizeof(*udata)))
+		return -EFAULT;
+
+	if (__copy_in_user(&tdata->read_write, &udata->read_write, 2 * sizeof(u8)))
+		return -EFAULT;
+	if (__copy_in_user(&tdata->size, &udata->size, 2 * sizeof(u32)))
+		return -EFAULT;
+	if (__get_user(datap, &udata->data) ||
+	    __put_user(compat_ptr(datap), &tdata->data))
 		return -EFAULT;
 
 	return do_ioctl(file, cmd, (unsigned long)tdata);
@@ -833,7 +833,7 @@ static int compat_ioctl_preallocate(struct file *file,
  */
 #define XFORM(i) (((i) ^ ((i) << 27) ^ ((i) << 17)) & 0xffffffff)
 
-#define COMPATIBLE_IOCTL(cmd) XFORM((u32)cmd),
+#define COMPATIBLE_IOCTL(cmd) XFORM(cmd),
 /* ioctl should not be warned about even if it's not implemented.
    Valid reasons to use this:
    - It is implemented with ->compat_ioctl on some device, but programs
@@ -866,6 +866,8 @@ COMPATIBLE_IOCTL(TIOCGDEV)
 COMPATIBLE_IOCTL(TIOCCBRK)
 COMPATIBLE_IOCTL(TIOCGSID)
 COMPATIBLE_IOCTL(TIOCGICOUNT)
+COMPATIBLE_IOCTL(TIOCGPKT)
+COMPATIBLE_IOCTL(TIOCGPTLCK)
 COMPATIBLE_IOCTL(TIOCGEXCL)
 /* Little t */
 COMPATIBLE_IOCTL(TIOCGETD)
@@ -881,12 +883,16 @@ COMPATIBLE_IOCTL(TIOCMGET)
 COMPATIBLE_IOCTL(TIOCMBIC)
 COMPATIBLE_IOCTL(TIOCMBIS)
 COMPATIBLE_IOCTL(TIOCMSET)
+COMPATIBLE_IOCTL(TIOCPKT)
 COMPATIBLE_IOCTL(TIOCNOTTY)
 COMPATIBLE_IOCTL(TIOCSTI)
 COMPATIBLE_IOCTL(TIOCOUTQ)
 COMPATIBLE_IOCTL(TIOCSPGRP)
 COMPATIBLE_IOCTL(TIOCGPGRP)
+COMPATIBLE_IOCTL(TIOCGPTN)
+COMPATIBLE_IOCTL(TIOCSPTLCK)
 COMPATIBLE_IOCTL(TIOCSERGETLSR)
+COMPATIBLE_IOCTL(TIOCSIG)
 #ifdef TIOCSRS485
 COMPATIBLE_IOCTL(TIOCSRS485)
 #endif
@@ -1332,6 +1338,8 @@ COMPATIBLE_IOCTL(DMX_SET_FILTER)
 COMPATIBLE_IOCTL(DMX_SET_PES_FILTER)
 COMPATIBLE_IOCTL(DMX_SET_BUFFER_SIZE)
 COMPATIBLE_IOCTL(DMX_GET_PES_PIDS)
+COMPATIBLE_IOCTL(DMX_GET_CAPS)
+COMPATIBLE_IOCTL(DMX_SET_SOURCE)
 COMPATIBLE_IOCTL(DMX_GET_STC)
 COMPATIBLE_IOCTL(FE_GET_INFO)
 COMPATIBLE_IOCTL(FE_DISEQC_RESET_OVERLOAD)

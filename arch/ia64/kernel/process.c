@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Architecture-specific setup.
  *
@@ -21,10 +20,6 @@
 #include <linux/notifier.h>
 #include <linux/personality.h>
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
-#include <linux/sched/hotplug.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
 #include <linux/stddef.h>
 #include <linux/thread_info.h>
 #include <linux/unistd.h>
@@ -46,7 +41,7 @@
 #include <asm/sal.h>
 #include <asm/switch_to.h>
 #include <asm/tlbflush.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/unwind.h>
 #include <asm/user.h>
 

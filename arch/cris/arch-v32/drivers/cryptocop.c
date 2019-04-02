@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Stream co-processor driver for the ETRAX FS
  *
@@ -15,7 +14,7 @@
 #include <linux/spinlock.h>
 #include <linux/stddef.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/io.h>
 #include <linux/atomic.h>
 
@@ -2087,7 +2086,7 @@ static void cryptocop_job_queue_close(void)
 		dma_in_cfg.en = regk_dma_no;
 		REG_WR(dma, IN_DMA_INST, rw_cfg, dma_in_cfg);
 
-		/* Disable the cryptocop. */
+		/* Disble the cryptocop. */
 		rw_cfg = REG_RD(strcop, regi_strcop, rw_cfg);
 		rw_cfg.en = 0;
 		REG_WR(strcop, regi_strcop, rw_cfg, rw_cfg);

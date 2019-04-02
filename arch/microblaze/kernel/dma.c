@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2009-2010 PetaLogix
  * Copyright (C) 2006 Benjamin Herrenschmidt, IBM Corporation
@@ -62,11 +61,8 @@ static int dma_direct_map_sg(struct device *dev, struct scatterlist *sgl,
 	/* FIXME this part of code is untested */
 	for_each_sg(sgl, sg, nents, i) {
 		sg->dma_address = sg_phys(sg);
-
-		if (attrs & DMA_ATTR_SKIP_CPU_SYNC)
-			continue;
-
-		__dma_sync(sg_phys(sg), sg->length, direction);
+		__dma_sync(page_to_phys(sg_page(sg)) + sg->offset,
+							sg->length, direction);
 	}
 
 	return nents;
@@ -84,8 +80,7 @@ static inline dma_addr_t dma_direct_map_page(struct device *dev,
 					     enum dma_data_direction direction,
 					     unsigned long attrs)
 {
-	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC))
-		__dma_sync(page_to_phys(page) + offset, size, direction);
+	__dma_sync(page_to_phys(page) + offset, size, direction);
 	return page_to_phys(page) + offset;
 }
 
@@ -100,8 +95,7 @@ static inline void dma_direct_unmap_page(struct device *dev,
  * phys_to_virt is here because in __dma_sync_page is __virt_to_phys and
  * dma_address is physical address
  */
-	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC))
-		__dma_sync(dma_address, size, direction);
+	__dma_sync(dma_address, size, direction);
 }
 
 static inline void
@@ -166,7 +160,7 @@ int dma_direct_mmap_coherent(struct device *dev, struct vm_area_struct *vma,
 			     unsigned long attrs)
 {
 #ifdef CONFIG_MMU
-	unsigned long user_count = vma_pages(vma);
+	unsigned long user_count = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 	unsigned long count = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	unsigned long off = vma->vm_pgoff;
 	unsigned long pfn;
@@ -187,7 +181,7 @@ int dma_direct_mmap_coherent(struct device *dev, struct vm_area_struct *vma,
 #endif
 }
 
-const struct dma_map_ops dma_direct_ops = {
+struct dma_map_ops dma_direct_ops = {
 	.alloc		= dma_direct_alloc_coherent,
 	.free		= dma_direct_free_coherent,
 	.mmap		= dma_direct_mmap_coherent,

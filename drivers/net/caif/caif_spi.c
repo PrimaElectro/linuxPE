@@ -289,44 +289,44 @@ static LIST_HEAD(cfspi_list);
 static spinlock_t cfspi_list_lock;
 
 /* SPI uplink head alignment. */
-static ssize_t up_head_align_show(struct device_driver *driver, char *buf)
+static ssize_t show_up_head_align(struct device_driver *driver, char *buf)
 {
 	return sprintf(buf, "%d\n", spi_up_head_align);
 }
 
-static DRIVER_ATTR_RO(up_head_align);
+static DRIVER_ATTR(up_head_align, S_IRUSR, show_up_head_align, NULL);
 
 /* SPI uplink tail alignment. */
-static ssize_t up_tail_align_show(struct device_driver *driver, char *buf)
+static ssize_t show_up_tail_align(struct device_driver *driver, char *buf)
 {
 	return sprintf(buf, "%d\n", spi_up_tail_align);
 }
 
-static DRIVER_ATTR_RO(up_tail_align);
+static DRIVER_ATTR(up_tail_align, S_IRUSR, show_up_tail_align, NULL);
 
 /* SPI downlink head alignment. */
-static ssize_t down_head_align_show(struct device_driver *driver, char *buf)
+static ssize_t show_down_head_align(struct device_driver *driver, char *buf)
 {
 	return sprintf(buf, "%d\n", spi_down_head_align);
 }
 
-static DRIVER_ATTR_RO(down_head_align);
+static DRIVER_ATTR(down_head_align, S_IRUSR, show_down_head_align, NULL);
 
 /* SPI downlink tail alignment. */
-static ssize_t down_tail_align_show(struct device_driver *driver, char *buf)
+static ssize_t show_down_tail_align(struct device_driver *driver, char *buf)
 {
 	return sprintf(buf, "%d\n", spi_down_tail_align);
 }
 
-static DRIVER_ATTR_RO(down_tail_align);
+static DRIVER_ATTR(down_tail_align, S_IRUSR, show_down_tail_align, NULL);
 
 /* SPI frame alignment. */
-static ssize_t frame_align_show(struct device_driver *driver, char *buf)
+static ssize_t show_frame_align(struct device_driver *driver, char *buf)
 {
 	return sprintf(buf, "%d\n", spi_frm_align);
 }
 
-static DRIVER_ATTR_RO(frame_align);
+static DRIVER_ATTR(frame_align, S_IRUSR, show_frame_align, NULL);
 
 int cfspi_xmitfrm(struct cfspi *cfspi, u8 *buf, size_t len)
 {
@@ -526,6 +526,7 @@ int cfspi_rxfrm(struct cfspi *cfspi, u8 *buf, size_t len)
 		struct sk_buff *skb = NULL;
 		int spad = 0;
 		int epad = 0;
+		u8 *dst = NULL;
 		int pkt_len = 0;
 
 		/*
@@ -547,7 +548,8 @@ int cfspi_rxfrm(struct cfspi *cfspi, u8 *buf, size_t len)
 		skb = netdev_alloc_skb(cfspi->ndev, pkt_len + 1);
 		caif_assert(skb != NULL);
 
-		skb_put_data(skb, src, pkt_len);
+		dst = skb_put(skb, pkt_len);
+		memcpy(dst, src, pkt_len);
 		src += pkt_len;
 
 		skb->protocol = htons(ETH_P_CAIF);
@@ -710,7 +712,7 @@ static void cfspi_setup(struct net_device *dev)
 	dev->flags = IFF_NOARP | IFF_POINTOPOINT;
 	dev->priv_flags |= IFF_NO_QUEUE;
 	dev->mtu = SPI_MAX_PAYLOAD_SIZE;
-	dev->needs_free_netdev = true;
+	dev->destructor = free_netdev;
 	skb_queue_head_init(&cfspi->qhead);
 	skb_queue_head_init(&cfspi->chead);
 	cfspi->cfdev.link_select = CAIF_LINK_HIGH_BANDW;

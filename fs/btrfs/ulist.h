@@ -19,6 +19,9 @@
  *
  */
 struct ulist_iterator {
+#ifdef CONFIG_BTRFS_DEBUG
+	int i;
+#endif
 	struct list_head *cur_list;  /* hint to start search */
 };
 
@@ -28,6 +31,10 @@ struct ulist_iterator {
 struct ulist_node {
 	u64 val;		/* value to store */
 	u64 aux;		/* auxiliary value saved along with the val */
+
+#ifdef CONFIG_BTRFS_DEBUG
+	int seqnum;		/* sequence number this node is added */
+#endif
 
 	struct list_head list;  /* used to link node */
 	struct rb_node rb_node;	/* used to speed up search */
@@ -44,7 +51,6 @@ struct ulist {
 };
 
 void ulist_init(struct ulist *ulist);
-void ulist_release(struct ulist *ulist);
 void ulist_reinit(struct ulist *ulist);
 struct ulist *ulist_alloc(gfp_t gfp_mask);
 void ulist_free(struct ulist *ulist);

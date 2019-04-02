@@ -158,7 +158,7 @@ static int ps3disk_submit_request_sg(struct ps3_storage_device *dev,
 	if (res) {
 		dev_err(&dev->sbd.core, "%s:%u: %s failed %d\n", __func__,
 			__LINE__, op, res);
-		__blk_end_request_all(req, BLK_STS_IOERR);
+		__blk_end_request_all(req, -EIO);
 		return 0;
 	}
 
@@ -180,7 +180,7 @@ static int ps3disk_submit_flush_request(struct ps3_storage_device *dev,
 	if (res) {
 		dev_err(&dev->sbd.core, "%s:%u: sync cache failed 0x%llx\n",
 			__func__, __LINE__, res);
-		__blk_end_request_all(req, BLK_STS_IOERR);
+		__blk_end_request_all(req, -EIO);
 		return 0;
 	}
 
@@ -196,19 +196,16 @@ static void ps3disk_do_request(struct ps3_storage_device *dev,
 	dev_dbg(&dev->sbd.core, "%s:%u\n", __func__, __LINE__);
 
 	while ((req = blk_fetch_request(q))) {
-		switch (req_op(req)) {
-		case REQ_OP_FLUSH:
+		if (req_op(req) == REQ_OP_FLUSH) {
 			if (ps3disk_submit_flush_request(dev, req))
-				return;
-			break;
-		case REQ_OP_READ:
-		case REQ_OP_WRITE:
+				break;
+		} else if (req->cmd_type == REQ_TYPE_FS) {
 			if (ps3disk_submit_request_sg(dev, req))
-				return;
-			break;
-		default:
+				break;
+		} else {
 			blk_dump_rq_flags(req, DEVICE_NAME " bad request");
-			__blk_end_request_all(req, BLK_STS_IOERR);
+			__blk_end_request_all(req, -EIO);
+			continue;
 		}
 	}
 }
@@ -231,8 +228,7 @@ static irqreturn_t ps3disk_interrupt(int irq, void *data)
 	struct ps3_storage_device *dev = data;
 	struct ps3disk_private *priv;
 	struct request *req;
-	int res, read;
-	blk_status_t error;
+	int res, read, error;
 	u64 tag, status;
 	const char *op;
 
@@ -270,7 +266,7 @@ static irqreturn_t ps3disk_interrupt(int irq, void *data)
 	if (status) {
 		dev_dbg(&dev->sbd.core, "%s:%u: %s failed 0x%llx\n", __func__,
 			__LINE__, op, status);
-		error = BLK_STS_IOERR;
+		error = -EIO;
 	} else {
 		dev_dbg(&dev->sbd.core, "%s:%u: %s completed\n", __func__,
 			__LINE__, op);

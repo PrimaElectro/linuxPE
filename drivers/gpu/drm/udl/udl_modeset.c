@@ -361,8 +361,7 @@ static void udl_crtc_destroy(struct drm_crtc *crtc)
 static int udl_crtc_page_flip(struct drm_crtc *crtc,
 			      struct drm_framebuffer *fb,
 			      struct drm_pending_vblank_event *event,
-			      uint32_t page_flip_flags,
-			      struct drm_modeset_acquire_ctx *ctx)
+			      uint32_t page_flip_flags)
 {
 	struct udl_framebuffer *ufb = to_udl_fb(fb);
 	struct drm_device *dev = crtc->dev;

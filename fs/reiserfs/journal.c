@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Write ahead logging implementation copyright Chris Mason 2000
  *
@@ -1112,8 +1111,7 @@ static int flush_commit_list(struct super_block *s,
 		mark_buffer_dirty(jl->j_commit_bh) ;
 		depth = reiserfs_write_unlock_nested(s);
 		if (reiserfs_barrier_flush(s))
-			__sync_dirty_buffer(jl->j_commit_bh,
-					REQ_SYNC | REQ_PREFLUSH | REQ_FUA);
+			__sync_dirty_buffer(jl->j_commit_bh, WRITE_FLUSH_FUA);
 		else
 			sync_dirty_buffer(jl->j_commit_bh);
 		reiserfs_write_lock_nested(s, depth);
@@ -1271,8 +1269,7 @@ static int _update_journal_header_block(struct super_block *sb,
 		depth = reiserfs_write_unlock_nested(sb);
 
 		if (reiserfs_barrier_flush(sb))
-			__sync_dirty_buffer(journal->j_header_bh,
-					REQ_SYNC | REQ_PREFLUSH | REQ_FUA);
+			__sync_dirty_buffer(journal->j_header_bh, WRITE_FLUSH_FUA);
 		else
 			sync_dirty_buffer(journal->j_header_bh);
 
@@ -1482,7 +1479,7 @@ static int flush_journal_list(struct super_block *s,
 		if ((!was_jwait) && !buffer_locked(saved_bh)) {
 			reiserfs_warning(s, "journal-813",
 					 "BAD! buffer %llu %cdirty %cjwait, "
-					 "not in a newer transaction",
+					 "not in a newer tranasction",
 					 (unsigned long long)saved_bh->
 					 b_blocknr, was_dirty ? ' ' : '!',
 					 was_jwait ? ' ' : '!');
@@ -1919,7 +1916,7 @@ static int do_journal_release(struct reiserfs_transaction_handle *th,
 	 * we only want to flush out transactions if we were
 	 * called with error == 0
 	 */
-	if (!error && !sb_rdonly(sb)) {
+	if (!error && !(sb->s_flags & MS_RDONLY)) {
 		/* end the current trans */
 		BUG_ON(!th->t_trans_id);
 		do_journal_end(th, FLUSH_ALL);
@@ -1962,7 +1959,7 @@ static int do_journal_release(struct reiserfs_transaction_handle *th,
 	 * will be requeued because superblock is being shutdown and doesn't
 	 * have MS_ACTIVE set.
 	 */
-	reiserfs_cancel_old_flush(sb);
+	cancel_delayed_work_sync(&REISERFS_SB(sb)->old_work);
 	/* wait for all commits to finish */
 	cancel_delayed_work_sync(&SB_JOURNAL(sb)->j_work);
 
@@ -2643,7 +2640,7 @@ static int journal_init_dev(struct super_block *super,
 	if (IS_ERR(journal->j_dev_bd)) {
 		result = PTR_ERR(journal->j_dev_bd);
 		journal->j_dev_bd = NULL;
-		reiserfs_warning(super, "sh-457",
+		reiserfs_warning(super,
 				 "journal_init_dev: Cannot open '%s': %i",
 				 jdev_name, result);
 		return result;
@@ -2957,7 +2954,7 @@ void reiserfs_wait_on_write_block(struct super_block *s)
 
 static void queue_log_writer(struct super_block *s)
 {
-	wait_queue_entry_t wait;
+	wait_queue_t wait;
 	struct reiserfs_journal *journal = SB_JOURNAL(s);
 	set_bit(J_WRITERS_QUEUED, &journal->j_state);
 

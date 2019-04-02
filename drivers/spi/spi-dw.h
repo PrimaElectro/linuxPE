@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef DW_SPI_HEADER_H
 #define DW_SPI_HEADER_H
 
@@ -102,6 +101,7 @@ struct dw_spi_dma_ops {
 struct dw_spi {
 	struct spi_master	*master;
 	enum dw_ssi_type	type;
+	char			name[16];
 
 	void __iomem		*regs;
 	unsigned long		paddr;

@@ -76,7 +76,7 @@ static struct irqaction m68328_timer_irq = {
 
 /***************************************************************************/
 
-static u64 m68328_read_clk(struct clocksource *cs)
+static cycle_t m68328_read_clk(struct clocksource *cs)
 {
 	unsigned long flags;
 	u32 cycles;

@@ -23,6 +23,7 @@
 };
 
 &cspi1 {
+	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio4 28 GPIO_ACTIVE_HIGH>,
 		   <&gpio4 27 GPIO_ACTIVE_HIGH>;
 	status = "okay";
@@ -40,7 +41,7 @@
 	status = "okay";
 
 	at24@52 {
-		compatible = "atmel,24c32";
+		compatible = "at,24c32";
 		pagesize = <32>;
 		reg = <0x52>;
 	};

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __BEN_VLAN_802_1Q_INC__
 #define __BEN_VLAN_802_1Q_INC__
 
@@ -160,7 +159,7 @@ void vlan_netlink_fini(void);
 
 extern struct rtnl_link_ops vlan_link_ops;
 
-extern unsigned int vlan_net_id;
+extern int vlan_net_id;
 
 struct proc_dir_entry;
 

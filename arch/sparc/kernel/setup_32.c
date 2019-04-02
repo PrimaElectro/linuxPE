@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/sparc/kernel/setup.c
  *
@@ -83,7 +82,7 @@ static void prom_sync_me(void)
 			     "nop\n\t" : : "r" (&trapbase));
 
 	prom_printf("PROM SYNC COMMAND...\n");
-	show_free_areas(0, NULL);
+	show_free_areas(0);
 	if (!is_idle_task(current)) {
 		local_irq_enable();
 		sys_sync();
@@ -149,7 +148,7 @@ static void __init boot_flags_init(char *commands)
 {
 	while (*commands) {
 		/* Move to the start of the next "argument". */
-		while (*commands == ' ')
+		while (*commands && *commands == ' ')
 			commands++;
 
 		/* Process any command switches, otherwise skip it. */

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/cris/traps.c
  *
@@ -16,13 +15,12 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/utsname.h>
-#include <linux/sched/debug.h>
 #ifdef CONFIG_KALLSYMS
 #include <linux/kallsyms.h>
 #endif
 
 #include <asm/pgtable.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <arch/system.h>
 
 extern void arch_enable_nmi(void);
@@ -43,7 +41,7 @@ void (*nmi_handler)(struct pt_regs *);
 void show_trace(unsigned long *stack)
 {
 	unsigned long addr, module_start, module_end;
-	extern char _stext[], _etext[];
+	extern char _stext, _etext;
 	int i;
 
 	pr_err("\nCall Trace: ");
@@ -70,8 +68,8 @@ void show_trace(unsigned long *stack)
 		 * down the cause of the crash will be able to figure
 		 * out the call path that was taken.
 		 */
-		if (((addr >= (unsigned long)_stext) &&
-		     (addr <= (unsigned long)_etext)) ||
+		if (((addr >= (unsigned long)&_stext) &&
+		     (addr <= (unsigned long)&_etext)) ||
 		    ((addr >= module_start) && (addr <= module_end))) {
 #ifdef CONFIG_KALLSYMS
 			print_ip_sym(addr);

@@ -99,6 +99,6 @@ NOKPROBE_SYMBOL(kprobe_ftrace_handler);
 int arch_prepare_kprobe_ftrace(struct kprobe *p)
 {
 	p->ainsn.insn = NULL;
-	p->ainsn.boostable = false;
+	p->ainsn.boostable = -1;
 	return 0;
 }

@@ -16,8 +16,6 @@
 #define _ASM_TILE_MMU_CONTEXT_H
 
 #include <linux/smp.h>
-#include <linux/mm_types.h>
-
 #include <asm/setup.h>
 #include <asm/page.h>
 #include <asm/pgalloc.h>

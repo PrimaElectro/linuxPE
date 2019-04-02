@@ -1,5 +1,4 @@
-/*
- * Copyright 2013-2016 Freescale Semiconductor Inc.
+/* Copyright 2013-2016 Freescale Semiconductor Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -11,6 +10,7 @@
  *     * Neither the name of the above-listed copyright holders nor the
  *       names of any contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
+ *
  *
  * ALTERNATIVELY, this software may be distributed under the terms of the
  * GNU General Public License ("GPL") as published by the Free Software
@@ -31,7 +31,8 @@
  */
 
 #include <linux/io.h>
-#include "../include/mc.h"
+#include "../include/mc-bus.h"
+#include "../include/mc-sys.h"
 
 #include "fsl-mc-private.h"
 #include "dpmcp.h"
@@ -129,8 +130,8 @@ int __must_check fsl_create_mc_io(struct device *dev,
 				      "mc_portal");
 	if (!res) {
 		dev_err(dev,
-			"devm_request_mem_region failed for MC portal %pa\n",
-			&mc_portal_phys_addr);
+			"devm_request_mem_region failed for MC portal %#llx\n",
+			mc_portal_phys_addr);
 		return -EBUSY;
 	}
 
@@ -139,8 +140,8 @@ int __must_check fsl_create_mc_io(struct device *dev,
 						   mc_portal_size);
 	if (!mc_portal_virt_addr) {
 		dev_err(dev,
-			"devm_ioremap_nocache failed for MC portal %pa\n",
-			&mc_portal_phys_addr);
+			"devm_ioremap_nocache failed for MC portal %#llx\n",
+			mc_portal_phys_addr);
 		return -ENXIO;
 	}
 
@@ -242,7 +243,8 @@ int __must_check fsl_mc_portal_allocate(struct fsl_mc_device *mc_dev,
 		goto error_cleanup_resource;
 
 	mc_portal_phys_addr = dpmcp_dev->regions[0].start;
-	mc_portal_size = resource_size(dpmcp_dev->regions);
+	mc_portal_size = dpmcp_dev->regions[0].end -
+			 dpmcp_dev->regions[0].start + 1;
 
 	if (WARN_ON(mc_portal_size != mc_bus_dev->mc_io->portal_size))
 		goto error_cleanup_resource;

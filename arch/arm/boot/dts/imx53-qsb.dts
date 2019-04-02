@@ -88,8 +88,9 @@
 			};
 
 			ldo7_reg: ldo7 {
-				regulator-min-microvolt = <2750000>;
-				regulator-max-microvolt = <2750000>;
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3600000>;
+				regulator-always-on;
 			};
 
 			ldo8_reg: ldo8 {
@@ -111,8 +112,4 @@
 			};
 		};
 	};
-};
-
-&tve {
-	dac-supply = <&ldo7_reg>;
 };

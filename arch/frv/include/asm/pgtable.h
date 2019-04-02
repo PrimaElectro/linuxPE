@@ -16,7 +16,6 @@
 #ifndef _ASM_PGTABLE_H
 #define _ASM_PGTABLE_H
 
-#include <asm-generic/5level-fixup.h>
 #include <asm/mem-layout.h>
 #include <asm/setup.h>
 #include <asm/processor.h>

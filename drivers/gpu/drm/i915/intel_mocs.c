@@ -178,11 +178,11 @@ static bool get_mocs_settings(struct drm_i915_private *dev_priv,
 {
 	bool result = false;
 
-	if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
+	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
 		table->size  = ARRAY_SIZE(skylake_mocs_table);
 		table->table = skylake_mocs_table;
 		result = true;
-	} else if (IS_GEN9_LP(dev_priv)) {
+	} else if (IS_BROXTON(dev_priv)) {
 		table->size  = ARRAY_SIZE(broxton_mocs_table);
 		table->table = broxton_mocs_table;
 		result = true;
@@ -191,7 +191,7 @@ static bool get_mocs_settings(struct drm_i915_private *dev_priv,
 			  "Platform that should have a MOCS table does not.\n");
 	}
 
-	/* WaDisableSkipCaching:skl,bxt,kbl,glk */
+	/* WaDisableSkipCaching:skl,bxt,kbl */
 	if (IS_GEN9(dev_priv)) {
 		int i;
 
@@ -276,22 +276,23 @@ int intel_mocs_init_engine(struct intel_engine_cs *engine)
 static int emit_mocs_control_table(struct drm_i915_gem_request *req,
 				   const struct drm_i915_mocs_table *table)
 {
+	struct intel_ring *ring = req->ring;
 	enum intel_engine_id engine = req->engine->id;
 	unsigned int index;
-	u32 *cs;
+	int ret;
 
 	if (WARN_ON(table->size > GEN9_NUM_MOCS_ENTRIES))
 		return -ENODEV;
 
-	cs = intel_ring_begin(req, 2 + 2 * GEN9_NUM_MOCS_ENTRIES);
-	if (IS_ERR(cs))
-		return PTR_ERR(cs);
+	ret = intel_ring_begin(req, 2 + 2 * GEN9_NUM_MOCS_ENTRIES);
+	if (ret)
+		return ret;
 
-	*cs++ = MI_LOAD_REGISTER_IMM(GEN9_NUM_MOCS_ENTRIES);
+	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(GEN9_NUM_MOCS_ENTRIES));
 
 	for (index = 0; index < table->size; index++) {
-		*cs++ = i915_mmio_reg_offset(mocs_register(engine, index));
-		*cs++ = table->table[index].control_value;
+		intel_ring_emit_reg(ring, mocs_register(engine, index));
+		intel_ring_emit(ring, table->table[index].control_value);
 	}
 
 	/*
@@ -303,12 +304,12 @@ static int emit_mocs_control_table(struct drm_i915_gem_request *req,
 	 * that value to all the used entries.
 	 */
 	for (; index < GEN9_NUM_MOCS_ENTRIES; index++) {
-		*cs++ = i915_mmio_reg_offset(mocs_register(engine, index));
-		*cs++ = table->table[0].control_value;
+		intel_ring_emit_reg(ring, mocs_register(engine, index));
+		intel_ring_emit(ring, table->table[0].control_value);
 	}
 
-	*cs++ = MI_NOOP;
-	intel_ring_advance(req, cs);
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_advance(ring);
 
 	return 0;
 }
@@ -335,27 +336,29 @@ static inline u32 l3cc_combine(const struct drm_i915_mocs_table *table,
 static int emit_mocs_l3cc_table(struct drm_i915_gem_request *req,
 				const struct drm_i915_mocs_table *table)
 {
+	struct intel_ring *ring = req->ring;
 	unsigned int i;
-	u32 *cs;
+	int ret;
 
 	if (WARN_ON(table->size > GEN9_NUM_MOCS_ENTRIES))
 		return -ENODEV;
 
-	cs = intel_ring_begin(req, 2 + GEN9_NUM_MOCS_ENTRIES);
-	if (IS_ERR(cs))
-		return PTR_ERR(cs);
+	ret = intel_ring_begin(req, 2 + GEN9_NUM_MOCS_ENTRIES);
+	if (ret)
+		return ret;
 
-	*cs++ = MI_LOAD_REGISTER_IMM(GEN9_NUM_MOCS_ENTRIES / 2);
+	intel_ring_emit(ring,
+			MI_LOAD_REGISTER_IMM(GEN9_NUM_MOCS_ENTRIES / 2));
 
 	for (i = 0; i < table->size/2; i++) {
-		*cs++ = i915_mmio_reg_offset(GEN9_LNCFCMOCS(i));
-		*cs++ = l3cc_combine(table, 2 * i, 2 * i + 1);
+		intel_ring_emit_reg(ring, GEN9_LNCFCMOCS(i));
+		intel_ring_emit(ring, l3cc_combine(table, 2*i, 2*i+1));
 	}
 
 	if (table->size & 0x01) {
 		/* Odd table size - 1 left over */
-		*cs++ = i915_mmio_reg_offset(GEN9_LNCFCMOCS(i));
-		*cs++ = l3cc_combine(table, 2 * i, 0);
+		intel_ring_emit_reg(ring, GEN9_LNCFCMOCS(i));
+		intel_ring_emit(ring, l3cc_combine(table, 2*i, 0));
 		i++;
 	}
 
@@ -365,19 +368,19 @@ static int emit_mocs_l3cc_table(struct drm_i915_gem_request *req,
 	 * they are reserved by the hardware.
 	 */
 	for (; i < GEN9_NUM_MOCS_ENTRIES / 2; i++) {
-		*cs++ = i915_mmio_reg_offset(GEN9_LNCFCMOCS(i));
-		*cs++ = l3cc_combine(table, 0, 0);
+		intel_ring_emit_reg(ring, GEN9_LNCFCMOCS(i));
+		intel_ring_emit(ring, l3cc_combine(table, 0, 0));
 	}
 
-	*cs++ = MI_NOOP;
-	intel_ring_advance(req, cs);
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_advance(ring);
 
 	return 0;
 }
 
 /**
  * intel_mocs_init_l3cc_table() - program the mocs control table
- * @dev_priv:      i915 device private
+ * @dev:      The the device to be programmed.
  *
  * This function simply programs the mocs registers for the given table
  * starting at the given address. This register set is  programmed in pairs.
@@ -389,8 +392,9 @@ static int emit_mocs_l3cc_table(struct drm_i915_gem_request *req,
  *
  * Return: Nothing.
  */
-void intel_mocs_init_l3cc_table(struct drm_i915_private *dev_priv)
+void intel_mocs_init_l3cc_table(struct drm_device *dev)
 {
+	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct drm_i915_mocs_table table;
 	unsigned int i;
 

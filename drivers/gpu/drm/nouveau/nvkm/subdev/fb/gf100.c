@@ -50,32 +50,23 @@ gf100_fb_intr(struct nvkm_fb *base)
 }
 
 int
-gf100_fb_oneinit(struct nvkm_fb *base)
+gf100_fb_oneinit(struct nvkm_fb *fb)
 {
-	struct gf100_fb *fb = gf100_fb(base);
-	struct nvkm_device *device = fb->base.subdev.device;
+	struct nvkm_device *device = fb->subdev.device;
 	int ret, size = 0x1000;
 
 	size = nvkm_longopt(device->cfgopt, "MmuDebugBufferSize", size);
 	size = min(size, 0x1000);
 
 	ret = nvkm_memory_new(device, NVKM_MEM_TARGET_INST, size, 0x1000,
-			      true, &fb->base.mmu_rd);
+			      false, &fb->mmu_rd);
 	if (ret)
 		return ret;
 
 	ret = nvkm_memory_new(device, NVKM_MEM_TARGET_INST, size, 0x1000,
-			      true, &fb->base.mmu_wr);
+			      false, &fb->mmu_wr);
 	if (ret)
 		return ret;
-
-	fb->r100c10_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
-	if (fb->r100c10_page) {
-		fb->r100c10 = dma_map_page(device->dev, fb->r100c10_page, 0,
-					   PAGE_SIZE, DMA_BIDIRECTIONAL);
-		if (dma_mapping_error(device->dev, fb->r100c10))
-			return -EFAULT;
-	}
 
 	return 0;
 }
@@ -131,6 +122,14 @@ gf100_fb_new_(const struct nvkm_fb_func *func, struct nvkm_device *device,
 		return -ENOMEM;
 	nvkm_fb_ctor(func, device, index, &fb->base);
 	*pfb = &fb->base;
+
+	fb->r100c10_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	if (fb->r100c10_page) {
+		fb->r100c10 = dma_map_page(device->dev, fb->r100c10_page, 0,
+					   PAGE_SIZE, DMA_BIDIRECTIONAL);
+		if (dma_mapping_error(device->dev, fb->r100c10))
+			return -EFAULT;
+	}
 
 	return 0;
 }

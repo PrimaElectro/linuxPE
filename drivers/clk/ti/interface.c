@@ -34,7 +34,7 @@ static const struct clk_ops ti_interface_clk_ops = {
 
 static struct clk *_register_interface(struct device *dev, const char *name,
 				       const char *parent_name,
-				       struct clk_omap_reg *reg, u8 bit_idx,
+				       void __iomem *reg, u8 bit_idx,
 				       const struct clk_hw_omap_ops *ops)
 {
 	struct clk_init_data init = { NULL };
@@ -47,7 +47,8 @@ static struct clk *_register_interface(struct device *dev, const char *name,
 
 	clk_hw->hw.init = &init;
 	clk_hw->ops = ops;
-	memcpy(&clk_hw->enable_reg, reg, sizeof(*reg));
+	clk_hw->flags = MEMMAP_ADDRESSING;
+	clk_hw->enable_reg = reg;
 	clk_hw->enable_bit = bit_idx;
 
 	init.name = name;
@@ -57,7 +58,7 @@ static struct clk *_register_interface(struct device *dev, const char *name,
 	init.num_parents = 1;
 	init.parent_names = &parent_name;
 
-	clk = ti_clk_register(NULL, &clk_hw->hw, name);
+	clk = clk_register(NULL, &clk_hw->hw);
 
 	if (IS_ERR(clk))
 		kfree(clk_hw);
@@ -71,13 +72,14 @@ static struct clk *_register_interface(struct device *dev, const char *name,
 struct clk *ti_clk_register_interface(struct ti_clk *setup)
 {
 	const struct clk_hw_omap_ops *ops = &clkhwops_iclk_wait;
-	struct clk_omap_reg reg;
+	u32 reg;
+	struct clk_omap_reg *reg_setup;
 	struct ti_clk_gate *gate;
 
 	gate = setup->data;
-	reg.index = gate->module;
-	reg.offset = gate->reg;
-	reg.ptr = NULL;
+	reg_setup = (struct clk_omap_reg *)&reg;
+	reg_setup->index = gate->module;
+	reg_setup->offset = gate->reg;
 
 	if (gate->flags & CLKF_NO_WAIT)
 		ops = &clkhwops_iclk;
@@ -95,7 +97,7 @@ struct clk *ti_clk_register_interface(struct ti_clk *setup)
 		ops = &clkhwops_am35xx_ipss_wait;
 
 	return _register_interface(NULL, setup->name, gate->parent,
-				   &reg, gate->bit_shift, ops);
+				   (void __iomem *)reg, gate->bit_shift, ops);
 }
 #endif
 
@@ -104,11 +106,12 @@ static void __init _of_ti_interface_clk_setup(struct device_node *node,
 {
 	struct clk *clk;
 	const char *parent_name;
-	struct clk_omap_reg reg;
+	void __iomem *reg;
 	u8 enable_bit = 0;
 	u32 val;
 
-	if (ti_clk_get_reg_addr(node, 0, &reg))
+	reg = ti_clk_get_reg_addr(node, 0);
+	if (IS_ERR(reg))
 		return;
 
 	if (!of_property_read_u32(node, "ti,bit-shift", &val))
@@ -120,7 +123,7 @@ static void __init _of_ti_interface_clk_setup(struct device_node *node,
 		return;
 	}
 
-	clk = _register_interface(NULL, node->name, parent_name, &reg,
+	clk = _register_interface(NULL, node->name, parent_name, reg,
 				  enable_bit, ops);
 
 	if (!IS_ERR(clk))

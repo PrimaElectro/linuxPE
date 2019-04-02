@@ -24,8 +24,6 @@
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
 #include <linux/syscalls.h>
-#include <linux/sched/signal.h>
-
 #include <net/kcm.h>
 #include <net/netns/generic.h>
 #include <net/sock.h>
@@ -96,12 +94,12 @@ static void kcm_update_rx_mux_stats(struct kcm_mux *mux,
 				    struct kcm_psock *psock)
 {
 	STRP_STATS_ADD(mux->stats.rx_bytes,
-		       psock->strp.stats.bytes -
+		       psock->strp.stats.rx_bytes -
 		       psock->saved_rx_bytes);
 	mux->stats.rx_msgs +=
-		psock->strp.stats.msgs - psock->saved_rx_msgs;
-	psock->saved_rx_msgs = psock->strp.stats.msgs;
-	psock->saved_rx_bytes = psock->strp.stats.bytes;
+		psock->strp.stats.rx_msgs - psock->saved_rx_msgs;
+	psock->saved_rx_msgs = psock->strp.stats.rx_msgs;
+	psock->saved_rx_bytes = psock->strp.stats.rx_bytes;
 }
 
 static void kcm_update_tx_mux_stats(struct kcm_mux *mux,
@@ -1118,7 +1116,7 @@ static int kcm_recvmsg(struct socket *sock, struct msghdr *msg,
 	struct kcm_sock *kcm = kcm_sk(sk);
 	int err = 0;
 	long timeo;
-	struct strp_msg *stm;
+	struct strp_rx_msg *rxm;
 	int copied = 0;
 	struct sk_buff *skb;
 
@@ -1132,26 +1130,26 @@ static int kcm_recvmsg(struct socket *sock, struct msghdr *msg,
 
 	/* Okay, have a message on the receive queue */
 
-	stm = strp_msg(skb);
+	rxm = strp_rx_msg(skb);
 
-	if (len > stm->full_len)
-		len = stm->full_len;
+	if (len > rxm->full_len)
+		len = rxm->full_len;
 
-	err = skb_copy_datagram_msg(skb, stm->offset, msg, len);
+	err = skb_copy_datagram_msg(skb, rxm->offset, msg, len);
 	if (err < 0)
 		goto out;
 
 	copied = len;
 	if (likely(!(flags & MSG_PEEK))) {
 		KCM_STATS_ADD(kcm->stats.rx_bytes, copied);
-		if (copied < stm->full_len) {
+		if (copied < rxm->full_len) {
 			if (sock->type == SOCK_DGRAM) {
 				/* Truncated message */
 				msg->msg_flags |= MSG_TRUNC;
 				goto msg_finished;
 			}
-			stm->offset += copied;
-			stm->full_len -= copied;
+			rxm->offset += copied;
+			rxm->full_len -= copied;
 		} else {
 msg_finished:
 			/* Finished with message */
@@ -1175,7 +1173,7 @@ static ssize_t kcm_splice_read(struct socket *sock, loff_t *ppos,
 	struct sock *sk = sock->sk;
 	struct kcm_sock *kcm = kcm_sk(sk);
 	long timeo;
-	struct strp_msg *stm;
+	struct strp_rx_msg *rxm;
 	int err = 0;
 	ssize_t copied;
 	struct sk_buff *skb;
@@ -1192,12 +1190,12 @@ static ssize_t kcm_splice_read(struct socket *sock, loff_t *ppos,
 
 	/* Okay, have a message on the receive queue */
 
-	stm = strp_msg(skb);
+	rxm = strp_rx_msg(skb);
 
-	if (len > stm->full_len)
-		len = stm->full_len;
+	if (len > rxm->full_len)
+		len = rxm->full_len;
 
-	copied = skb_splice_bits(skb, sk, stm->offset, pipe, len, flags);
+	copied = skb_splice_bits(skb, sk, rxm->offset, pipe, len, flags);
 	if (copied < 0) {
 		err = copied;
 		goto err_out;
@@ -1205,8 +1203,8 @@ static ssize_t kcm_splice_read(struct socket *sock, loff_t *ppos,
 
 	KCM_STATS_ADD(kcm->stats.rx_bytes, copied);
 
-	stm->offset += copied;
-	stm->full_len -= copied;
+	rxm->offset += copied;
+	rxm->full_len -= copied;
 
 	/* We have no way to return MSG_EOR. If all the bytes have been
 	 * read we still leave the message in the receive socket buffer.
@@ -1376,46 +1374,39 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 	struct kcm_psock *psock = NULL, *tpsock;
 	struct list_head *head;
 	int index = 0;
-	static const struct strp_callbacks cb = {
-		.rcv_msg = kcm_rcv_strparser,
-		.parse_msg = kcm_parse_func_strparser,
-		.read_sock_done = kcm_read_sock_done,
-	};
-	int err = 0;
+	struct strp_callbacks cb;
+	int err;
 
 	csk = csock->sk;
 	if (!csk)
 		return -EINVAL;
 
-	lock_sock(csk);
-
 	/* Only allow TCP sockets to be attached for now */
 	if ((csk->sk_family != AF_INET && csk->sk_family != AF_INET6) ||
-	    csk->sk_protocol != IPPROTO_TCP) {
-		err = -EOPNOTSUPP;
-		goto out;
-	}
+	    csk->sk_protocol != IPPROTO_TCP)
+		return -EOPNOTSUPP;
 
 	/* Don't allow listeners or closed sockets */
-	if (csk->sk_state == TCP_LISTEN || csk->sk_state == TCP_CLOSE) {
-		err = -EOPNOTSUPP;
-		goto out;
-	}
+	if (csk->sk_state == TCP_LISTEN || csk->sk_state == TCP_CLOSE)
+		return -EOPNOTSUPP;
 
 	psock = kmem_cache_zalloc(kcm_psockp, GFP_KERNEL);
-	if (!psock) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!psock)
+		return -ENOMEM;
 
 	psock->mux = mux;
 	psock->sk = csk;
 	psock->bpf_prog = prog;
 
+	cb.rcv_msg = kcm_rcv_strparser;
+	cb.abort_parser = NULL;
+	cb.parse_msg = kcm_parse_func_strparser;
+	cb.read_sock_done = kcm_read_sock_done;
+
 	err = strp_init(&psock->strp, csk, &cb);
 	if (err) {
 		kmem_cache_free(kcm_psockp, psock);
-		goto out;
+		return err;
 	}
 
 	write_lock_bh(&csk->sk_callback_lock);
@@ -1425,11 +1416,9 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 	 */
 	if (csk->sk_user_data) {
 		write_unlock_bh(&csk->sk_callback_lock);
-		strp_stop(&psock->strp);
 		strp_done(&psock->strp);
 		kmem_cache_free(kcm_psockp, psock);
-		err = -EALREADY;
-		goto out;
+		return -EALREADY;
 	}
 
 	psock->save_data_ready = csk->sk_data_ready;
@@ -1465,10 +1454,7 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 	/* Schedule RX work in case there are already bytes queued */
 	strp_check_rcv(&psock->strp);
 
-out:
-	release_sock(csk);
-
-	return err;
+	return 0;
 }
 
 static int kcm_attach_ioctl(struct socket *sock, struct kcm_attach *info)
@@ -1520,7 +1506,6 @@ static void kcm_unattach(struct kcm_psock *psock)
 
 	if (WARN_ON(psock->rx_kcm)) {
 		write_unlock_bh(&csk->sk_callback_lock);
-		release_sock(csk);
 		return;
 	}
 
@@ -1672,7 +1657,7 @@ static struct file *kcm_clone(struct socket *osock)
 	__module_get(newsock->ops->owner);
 
 	newsk = sk_alloc(sock_net(osock->sk), PF_KCM, GFP_KERNEL,
-			 &kcm_proto, false);
+			 &kcm_proto, true);
 	if (!newsk) {
 		sock_release(newsock);
 		return ERR_PTR(-ENOMEM);
@@ -2002,7 +1987,7 @@ static int kcm_create(struct net *net, struct socket *sock,
 	return 0;
 }
 
-static const struct net_proto_family kcm_family_ops = {
+static struct net_proto_family kcm_family_ops = {
 	.family = PF_KCM,
 	.create = kcm_create,
 	.owner  = THIS_MODULE,

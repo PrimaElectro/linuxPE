@@ -100,7 +100,7 @@ static int hda_codec_driver_probe(struct device *dev)
 	if (patch) {
 		err = patch(codec);
 		if (err < 0)
-			goto error_module_put;
+			goto error_module;
 	}
 
 	err = snd_hda_codec_build_pcms(codec);
@@ -109,8 +109,7 @@ static int hda_codec_driver_probe(struct device *dev)
 	err = snd_hda_codec_build_controls(codec);
 	if (err < 0)
 		goto error_module;
-	/* only register after the bus probe finished; otherwise it's racy */
-	if (!codec->bus->bus_probing && codec->card->registered) {
+	if (codec->card->registered) {
 		err = snd_card_register(codec->card);
 		if (err < 0)
 			goto error_module;
@@ -121,9 +120,6 @@ static int hda_codec_driver_probe(struct device *dev)
 	return 0;
 
  error_module:
-	if (codec->patch_ops.free)
-		codec->patch_ops.free(codec);
- error_module_put:
 	module_put(owner);
 
  error:

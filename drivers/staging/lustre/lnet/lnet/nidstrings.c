@@ -36,8 +36,8 @@
 
 #define DEBUG_SUBSYSTEM S_LNET
 
-#include <linux/libcfs/libcfs.h>
-#include <uapi/linux/lnet/nidstr.h>
+#include "../../include/linux/libcfs/libcfs.h"
+#include "../../include/linux/lnet/lnet.h"
 
 /* max value for numeric network address */
 #define MAX_NUMERIC_VALUE 0xffffffff
@@ -193,7 +193,7 @@ add_nidrange(const struct cfs_lstr *src,
 	struct netstrfns *nf;
 	struct nidrange *nr;
 	int endlen;
-	unsigned int netnum;
+	unsigned netnum;
 
 	if (src->ls_len >= LNET_NIDSTR_SIZE)
 		return NULL;
@@ -247,8 +247,10 @@ parse_nidrange(struct cfs_lstr *src, struct list_head *nidlist)
 {
 	struct cfs_lstr addrrange;
 	struct cfs_lstr net;
+	struct cfs_lstr tmp;
 	struct nidrange *nr;
 
+	tmp = *src;
 	if (!cfs_gettok(src, '@', &addrrange))
 		goto failed;
 
@@ -1154,7 +1156,7 @@ EXPORT_SYMBOL(libcfs_nid2str_r);
 static struct netstrfns *
 libcfs_str2net_internal(const char *str, __u32 *net)
 {
-	struct netstrfns *nf = NULL;
+	struct netstrfns *uninitialized_var(nf);
 	int nob;
 	unsigned int netnum;
 	int i;
@@ -1226,7 +1228,7 @@ libcfs_str2nid(const char *str)
 EXPORT_SYMBOL(libcfs_str2nid);
 
 char *
-libcfs_id2str(struct lnet_process_id id)
+libcfs_id2str(lnet_process_id_t id)
 {
 	char *str = libcfs_next_nidstring();
 

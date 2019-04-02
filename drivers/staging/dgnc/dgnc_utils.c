@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/tty.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include "dgnc_utils.h"
 
-/**
- * dgnc_ms_sleep - Put the driver to sleep
- * @ms - milliseconds to sleep
+/*
+ * dgnc_ms_sleep()
  *
- * Return: 0 if timed out, if interrupted by a signal return signal.
+ * Put the driver to sleep for x ms's
+ *
+ * Returns 0 if timed out, !0 (showing signal) if interrupted by a signal.
  */
 int dgnc_ms_sleep(ulong ms)
 {

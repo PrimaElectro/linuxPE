@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2017, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,8 +75,7 @@
 	(defined ACPI_NAMES_APP)    || \
 	(defined ACPI_SRC_APP)      || \
 	(defined ACPI_XTRACT_APP)   || \
-	(defined ACPI_EXAMPLE_APP)  || \
-	(defined ACPI_EFI_HELLO)
+	(defined ACPI_EXAMPLE_APP)
 #define ACPI_APPLICATION
 #define ACPI_SINGLE_THREADED
 #define USE_NATIVE_ALLOCATE_ZEROED
@@ -288,11 +287,6 @@
 #define ACPI_INLINE
 #endif
 
-/* Use ordered initialization if compiler doesn't support designated. */
-#ifndef ACPI_STRUCT_INIT
-#define ACPI_STRUCT_INIT(field, value)  value
-#endif
-
 /*
  * Configurable calling conventions:
  *
@@ -363,7 +357,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#if defined (ACPI_APPLICATION) || defined(ACPI_LIBRARY)
+#ifdef ACPI_APPLICATION
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>

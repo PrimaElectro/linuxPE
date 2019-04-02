@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  Copyright IBM Corp. 2008
  *
@@ -12,7 +11,7 @@
 #include "qdio.h"
 
 /* that gives us 15 characters in the text event views */
-#define QDIO_DBF_LEN	32
+#define QDIO_DBF_LEN	16
 
 extern debug_info_t *qdio_dbf_setup;
 extern debug_info_t *qdio_dbf_error;

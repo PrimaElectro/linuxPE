@@ -329,9 +329,6 @@ static int bpf_jit_build_body(struct bpf_prog *fp, u32 *image,
 			BUILD_BUG_ON(FIELD_SIZEOF(struct sk_buff, len) != 4);
 			PPC_LWZ_OFFS(r_A, r_skb, offsetof(struct sk_buff, len));
 			break;
-		case BPF_LDX | BPF_W | BPF_ABS: /* A = *((u32 *)(seccomp_data + K)); */
-			PPC_LWZ_OFFS(r_A, r_skb, K);
-			break;
 		case BPF_LDX | BPF_W | BPF_LEN: /* X = skb->len; */
 			PPC_LWZ_OFFS(r_X, r_skb, offsetof(struct sk_buff, len));
 			break;
@@ -665,17 +662,16 @@ void bpf_jit_compile(struct bpf_prog *fp)
 		 */
 		bpf_jit_dump(flen, proglen, pass, code_base);
 
-	bpf_flush_icache(code_base, code_base + (proglen/4));
-
+	if (image) {
+		bpf_flush_icache(code_base, code_base + (proglen/4));
 #ifdef CONFIG_PPC64
-	/* Function descriptor nastiness: Address + TOC */
-	((u64 *)image)[0] = (u64)code_base;
-	((u64 *)image)[1] = local_paca->kernel_toc;
+		/* Function descriptor nastiness: Address + TOC */
+		((u64 *)image)[0] = (u64)code_base;
+		((u64 *)image)[1] = local_paca->kernel_toc;
 #endif
-
-	fp->bpf_func = (void *)image;
-	fp->jited = 1;
-
+		fp->bpf_func = (void *)image;
+		fp->jited = 1;
+	}
 out:
 	kfree(addrs);
 	return;

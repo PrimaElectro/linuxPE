@@ -30,7 +30,6 @@
 #include <linux/math64.h>
 #include <linux/vmalloc.h>
 #include <linux/io.h>
-#include <linux/nospec.h>
 
 #include <sound/core.h>
 #include <sound/control.h>
@@ -794,8 +793,11 @@ static int hdsp_get_iobox_version (struct hdsp *hdsp)
 
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S200 | HDSP_PROGRAM);
 		hdsp_write (hdsp, HDSP_fifoData, 0);
-		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) < 0)
-			goto set_multi;
+		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) < 0) {
+			hdsp->io_type = Multiface;
+			dev_info(hdsp->card->dev, "Multiface found\n");
+			return 0;
+		}
 
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S_LOAD);
 		hdsp_write(hdsp, HDSP_fifoData, 0);
@@ -808,14 +810,20 @@ static int hdsp_get_iobox_version (struct hdsp *hdsp)
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S300);
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S_LOAD);
 		hdsp_write(hdsp, HDSP_fifoData, 0);
-		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) == 0)
-			goto set_multi;
+		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) == 0) {
+			hdsp->io_type = Multiface;
+			dev_info(hdsp->card->dev, "Multiface found\n");
+			return 0;
+		}
 
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S300);
 		hdsp_write(hdsp, HDSP_control2Reg, HDSP_S_LOAD);
 		hdsp_write(hdsp, HDSP_fifoData, 0);
-		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) < 0)
-			goto set_multi;
+		if (hdsp_fifo_wait(hdsp, 0, HDSP_SHORT_WAIT) < 0) {
+			hdsp->io_type = Multiface;
+			dev_info(hdsp->card->dev, "Multiface found\n");
+			return 0;
+		}
 
 		hdsp->io_type = RPM;
 		dev_info(hdsp->card->dev, "RPM found\n");
@@ -829,11 +837,6 @@ static int hdsp_get_iobox_version (struct hdsp *hdsp)
 		else
 			hdsp->io_type = Digiface;
 	}
-	return 0;
-
-set_multi:
-	hdsp->io_type = Multiface;
-	dev_info(hdsp->card->dev, "Multiface found\n");
 	return 0;
 }
 
@@ -1507,14 +1510,14 @@ static int snd_hdsp_midi_output_close(struct snd_rawmidi_substream *substream)
 	return 0;
 }
 
-static const struct snd_rawmidi_ops snd_hdsp_midi_output =
+static struct snd_rawmidi_ops snd_hdsp_midi_output =
 {
 	.open =		snd_hdsp_midi_output_open,
 	.close =	snd_hdsp_midi_output_close,
 	.trigger =	snd_hdsp_midi_output_trigger,
 };
 
-static const struct snd_rawmidi_ops snd_hdsp_midi_input =
+static struct snd_rawmidi_ops snd_hdsp_midi_input =
 {
 	.open =		snd_hdsp_midi_input_open,
 	.close =	snd_hdsp_midi_input_close,
@@ -3910,73 +3913,42 @@ static char *hdsp_channel_buffer_location(struct hdsp *hdsp,
 		return hdsp->playback_buffer + (mapped_channel * HDSP_CHANNEL_BUFFER_BYTES);
 }
 
-static int snd_hdsp_playback_copy(struct snd_pcm_substream *substream,
-				  int channel, unsigned long pos,
-				  void __user *src, unsigned long count)
+static int snd_hdsp_playback_copy(struct snd_pcm_substream *substream, int channel,
+				  snd_pcm_uframes_t pos, void __user *src, snd_pcm_uframes_t count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
 	char *channel_buf;
 
-	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES))
+	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES / 4))
 		return -EINVAL;
 
 	channel_buf = hdsp_channel_buffer_location (hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
 		return -EIO;
-	if (copy_from_user(channel_buf + pos, src, count))
+	if (copy_from_user(channel_buf + pos * 4, src, count * 4))
 		return -EFAULT;
-	return 0;
+	return count;
 }
 
-static int snd_hdsp_playback_copy_kernel(struct snd_pcm_substream *substream,
-					 int channel, unsigned long pos,
-					 void *src, unsigned long count)
+static int snd_hdsp_capture_copy(struct snd_pcm_substream *substream, int channel,
+				 snd_pcm_uframes_t pos, void __user *dst, snd_pcm_uframes_t count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
 	char *channel_buf;
 
-	channel_buf = hdsp_channel_buffer_location(hdsp, substream->pstr->stream, channel);
-	if (snd_BUG_ON(!channel_buf))
-		return -EIO;
-	memcpy(channel_buf + pos, src, count);
-	return 0;
-}
-
-static int snd_hdsp_capture_copy(struct snd_pcm_substream *substream,
-				 int channel, unsigned long pos,
-				 void __user *dst, unsigned long count)
-{
-	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
-
-	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES))
+	if (snd_BUG_ON(pos + count > HDSP_CHANNEL_BUFFER_BYTES / 4))
 		return -EINVAL;
 
 	channel_buf = hdsp_channel_buffer_location (hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
 		return -EIO;
-	if (copy_to_user(dst, channel_buf + pos, count))
+	if (copy_to_user(dst, channel_buf + pos * 4, count * 4))
 		return -EFAULT;
-	return 0;
+	return count;
 }
 
-static int snd_hdsp_capture_copy_kernel(struct snd_pcm_substream *substream,
-					int channel, unsigned long pos,
-					void *dst, unsigned long count)
-{
-	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	char *channel_buf;
-
-	channel_buf = hdsp_channel_buffer_location(hdsp, substream->pstr->stream, channel);
-	if (snd_BUG_ON(!channel_buf))
-		return -EIO;
-	memcpy(dst, channel_buf + pos, count);
-	return 0;
-}
-
-static int snd_hdsp_hw_silence(struct snd_pcm_substream *substream,
-			       int channel, unsigned long pos,
-			       unsigned long count)
+static int snd_hdsp_hw_silence(struct snd_pcm_substream *substream, int channel,
+				  snd_pcm_uframes_t pos, snd_pcm_uframes_t count)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
 	char *channel_buf;
@@ -3984,8 +3956,8 @@ static int snd_hdsp_hw_silence(struct snd_pcm_substream *substream,
 	channel_buf = hdsp_channel_buffer_location (hdsp, substream->pstr->stream, channel);
 	if (snd_BUG_ON(!channel_buf))
 		return -EIO;
-	memset(channel_buf + pos, 0, count);
-	return 0;
+	memset(channel_buf + pos * 4, 0, count * 4);
+	return count;
 }
 
 static int snd_hdsp_reset(struct snd_pcm_substream *substream)
@@ -4093,16 +4065,15 @@ static int snd_hdsp_channel_info(struct snd_pcm_substream *substream,
 				    struct snd_pcm_channel_info *info)
 {
 	struct hdsp *hdsp = snd_pcm_substream_chip(substream);
-	unsigned int channel = info->channel;
+	int mapped_channel;
 
-	if (snd_BUG_ON(channel >= hdsp->max_channels))
-		return -EINVAL;
-	channel = array_index_nospec(channel, hdsp->max_channels);
-
-	if (hdsp->channel_map[channel] < 0)
+	if (snd_BUG_ON(info->channel >= hdsp->max_channels))
 		return -EINVAL;
 
-	info->offset = hdsp->channel_map[channel] * HDSP_CHANNEL_BUFFER_BYTES;
+	if ((mapped_channel = hdsp->channel_map[info->channel]) < 0)
+		return -EINVAL;
+
+	info->offset = mapped_channel * HDSP_CHANNEL_BUFFER_BYTES;
 	info->first = 0;
 	info->step = 32;
 	return 0;
@@ -4209,7 +4180,7 @@ static int snd_hdsp_prepare(struct snd_pcm_substream *substream)
 	return result;
 }
 
-static const struct snd_pcm_hardware snd_hdsp_playback_subinfo =
+static struct snd_pcm_hardware snd_hdsp_playback_subinfo =
 {
 	.info =			(SNDRV_PCM_INFO_MMAP |
 				 SNDRV_PCM_INFO_MMAP_VALID |
@@ -4239,7 +4210,7 @@ static const struct snd_pcm_hardware snd_hdsp_playback_subinfo =
 	.fifo_size =		0
 };
 
-static const struct snd_pcm_hardware snd_hdsp_capture_subinfo =
+static struct snd_pcm_hardware snd_hdsp_capture_subinfo =
 {
 	.info =			(SNDRV_PCM_INFO_MMAP |
 				 SNDRV_PCM_INFO_MMAP_VALID |
@@ -4268,17 +4239,17 @@ static const struct snd_pcm_hardware snd_hdsp_capture_subinfo =
 	.fifo_size =		0
 };
 
-static const unsigned int hdsp_period_sizes[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192 };
+static unsigned int hdsp_period_sizes[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192 };
 
-static const struct snd_pcm_hw_constraint_list hdsp_hw_constraints_period_sizes = {
+static struct snd_pcm_hw_constraint_list hdsp_hw_constraints_period_sizes = {
 	.count = ARRAY_SIZE(hdsp_period_sizes),
 	.list = hdsp_period_sizes,
 	.mask = 0
 };
 
-static const unsigned int hdsp_9632_sample_rates[] = { 32000, 44100, 48000, 64000, 88200, 96000, 128000, 176400, 192000 };
+static unsigned int hdsp_9632_sample_rates[] = { 32000, 44100, 48000, 64000, 88200, 96000, 128000, 176400, 192000 };
 
-static const struct snd_pcm_hw_constraint_list hdsp_hw_constraints_9632_sample_rates = {
+static struct snd_pcm_hw_constraint_list hdsp_hw_constraints_9632_sample_rates = {
 	.count = ARRAY_SIZE(hdsp_9632_sample_rates),
 	.list = hdsp_9632_sample_rates,
 	.mask = 0
@@ -4898,9 +4869,8 @@ static const struct snd_pcm_ops snd_hdsp_playback_ops = {
 	.prepare =	snd_hdsp_prepare,
 	.trigger =	snd_hdsp_trigger,
 	.pointer =	snd_hdsp_hw_pointer,
-	.copy_user =	snd_hdsp_playback_copy,
-	.copy_kernel =	snd_hdsp_playback_copy_kernel,
-	.fill_silence =	snd_hdsp_hw_silence,
+	.copy =		snd_hdsp_playback_copy,
+	.silence =	snd_hdsp_hw_silence,
 };
 
 static const struct snd_pcm_ops snd_hdsp_capture_ops = {
@@ -4911,8 +4881,7 @@ static const struct snd_pcm_ops snd_hdsp_capture_ops = {
 	.prepare =	snd_hdsp_prepare,
 	.trigger =	snd_hdsp_trigger,
 	.pointer =	snd_hdsp_hw_pointer,
-	.copy_user =	snd_hdsp_capture_copy,
-	.copy_kernel =	snd_hdsp_capture_copy_kernel,
+	.copy =		snd_hdsp_capture_copy,
 };
 
 static int snd_hdsp_create_hwdep(struct snd_card *card, struct hdsp *hdsp)
@@ -5379,16 +5348,17 @@ static int snd_hdsp_probe(struct pci_dev *pci,
 	card->private_free = snd_hdsp_card_free;
 	hdsp->dev = dev;
 	hdsp->pci = pci;
-	err = snd_hdsp_create(card, hdsp);
-	if (err)
-		goto free_card;
+
+	if ((err = snd_hdsp_create(card, hdsp)) < 0) {
+		snd_card_free(card);
+		return err;
+	}
 
 	strcpy(card->shortname, "Hammerfall DSP");
 	sprintf(card->longname, "%s at 0x%lx, irq %d", hdsp->card_name,
 		hdsp->port, hdsp->irq);
-	err = snd_card_register(card);
-	if (err) {
-free_card:
+
+	if ((err = snd_card_register(card)) < 0) {
 		snd_card_free(card);
 		return err;
 	}

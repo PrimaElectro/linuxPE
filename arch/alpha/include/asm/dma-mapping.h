@@ -1,10 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ALPHA_DMA_MAPPING_H
 #define _ALPHA_DMA_MAPPING_H
 
-extern const struct dma_map_ops *dma_ops;
+extern struct dma_map_ops *dma_ops;
 
-static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
+static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 {
 	return dma_ops;
 }

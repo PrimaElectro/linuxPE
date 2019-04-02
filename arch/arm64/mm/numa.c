@@ -35,7 +35,7 @@ static int cpu_to_node_map[NR_CPUS] = { [0 ... NR_CPUS-1] = NUMA_NO_NODE };
 
 static int numa_distance_cnt;
 static u8 *numa_distance;
-bool numa_off;
+static bool numa_off;
 
 static __init int numa_parse_early_param(char *opt)
 {
@@ -208,6 +208,8 @@ int __init numa_add_memblk(int nid, u64 start, u64 end)
 	}
 
 	node_set(nid, numa_nodes_parsed);
+	pr_info("Adding memblock [0x%llx - 0x%llx] on node %d\n",
+			start, (end - 1), nid);
 	return ret;
 }
 
@@ -221,7 +223,10 @@ static void __init setup_node_data(int nid, u64 start_pfn, u64 end_pfn)
 	void *nd;
 	int tnid;
 
-	if (start_pfn >= end_pfn)
+	if (start_pfn < end_pfn)
+		pr_info("Initmem setup node %d [mem %#010Lx-%#010Lx]\n", nid,
+			start_pfn << PAGE_SHIFT, (end_pfn << PAGE_SHIFT) - 1);
+	else
 		pr_info("Initmem setup node %d [<memory-less node>]\n", nid);
 
 	nd_pa = memblock_alloc_try_nid(nd_size, SMP_CACHE_BYTES, nid);

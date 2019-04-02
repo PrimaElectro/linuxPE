@@ -262,8 +262,7 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 	else
 		prev = &card->tuples;
 
-	if (*prev)
-		return -EINVAL;
+	BUG_ON(*prev);
 
 	do {
 		unsigned char tpl_code, tpl_link;

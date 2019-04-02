@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_COMPAT_H
 #define _ASM_COMPAT_H
 /*
@@ -86,6 +85,7 @@ struct compat_flock {
 	compat_off_t	l_len;
 	s32		l_sysid;
 	compat_pid_t	l_pid;
+	short		__unused;
 	s32		pad[4];
 };
 
@@ -199,6 +199,7 @@ typedef struct compat_siginfo {
 } compat_siginfo_t;
 
 #define COMPAT_OFF_T_MAX	0x7fffffff
+#define COMPAT_LOFF_T_MAX	0x7fffffffffffffffL
 
 /*
  * A pointer passed in from user mode. This should not

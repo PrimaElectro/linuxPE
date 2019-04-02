@@ -122,8 +122,7 @@ static void netup_unidvb_queue_cleanup(struct netup_dma *dma);
 
 static struct cxd2841er_config demod_config = {
 	.i2c_addr = 0xc8,
-	.xtal = SONY_XTAL_24000,
-	.flags = CXD2841ER_USE_GATECTRL | CXD2841ER_ASCOT
+	.xtal = SONY_XTAL_24000
 };
 
 static struct horus3a_config horus3a_conf = {
@@ -664,8 +663,9 @@ static int netup_unidvb_dma_init(struct netup_unidvb_dev *ndev, int num)
 	spin_lock_init(&dma->lock);
 	INIT_WORK(&dma->work, netup_unidvb_dma_worker);
 	INIT_LIST_HEAD(&dma->free_buffers);
-	setup_timer(&dma->timeout, netup_unidvb_dma_timeout,
-		    (unsigned long)dma);
+	dma->timeout.function = netup_unidvb_dma_timeout;
+	dma->timeout.data = (unsigned long)dma;
+	init_timer(&dma->timeout);
 	dma->ring_buffer_size = ndev->dma_size / 2;
 	dma->addr_virt = ndev->dma_virt + dma->ring_buffer_size * num;
 	dma->addr_phys = (dma_addr_t)((u64)ndev->dma_phys +
@@ -1014,7 +1014,7 @@ static void netup_unidvb_finidev(struct pci_dev *pci_dev)
 }
 
 
-static const struct pci_device_id netup_unidvb_pci_tbl[] = {
+static struct pci_device_id netup_unidvb_pci_tbl[] = {
 	{ PCI_DEVICE(0x1b55, 0x18f6) }, /* hw rev. 1.3 */
 	{ PCI_DEVICE(0x1b55, 0x18f7) }, /* hw rev. 1.4 */
 	{ 0, }
@@ -1030,4 +1030,15 @@ static struct pci_driver netup_unidvb_pci_driver = {
 	.resume   = NULL,
 };
 
-module_pci_driver(netup_unidvb_pci_driver);
+static int __init netup_unidvb_init(void)
+{
+	return pci_register_driver(&netup_unidvb_pci_driver);
+}
+
+static void __exit netup_unidvb_fini(void)
+{
+	pci_unregister_driver(&netup_unidvb_pci_driver);
+}
+
+module_init(netup_unidvb_init);
+module_exit(netup_unidvb_fini);

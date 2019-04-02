@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/proc/inode.c
  *
@@ -25,7 +24,7 @@
 #include <linux/mount.h>
 #include <linux/magic.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "internal.h"
 
@@ -44,11 +43,10 @@ static void proc_evict_inode(struct inode *inode)
 	de = PDE(inode);
 	if (de)
 		pde_put(de);
-
 	head = PROC_I(inode)->sysctl;
 	if (head) {
 		RCU_INIT_POINTER(PROC_I(inode)->sysctl, NULL);
-		proc_sys_evict_inode(inode, head);
+		sysctl_head_put(head);
 	}
 }
 
@@ -59,7 +57,7 @@ static struct inode *proc_alloc_inode(struct super_block *sb)
 	struct proc_inode *ei;
 	struct inode *inode;
 
-	ei = kmem_cache_alloc(proc_inode_cachep, GFP_KERNEL);
+	ei = (struct proc_inode *)kmem_cache_alloc(proc_inode_cachep, GFP_KERNEL);
 	if (!ei)
 		return NULL;
 	ei->pid = NULL;
@@ -108,7 +106,7 @@ static int proc_show_options(struct seq_file *seq, struct dentry *root)
 
 	if (!gid_eq(pid->pid_gid, GLOBAL_ROOT_GID))
 		seq_printf(seq, ",gid=%u", from_kgid_munged(&init_user_ns, pid->pid_gid));
-	if (pid->hide_pid != HIDEPID_OFF)
+	if (pid->hide_pid != 0)
 		seq_printf(seq, ",hidepid=%u", pid->hide_pid);
 
 	return 0;
@@ -140,16 +138,6 @@ static void unuse_pde(struct proc_dir_entry *pde)
 /* pde is locked */
 static void close_pdeo(struct proc_dir_entry *pde, struct pde_opener *pdeo)
 {
-	/*
-	 * close() (proc_reg_release()) can't delete an entry and proceed:
-	 * ->release hook needs to be available at the right moment.
-	 *
-	 * rmmod (remove_proc_entry() et al) can't delete an entry and proceed:
-	 * "struct file" needs to be available at the right moment.
-	 *
-	 * Therefore, first process to enter this function does ->release() and
-	 * signals its completion to the other process which does nothing.
-	 */
 	if (pdeo->closing) {
 		/* somebody else is doing that, just wait */
 		DECLARE_COMPLETION_ONSTACK(c);
@@ -159,13 +147,12 @@ static void close_pdeo(struct proc_dir_entry *pde, struct pde_opener *pdeo)
 		spin_lock(&pde->pde_unload_lock);
 	} else {
 		struct file *file;
-		pdeo->closing = true;
+		pdeo->closing = 1;
 		spin_unlock(&pde->pde_unload_lock);
 		file = pdeo->file;
 		pde->proc_fops->release(file_inode(file), file);
 		spin_lock(&pde->pde_unload_lock);
-		/* After ->release. */
-		list_del(&pdeo->lh);
+		list_del_init(&pdeo->lh);
 		if (pdeo->c)
 			complete(pdeo->c);
 		kfree(pdeo);
@@ -179,8 +166,6 @@ void proc_entry_rundown(struct proc_dir_entry *de)
 	de->pde_unload_completion = &c;
 	if (atomic_add_return(BIAS, &de->in_use) != BIAS)
 		wait_for_completion(&c);
-
-	/* ->pde_openers list can't grow from now on. */
 
 	spin_lock(&de->pde_unload_lock);
 	while (!list_empty(&de->pde_openers)) {
@@ -327,17 +312,16 @@ static int proc_reg_open(struct inode *inode, struct file *file)
 	struct pde_opener *pdeo;
 
 	/*
-	 * Ensure that
-	 * 1) PDE's ->release hook will be called no matter what
-	 *    either normally by close()/->release, or forcefully by
-	 *    rmmod/remove_proc_entry.
+	 * What for, you ask? Well, we can have open, rmmod, remove_proc_entry
+	 * sequence. ->release won't be called because ->proc_fops will be
+	 * cleared. Depending on complexity of ->release, consequences vary.
 	 *
-	 * 2) rmmod isn't blocked by opening file in /proc and sitting on
-	 *    the descriptor (including "rmmod foo </proc/foo" scenario).
-	 *
-	 * Save every "struct file" with custom ->release hook.
+	 * We can't wait for mercy when close will be done for real, it's
+	 * deadlockable: rmmod foo </proc/foo . So, we're going to do ->release
+	 * by hand in remove_proc_entry(). For this, save opener's credentials
+	 * for later.
 	 */
-	pdeo = kmalloc(sizeof(struct pde_opener), GFP_KERNEL);
+	pdeo = kzalloc(sizeof(struct pde_opener), GFP_KERNEL);
 	if (!pdeo)
 		return -ENOMEM;
 
@@ -354,8 +338,7 @@ static int proc_reg_open(struct inode *inode, struct file *file)
 	if (rv == 0 && release) {
 		/* To know what to release. */
 		pdeo->file = file;
-		pdeo->closing = false;
-		pdeo->c = NULL;
+		/* Strictly for "too late" ->release in proc_reg_release(). */
 		spin_lock(&pde->pde_unload_lock);
 		list_add(&pdeo->lh, &pde->pde_openers);
 		spin_unlock(&pde->pde_unload_lock);
@@ -427,6 +410,7 @@ static const char *proc_get_link(struct dentry *dentry,
 }
 
 const struct inode_operations proc_link_inode_operations = {
+	.readlink	= generic_readlink,
 	.get_link	= proc_get_link,
 };
 

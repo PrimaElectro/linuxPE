@@ -50,7 +50,6 @@ gk104_fifo_gpfifo_kick(struct gk104_fifo_chan *chan)
 	) < 0) {
 		nvkm_error(subdev, "channel %d [%s] kick timeout\n",
 			   chan->base.chid, client->name);
-		nvkm_fifo_recover_chan(&fifo->base, chan->base.chid);
 		ret = -ETIMEDOUT;
 	}
 	mutex_unlock(&subdev->mutex);
@@ -214,7 +213,7 @@ gk104_fifo_gpfifo_func = {
 	.dtor = gk104_fifo_gpfifo_dtor,
 	.init = gk104_fifo_gpfifo_init,
 	.fini = gk104_fifo_gpfifo_fini,
-	.ntfy = gf100_fifo_chan_ntfy,
+	.ntfy = g84_fifo_chan_ntfy,
 	.engine_ctor = gk104_fifo_gpfifo_engine_ctor,
 	.engine_dtor = gk104_fifo_gpfifo_engine_dtor,
 	.engine_init = gk104_fifo_gpfifo_engine_init,

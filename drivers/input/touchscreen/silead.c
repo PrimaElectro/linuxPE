@@ -29,7 +29,6 @@
 #include <linux/input/touchscreen.h>
 #include <linux/pm.h>
 #include <linux/irq.h>
-#include <linux/regulator/consumer.h>
 
 #include <asm/unaligned.h>
 
@@ -74,7 +73,6 @@ struct silead_ts_data {
 	struct i2c_client *client;
 	struct gpio_desc *gpio_power;
 	struct input_dev *input;
-	struct regulator_bulk_data regulators[2];
 	char fw_name[64];
 	struct touchscreen_properties prop;
 	u32 max_fingers;
@@ -435,13 +433,6 @@ static int silead_ts_set_default_fw_name(struct silead_ts_data *data,
 }
 #endif
 
-static void silead_disable_regulator(void *arg)
-{
-	struct silead_ts_data *data = arg;
-
-	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
-}
-
 static int silead_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
@@ -473,26 +464,6 @@ static int silead_ts_probe(struct i2c_client *client,
 	/* We must have the IRQ provided by DT or ACPI subsytem */
 	if (client->irq <= 0)
 		return -ENODEV;
-
-	data->regulators[0].supply = "vddio";
-	data->regulators[1].supply = "avdd";
-	error = devm_regulator_bulk_get(dev, ARRAY_SIZE(data->regulators),
-					data->regulators);
-	if (error)
-		return error;
-
-	/*
-	 * Enable regulators at probe and disable them at remove, we need
-	 * to keep the chip powered otherwise it forgets its firmware.
-	 */
-	error = regulator_bulk_enable(ARRAY_SIZE(data->regulators),
-				      data->regulators);
-	if (error)
-		return error;
-
-	error = devm_add_action_or_reset(dev, silead_disable_regulator, data);
-	if (error)
-		return error;
 
 	/* Power GPIO pin */
 	data->gpio_power = devm_gpiod_get_optional(dev, "power", GPIOD_OUT_LOW);
@@ -526,7 +497,6 @@ static int __maybe_unused silead_ts_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 
-	disable_irq(client->irq);
 	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	return 0;
 }
@@ -551,8 +521,6 @@ static int __maybe_unused silead_ts_resume(struct device *dev)
 		dev_err(dev, "Resume error, status: 0x%02x\n", status);
 		return -ENODEV;
 	}
-
-	enable_irq(client->irq);
 
 	return 0;
 }
@@ -583,25 +551,12 @@ static const struct acpi_device_id silead_ts_acpi_match[] = {
 MODULE_DEVICE_TABLE(acpi, silead_ts_acpi_match);
 #endif
 
-#ifdef CONFIG_OF
-static const struct of_device_id silead_ts_of_match[] = {
-	{ .compatible = "silead,gsl1680" },
-	{ .compatible = "silead,gsl1688" },
-	{ .compatible = "silead,gsl3670" },
-	{ .compatible = "silead,gsl3675" },
-	{ .compatible = "silead,gsl3692" },
-	{ },
-};
-MODULE_DEVICE_TABLE(of, silead_ts_of_match);
-#endif
-
 static struct i2c_driver silead_ts_driver = {
 	.probe = silead_ts_probe,
 	.id_table = silead_ts_id,
 	.driver = {
 		.name = SILEAD_TS_NAME,
 		.acpi_match_table = ACPI_PTR(silead_ts_acpi_match),
-		.of_match_table = of_match_ptr(silead_ts_of_match),
 		.pm = &silead_ts_pm,
 	},
 };

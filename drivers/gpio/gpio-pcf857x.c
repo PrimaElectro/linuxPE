@@ -20,7 +20,7 @@
 
 #include <linux/gpio.h>
 #include <linux/i2c.h>
-#include <linux/platform_data/pcf857x.h>
+#include <linux/i2c/pcf857x.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
@@ -46,6 +46,7 @@ static const struct i2c_device_id pcf857x_id[] = {
 	{ "pca9675", 16 },
 	{ "max7328", 8 },
 	{ "max7329", 8 },
+	{ "tca9554", 8 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, pcf857x_id);
@@ -65,6 +66,7 @@ static const struct of_device_id pcf857x_of_table[] = {
 	{ .compatible = "nxp,pca9675" },
 	{ .compatible = "maxim,max7328" },
 	{ .compatible = "maxim,max7329" },
+	{ .compatible = "ti,tca9554" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pcf857x_of_table);
@@ -84,7 +86,6 @@ MODULE_DEVICE_TABLE(of, pcf857x_of_table);
  */
 struct pcf857x {
 	struct gpio_chip	chip;
-	struct irq_chip		irqchip;
 	struct i2c_client	*client;
 	struct mutex		lock;		/* protect 'out' */
 	unsigned		out;		/* software latch */
@@ -253,6 +254,18 @@ static void pcf857x_irq_bus_sync_unlock(struct irq_data *data)
 	mutex_unlock(&gpio->lock);
 }
 
+static struct irq_chip pcf857x_irq_chip = {
+	.name		= "pcf857x",
+	.irq_enable	= pcf857x_irq_enable,
+	.irq_disable	= pcf857x_irq_disable,
+	.irq_ack	= noop,
+	.irq_mask	= noop,
+	.irq_unmask	= noop,
+	.irq_set_wake	= pcf857x_irq_set_wake,
+	.irq_bus_lock		= pcf857x_irq_bus_lock,
+	.irq_bus_sync_unlock	= pcf857x_irq_bus_sync_unlock,
+};
+
 /*-------------------------------------------------------------------------*/
 
 static int pcf857x_probe(struct i2c_client *client,
@@ -365,19 +378,9 @@ static int pcf857x_probe(struct i2c_client *client,
 
 	/* Enable irqchip if we have an interrupt */
 	if (client->irq) {
-		gpio->irqchip.name = "pcf857x",
-		gpio->irqchip.irq_enable = pcf857x_irq_enable,
-		gpio->irqchip.irq_disable = pcf857x_irq_disable,
-		gpio->irqchip.irq_ack = noop,
-		gpio->irqchip.irq_mask = noop,
-		gpio->irqchip.irq_unmask = noop,
-		gpio->irqchip.irq_set_wake = pcf857x_irq_set_wake,
-		gpio->irqchip.irq_bus_lock = pcf857x_irq_bus_lock,
-		gpio->irqchip.irq_bus_sync_unlock = pcf857x_irq_bus_sync_unlock,
-		status = gpiochip_irqchip_add_nested(&gpio->chip,
-						     &gpio->irqchip,
-						     0, handle_level_irq,
-						     IRQ_TYPE_NONE);
+		status = gpiochip_irqchip_add(&gpio->chip, &pcf857x_irq_chip,
+					      0, handle_level_irq,
+					      IRQ_TYPE_NONE);
 		if (status) {
 			dev_err(&client->dev, "cannot add irqchip\n");
 			goto fail;
@@ -390,8 +393,8 @@ static int pcf857x_probe(struct i2c_client *client,
 		if (status)
 			goto fail;
 
-		gpiochip_set_nested_irqchip(&gpio->chip, &gpio->irqchip,
-					    client->irq);
+		gpiochip_set_chained_irqchip(&gpio->chip, &pcf857x_irq_chip,
+					     client->irq, NULL);
 		gpio->irq_parent = client->irq;
 	}
 

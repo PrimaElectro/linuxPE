@@ -24,8 +24,6 @@
 #include <linux/kdebug.h>
 #include <linux/kgdb.h>
 #include <linux/kprobes.h>
-#include <linux/sched/task_stack.h>
-
 #include <asm/debug-monitors.h>
 #include <asm/insn.h>
 #include <asm/traps.h>
@@ -249,9 +247,6 @@ NOKPROBE_SYMBOL(kgdb_compiled_brk_fn);
 
 static int kgdb_step_brk_fn(struct pt_regs *regs, unsigned int esr)
 {
-	if (!kgdb_single_step)
-		return DBG_HOOK_ERROR;
-
 	kgdb_handle_exception(1, SIGTRAP, 0, regs);
 	return 0;
 }

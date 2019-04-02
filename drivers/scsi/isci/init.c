@@ -166,7 +166,7 @@ static struct scsi_host_template isci_sht = {
 	.use_clustering			= ENABLE_CLUSTERING,
 	.eh_abort_handler		= sas_eh_abort_handler,
 	.eh_device_reset_handler        = sas_eh_device_reset_handler,
-	.eh_target_reset_handler        = sas_eh_target_reset_handler,
+	.eh_bus_reset_handler           = sas_eh_bus_reset_handler,
 	.target_destroy			= sas_target_destroy,
 	.ioctl				= sas_ioctl,
 	.shost_attrs			= isci_host_attrs,
@@ -272,6 +272,7 @@ static void isci_unregister(struct isci_host *isci_host)
 		return;
 
 	shost = to_shost(isci_host);
+	scsi_remove_host(shost);
 	sas_unregister_ha(&isci_host->sas_ha);
 
 	sas_remove_host(shost);
@@ -349,12 +350,16 @@ static int isci_setup_interrupts(struct pci_dev *pdev)
 	 */
 	num_msix = num_controllers(pdev) * SCI_NUM_MSI_X_INT;
 
-	err = pci_alloc_irq_vectors(pdev, num_msix, num_msix, PCI_IRQ_MSIX);
-	if (err < 0)
+	for (i = 0; i < num_msix; i++)
+		pci_info->msix_entries[i].entry = i;
+
+	err = pci_enable_msix_exact(pdev, pci_info->msix_entries, num_msix);
+	if (err)
 		goto intx;
 
 	for (i = 0; i < num_msix; i++) {
 		int id = i / SCI_NUM_MSI_X_INT;
+		struct msix_entry *msix = &pci_info->msix_entries[i];
 		irq_handler_t isr;
 
 		ihost = pci_info->hosts[id];
@@ -364,8 +369,8 @@ static int isci_setup_interrupts(struct pci_dev *pdev)
 		else
 			isr = isci_msix_isr;
 
-		err = devm_request_irq(&pdev->dev, pci_irq_vector(pdev, i),
-				isr, 0, DRV_NAME"-msix", ihost);
+		err = devm_request_irq(&pdev->dev, msix->vector, isr, 0,
+				       DRV_NAME"-msix", ihost);
 		if (!err)
 			continue;
 
@@ -373,19 +378,18 @@ static int isci_setup_interrupts(struct pci_dev *pdev)
 		while (i--) {
 			id = i / SCI_NUM_MSI_X_INT;
 			ihost = pci_info->hosts[id];
-			devm_free_irq(&pdev->dev, pci_irq_vector(pdev, i),
-					ihost);
+			msix = &pci_info->msix_entries[i];
+			devm_free_irq(&pdev->dev, msix->vector, ihost);
 		}
-		pci_free_irq_vectors(pdev);
+		pci_disable_msix(pdev);
 		goto intx;
 	}
 	return 0;
 
  intx:
 	for_each_isci_host(i, ihost, pdev) {
-		err = devm_request_irq(&pdev->dev, pci_irq_vector(pdev, 0),
-				isci_intx_isr, IRQF_SHARED, DRV_NAME"-intx",
-				ihost);
+		err = devm_request_irq(&pdev->dev, pdev->irq, isci_intx_isr,
+				       IRQF_SHARED, DRV_NAME"-intx", ihost);
 		if (err)
 			break;
 	}
@@ -591,13 +595,6 @@ static struct isci_host *isci_host_alloc(struct pci_dev *pdev, int id)
 	shost->max_lun = ~0;
 	shost->max_cmd_len = MAX_COMMAND_SIZE;
 
-	/* turn on DIF support */
-	scsi_host_set_prot(shost,
-			   SHOST_DIF_TYPE1_PROTECTION |
-			   SHOST_DIF_TYPE2_PROTECTION |
-			   SHOST_DIF_TYPE3_PROTECTION);
-	scsi_host_set_guard(shost, SHOST_DIX_GUARD_CRC);
-
 	err = scsi_add_host(shost, &pdev->dev);
 	if (err)
 		goto err_shost;
@@ -685,6 +682,13 @@ static int isci_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			goto err_host_alloc;
 		}
 		pci_info->hosts[i] = h;
+
+		/* turn on DIF support */
+		scsi_host_set_prot(to_shost(h),
+				   SHOST_DIF_TYPE1_PROTECTION |
+				   SHOST_DIF_TYPE2_PROTECTION |
+				   SHOST_DIF_TYPE3_PROTECTION);
+		scsi_host_set_guard(to_shost(h), SHOST_DIX_GUARD_CRC);
 	}
 
 	err = isci_setup_interrupts(pdev);

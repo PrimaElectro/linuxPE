@@ -31,8 +31,6 @@
  * WOWL_GTK: (WOWL) GTK rekeying offload
  * WOWL_ARP_ND: ARP and Neighbor Discovery offload support during WOWL.
  * MFP: 802.11w Management Frame Protection.
- * GSCAN: enhanced scan offload feature.
- * FWSUP: Firmware supplicant.
  */
 #define BRCMF_FEAT_LIST \
 	BRCMF_FEAT_DEF(MBSS) \
@@ -46,9 +44,7 @@
 	BRCMF_FEAT_DEF(WOWL_ND) \
 	BRCMF_FEAT_DEF(WOWL_GTK) \
 	BRCMF_FEAT_DEF(WOWL_ARP_ND) \
-	BRCMF_FEAT_DEF(MFP) \
-	BRCMF_FEAT_DEF(GSCAN) \
-	BRCMF_FEAT_DEF(FWSUP)
+	BRCMF_FEAT_DEF(MFP)
 
 /*
  * Quirks:

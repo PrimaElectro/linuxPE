@@ -179,7 +179,6 @@ my $localversion;
 my $iteration = 0;
 my $successes = 0;
 my $stty_orig;
-my $run_command_status = 0;
 
 my $bisect_good;
 my $bisect_bad;
@@ -720,14 +719,14 @@ sub set_value {
 
     if ($buildonly && $lvalue =~ /^TEST_TYPE(\[.*\])?$/ && $prvalue ne "build") {
 	# Note if a test is something other than build, then we
-	# will need other mandatory options.
+	# will need other manditory options.
 	if ($prvalue ne "install") {
 	    # for bisect, we need to check BISECT_TYPE
 	    if ($prvalue ne "bisect") {
 		$buildonly = 0;
 	    }
 	} else {
-	    # install still limits some mandatory options.
+	    # install still limits some manditory options.
 	    $buildonly = 2;
 	}
     }
@@ -736,7 +735,7 @@ sub set_value {
 	if ($prvalue ne "install") {
 	    $buildonly = 0;
 	} else {
-	    # install still limits some mandatory options.
+	    # install still limits some manditory options.
 	    $buildonly = 2;
 	}
     }
@@ -1326,44 +1325,26 @@ sub wait_for_monitor;
 
 sub reboot {
     my ($time) = @_;
-    my $powercycle = 0;
 
-    # test if the machine can be connected to within 5 seconds
-    my $stat = run_ssh("echo check machine status", 5);
-    if (!$stat) {
-	doprint("power cycle\n");
-	$powercycle = 1;
-    }
+    # Make sure everything has been written to disk
+    run_ssh("sync");
 
-    if ($powercycle) {
-	run_command "$power_cycle";
-
+    if (defined($time)) {
 	start_monitor;
 	# flush out current monitor
 	# May contain the reboot success line
 	wait_for_monitor 1;
+    }
 
-    } else {
-	# Make sure everything has been written to disk
-	run_ssh("sync");
-
-	if (defined($time)) {
-	    start_monitor;
-	    # flush out current monitor
-	    # May contain the reboot success line
-	    wait_for_monitor 1;
-	}
-
-	# try to reboot normally
-	if (run_command $reboot) {
-	    if (defined($powercycle_after_reboot)) {
-		sleep $powercycle_after_reboot;
-		run_command "$power_cycle";
-	    }
-	} else {
-	    # nope? power cycle it.
+    # try to reboot normally
+    if (run_command $reboot) {
+	if (defined($powercycle_after_reboot)) {
+	    sleep $powercycle_after_reboot;
 	    run_command "$power_cycle";
 	}
+    } else {
+	# nope? power cycle it.
+	run_command "$power_cycle";
     }
 
     if (defined($time)) {
@@ -1429,10 +1410,6 @@ sub dodie {
     if ($monitor_cnt) {
 	    # restore terminal settings
 	    system("stty $stty_orig");
-    }
-
-    if (defined($post_test)) {
-	run_command $post_test;
     }
 
     die @_, "\n";
@@ -1647,6 +1624,10 @@ sub save_logs {
 
 sub fail {
 
+	if (defined($post_test)) {
+		run_command $post_test;
+	}
+
 	if ($die_on_failure) {
 		dodie @_;
 	}
@@ -1679,26 +1660,23 @@ sub fail {
 	    save_logs "fail", $store_failures;
         }
 
-	if (defined($post_test)) {
-		run_command $post_test;
-	}
-
 	return 1;
 }
 
 sub run_command {
-    my ($command, $redirect, $timeout) = @_;
+    my ($command, $redirect) = @_;
     my $start_time;
     my $end_time;
     my $dolog = 0;
     my $dord = 0;
     my $pid;
 
+    $start_time = time;
+
     $command =~ s/\$SSH_USER/$ssh_user/g;
     $command =~ s/\$MACHINE/$machine/g;
 
     doprint("$command ... ");
-    $start_time = time;
 
     $pid = open(CMD, "$command 2>&1 |") or
 	(fail "unable to exec $command" and return 0);
@@ -1715,30 +1693,13 @@ sub run_command {
 	$dord = 1;
     }
 
-    my $hit_timeout = 0;
-
-    while (1) {
-	my $fp = \*CMD;
-	if (defined($timeout)) {
-	    doprint "timeout = $timeout\n";
-	}
-	my $line = wait_for_input($fp, $timeout);
-	if (!defined($line)) {
-	    my $now = time;
-	    if (defined($timeout) && (($now - $start_time) >= $timeout)) {
-		doprint "Hit timeout of $timeout, killing process\n";
-		$hit_timeout = 1;
-		kill 9, $pid;
-	    }
-	    last;
-	}
-	print LOG $line if ($dolog);
-	print RD $line if ($dord);
+    while (<CMD>) {
+	print LOG if ($dolog);
+	print RD  if ($dord);
     }
 
     waitpid($pid, 0);
-    # shift 8 for real exit status
-    $run_command_status = $? >> 8;
+    my $failed = $?;
 
     close(CMD);
     close(LOG) if ($dolog);
@@ -1753,25 +1714,21 @@ sub run_command {
 	doprint "[$delta seconds] ";
     }
 
-    if ($hit_timeout) {
-	$run_command_status = 1;
-    }
-
-    if ($run_command_status) {
+    if ($failed) {
 	doprint "FAILED!\n";
     } else {
 	doprint "SUCCESS\n";
     }
 
-    return !$run_command_status;
+    return !$failed;
 }
 
 sub run_ssh {
-    my ($cmd, $timeout) = @_;
+    my ($cmd) = @_;
     my $cp_exec = $ssh_exec;
 
     $cp_exec =~ s/\$SSH_COMMAND/$cmd/g;
-    return run_command "$cp_exec", undef , $timeout;
+    return run_command "$cp_exec";
 }
 
 sub run_scp {
@@ -1880,7 +1837,6 @@ sub get_grub_index {
 sub wait_for_input
 {
     my ($fp, $time) = @_;
-    my $start_time;
     my $rin;
     my $rout;
     my $nr;
@@ -1896,22 +1852,17 @@ sub wait_for_input
     vec($rin, fileno($fp), 1) = 1;
     vec($rin, fileno(\*STDIN), 1) = 1;
 
-    $start_time = time;
-
     while (1) {
 	$nr = select($rout=$rin, undef, undef, $time);
 
-	last if ($nr <= 0);
+	if ($nr <= 0) {
+	    return undef;
+	}
 
 	# copy data from stdin to the console
 	if (vec($rout, fileno(\*STDIN), 1) == 1) {
-	    $nr = sysread(\*STDIN, $buf, 1000);
-	    syswrite($fp, $buf, $nr) if ($nr > 0);
-	}
-
-	# The timeout is based on time waiting for the fp data
-	if (vec($rout, fileno($fp), 1) != 1) {
-	    last if (defined($time) && (time - $start_time > $time));
+	    sysread(\*STDIN, $buf, 1000);
+	    syswrite($fp, $buf, 1000);
 	    next;
 	}
 
@@ -1923,11 +1874,12 @@ sub wait_for_input
 	    last if ($ch eq "\n");
 	}
 
-	last if (!length($line));
+	if (!length($line)) {
+	    return undef;
+	}
 
 	return $line;
     }
-    return undef;
 }
 
 sub reboot_to {
@@ -2537,6 +2489,10 @@ sub halt {
 sub success {
     my ($i) = @_;
 
+    if (defined($post_test)) {
+	run_command $post_test;
+    }
+
     $successes++;
 
     my $name = "";
@@ -2561,10 +2517,6 @@ sub success {
 	doprint "Reboot and wait $sleep_time seconds\n";
 	reboot_to_good $sleep_time;
     }
-
-    if (defined($post_test)) {
-	run_command $post_test;
-    }
 }
 
 sub answer_bisect {
@@ -2585,15 +2537,16 @@ sub answer_bisect {
 }
 
 sub child_run_test {
+    my $failed = 0;
 
     # child should have no power
     $reboot_on_error = 0;
     $poweroff_on_error = 0;
     $die_on_failure = 1;
 
-    run_command $run_test, $testlog;
+    run_command $run_test, $testlog or $failed = 1;
 
-    exit $run_command_status;
+    exit $failed;
 }
 
 my $child_done;
@@ -3377,6 +3330,7 @@ sub config_bisect {
     save_config \%good_configs, $good_config;
     save_config \%bad_configs, $bad_config;
 
+
     if (defined($config_bisect_check) && $config_bisect_check ne "0") {
 	if ($config_bisect_check ne "good") {
 	    doprint "Testing bad config\n";
@@ -4035,7 +3989,7 @@ sub make_min_config {
 		}
 	    }
 
-	    # Save off all the current mandatory configs
+	    # Save off all the current mandidory configs
 	    open (OUT, ">$temp_config")
 		or die "Can't write to $temp_config";
 	    foreach my $config (keys %keep_configs) {

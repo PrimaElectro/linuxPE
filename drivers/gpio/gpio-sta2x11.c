@@ -320,18 +320,13 @@ static irqreturn_t gsta_gpio_handler(int irq, void *dev_id)
 	return ret;
 }
 
-static int gsta_alloc_irq_chip(struct gsta_gpio *chip)
+static void gsta_alloc_irq_chip(struct gsta_gpio *chip)
 {
 	struct irq_chip_generic *gc;
 	struct irq_chip_type *ct;
-	int rv;
 
-	gc = devm_irq_alloc_generic_chip(chip->dev, KBUILD_MODNAME, 1,
-					 chip->irq_base,
-					 chip->reg_base, handle_simple_irq);
-	if (!gc)
-		return -ENOMEM;
-
+	gc = irq_alloc_generic_chip(KBUILD_MODNAME, 1, chip->irq_base,
+				     chip->reg_base, handle_simple_irq);
 	gc->private = chip;
 	ct = gc->chip_types;
 
@@ -340,11 +335,8 @@ static int gsta_alloc_irq_chip(struct gsta_gpio *chip)
 	ct->chip.irq_enable = gsta_irq_enable;
 
 	/* FIXME: this makes at most 32 interrupts. Request 0 by now */
-	rv = devm_irq_setup_generic_chip(chip->dev, gc,
-					 0 /* IRQ_MSK(GSTA_GPIO_PER_BLOCK) */,
-					 0, IRQ_NOREQUEST | IRQ_NOPROBE, 0);
-	if (rv)
-		return rv;
+	irq_setup_generic_chip(gc, 0 /* IRQ_MSK(GSTA_GPIO_PER_BLOCK) */, 0,
+			       IRQ_NOREQUEST | IRQ_NOPROBE, 0);
 
 	/* Set up all all 128 interrupts: code from setup_generic_chip */
 	{
@@ -358,8 +350,6 @@ static int gsta_alloc_irq_chip(struct gsta_gpio *chip)
 		}
 		gc->irq_cnt = i - gc->irq_base;
 	}
-
-	return 0;
 }
 
 /* The platform device used here is instantiated by the MFD device */
@@ -402,42 +392,43 @@ static int gsta_probe(struct platform_device *dev)
 			gsta_set_config(chip, i, gpio_pdata->pinconfig[i]);
 
 	/* 384 was used in previous code: be compatible for other drivers */
-	err = devm_irq_alloc_descs(&dev->dev, -1, 384,
-				   GSTA_NR_GPIO, NUMA_NO_NODE);
+	err = irq_alloc_descs(-1, 384, GSTA_NR_GPIO, NUMA_NO_NODE);
 	if (err < 0) {
 		dev_warn(&dev->dev, "sta2x11 gpio: Can't get irq base (%i)\n",
 			 -err);
 		return err;
 	}
 	chip->irq_base = err;
+	gsta_alloc_irq_chip(chip);
 
-	err = gsta_alloc_irq_chip(chip);
-	if (err)
-		return err;
-
-	err = devm_request_irq(&dev->dev, pdev->irq, gsta_gpio_handler,
-			       IRQF_SHARED, KBUILD_MODNAME, chip);
+	err = request_irq(pdev->irq, gsta_gpio_handler,
+			     IRQF_SHARED, KBUILD_MODNAME, chip);
 	if (err < 0) {
 		dev_err(&dev->dev, "sta2x11 gpio: Can't request irq (%i)\n",
 			-err);
-		return err;
+		goto err_free_descs;
 	}
 
 	err = devm_gpiochip_add_data(&dev->dev, &chip->gpio, chip);
 	if (err < 0) {
 		dev_err(&dev->dev, "sta2x11 gpio: Can't register (%i)\n",
 			-err);
-		return err;
+		goto err_free_irq;
 	}
 
 	platform_set_drvdata(dev, chip);
 	return 0;
+
+err_free_irq:
+	free_irq(pdev->irq, chip);
+err_free_descs:
+	irq_free_descs(chip->irq_base, GSTA_NR_GPIO);
+	return err;
 }
 
 static struct platform_driver sta2x11_gpio_platform_driver = {
 	.driver = {
 		.name	= "sta2x11-gpio",
-		.suppress_bind_attrs = true,
 	},
 	.probe = gsta_probe,
 };

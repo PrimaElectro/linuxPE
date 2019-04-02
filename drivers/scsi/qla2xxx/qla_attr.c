@@ -565,17 +565,47 @@ qla2x00_sysfs_read_sfp(struct file *filp, struct kobject *kobj,
 {
 	struct scsi_qla_host *vha = shost_priv(dev_to_shost(container_of(kobj,
 	    struct device, kobj)));
+	struct qla_hw_data *ha = vha->hw;
+	uint16_t iter, addr, offset;
 	int rval;
 
-	if (!capable(CAP_SYS_ADMIN) || off != 0 || count < SFP_DEV_SIZE)
+	if (!capable(CAP_SYS_ADMIN) || off != 0 || count != SFP_DEV_SIZE * 2)
 		return 0;
 
-	if (qla2x00_reset_active(vha))
-		return 0;
+	if (ha->sfp_data)
+		goto do_read;
 
-	rval = qla2x00_read_sfp_dev(vha, buf, count);
-	if (rval)
-		return -EIO;
+	ha->sfp_data = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL,
+	    &ha->sfp_data_dma);
+	if (!ha->sfp_data) {
+		ql_log(ql_log_warn, vha, 0x706c,
+		    "Unable to allocate memory for SFP read-data.\n");
+		return 0;
+	}
+
+do_read:
+	memset(ha->sfp_data, 0, SFP_BLOCK_SIZE);
+	addr = 0xa0;
+	for (iter = 0, offset = 0; iter < (SFP_DEV_SIZE * 2) / SFP_BLOCK_SIZE;
+	    iter++, offset += SFP_BLOCK_SIZE) {
+		if (iter == 4) {
+			/* Skip to next device address. */
+			addr = 0xa2;
+			offset = 0;
+		}
+
+		rval = qla2x00_read_sfp(vha, ha->sfp_data_dma, ha->sfp_data,
+		    addr, offset, SFP_BLOCK_SIZE, BIT_1);
+		if (rval != QLA_SUCCESS) {
+			ql_log(ql_log_warn, vha, 0x706d,
+			    "Unable to read SFP data (%x/%x/%x).\n", rval,
+			    addr, offset);
+
+			return -EIO;
+		}
+		memcpy(buf, ha->sfp_data, SFP_BLOCK_SIZE);
+		buf += SFP_BLOCK_SIZE;
+	}
 
 	return count;
 }
@@ -585,7 +615,7 @@ static struct bin_attribute sysfs_sfp_attr = {
 		.name = "sfp",
 		.mode = S_IRUSR | S_IWUSR,
 	},
-	.size = SFP_DEV_SIZE,
+	.size = SFP_DEV_SIZE * 2,
 	.read = qla2x00_sysfs_read_sfp,
 };
 
@@ -665,7 +695,7 @@ qla2x00_sysfs_write_reset(struct file *filp, struct kobject *kobj,
 	case 0x2025e:
 		if (!IS_P3P_TYPE(ha) || vha != base_vha) {
 			ql_log(ql_log_info, vha, 0x7071,
-			    "FCoE ctx reset not supported.\n");
+			    "FCoE ctx reset no supported.\n");
 			return -EPERM;
 		}
 
@@ -731,6 +761,7 @@ qla2x00_issue_logo(struct file *filp, struct kobject *kobj,
 	struct scsi_qla_host *vha = shost_priv(dev_to_shost(container_of(kobj,
 	    struct device, kobj)));
 	int type;
+	int rval = 0;
 	port_id_t did;
 
 	type = simple_strtol(buf, NULL, 10);
@@ -739,12 +770,12 @@ qla2x00_issue_logo(struct file *filp, struct kobject *kobj,
 	did.b.area = (type & 0x0000ff00) >> 8;
 	did.b.al_pa = (type & 0x000000ff);
 
-	ql_log(ql_log_info, vha, 0xd04d, "portid=%02x%02x%02x done\n",
+	ql_log(ql_log_info, vha, 0x70e3, "portid=%02x%02x%02x done\n",
 	    did.b.domain, did.b.area, did.b.al_pa);
 
 	ql_log(ql_log_info, vha, 0x70e4, "%s: %d\n", __func__, type);
 
-	qla24xx_els_dcmd_iocb(vha, ELS_DCMD_LOGO, did);
+	rval = qla24xx_els_dcmd_iocb(vha, ELS_DCMD_LOGO, did);
 	return count;
 }
 
@@ -899,7 +930,7 @@ qla2x00_alloc_sysfs_attr(scsi_qla_host_t *vha)
 			    iter->name, ret);
 		else
 			ql_dbg(ql_dbg_init, vha, 0x00f4,
-			    "Successfully created sysfs %s binary attribute.\n",
+			    "Successfully created sysfs %s binary attribure.\n",
 			    iter->name);
 	}
 }
@@ -1481,38 +1512,6 @@ qla2x00_pep_version_show(struct device *dev, struct device_attribute *attr,
 	    ha->pep_version[0], ha->pep_version[1], ha->pep_version[2]);
 }
 
-static ssize_t
-qla2x00_min_link_speed_show(struct device *dev, struct device_attribute *attr,
-    char *buf)
-{
-	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
-	struct qla_hw_data *ha = vha->hw;
-
-	if (!IS_QLA27XX(ha))
-		return scnprintf(buf, PAGE_SIZE, "\n");
-
-	return scnprintf(buf, PAGE_SIZE, "%s\n",
-	    ha->min_link_speed == 5 ? "32Gps" :
-	    ha->min_link_speed == 4 ? "16Gps" :
-	    ha->min_link_speed == 3 ? "8Gps" :
-	    ha->min_link_speed == 2 ? "4Gps" :
-	    ha->min_link_speed != 0 ? "unknown" : "");
-}
-
-static ssize_t
-qla2x00_max_speed_sup_show(struct device *dev, struct device_attribute *attr,
-    char *buf)
-{
-	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
-	struct qla_hw_data *ha = vha->hw;
-
-	if (!IS_QLA27XX(ha))
-		return scnprintf(buf, PAGE_SIZE, "\n");
-
-	return scnprintf(buf, PAGE_SIZE, "%s\n",
-	    ha->max_speed_sup ? "32Gps" : "16Gps");
-}
-
 static DEVICE_ATTR(driver_version, S_IRUGO, qla2x00_drvr_version_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, qla2x00_fw_version_show, NULL);
 static DEVICE_ATTR(serial_num, S_IRUGO, qla2x00_serial_num_show, NULL);
@@ -1558,8 +1557,6 @@ static DEVICE_ATTR(allow_cna_fw_dump, S_IRUGO | S_IWUSR,
 		   qla2x00_allow_cna_fw_dump_show,
 		   qla2x00_allow_cna_fw_dump_store);
 static DEVICE_ATTR(pep_version, S_IRUGO, qla2x00_pep_version_show, NULL);
-static DEVICE_ATTR(min_link_speed, S_IRUGO, qla2x00_min_link_speed_show, NULL);
-static DEVICE_ATTR(max_speed_sup, S_IRUGO, qla2x00_max_speed_sup_show, NULL);
 
 struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_driver_version,
@@ -1594,8 +1591,6 @@ struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_fw_dump_size,
 	&dev_attr_allow_cna_fw_dump,
 	&dev_attr_pep_version,
-	&dev_attr_min_link_speed,
-	&dev_attr_max_speed_sup,
 	NULL,
 };
 
@@ -2001,9 +1996,9 @@ qla24xx_vport_create(struct fc_vport *fc_vport, bool disable)
 	scsi_qla_host_t *base_vha = shost_priv(fc_vport->shost);
 	scsi_qla_host_t *vha = NULL;
 	struct qla_hw_data *ha = base_vha->hw;
+	uint16_t options = 0;
 	int	cnt;
 	struct req_que *req = ha->req_q_map[0];
-	struct qla_qpair *qpair;
 
 	ret = qla24xx_vport_create_req_sanity_check(fc_vport);
 	if (ret) {
@@ -2088,9 +2083,15 @@ qla24xx_vport_create(struct fc_vport *fc_vport, bool disable)
 	qlt_vport_create(vha, ha);
 	qla24xx_vport_disable(fc_vport, disable);
 
-	if (!ql2xmqsupport || !ha->npiv_info)
+	if (ha->flags.cpu_affinity_enabled) {
+		req = ha->req_q_map[1];
+		ql_dbg(ql_dbg_multiq, vha, 0xc000,
+		    "Request queue %p attached with "
+		    "VP[%d], cpu affinity =%d\n",
+		    req, vha->vp_idx, ha->flags.cpu_affinity_enabled);
 		goto vport_queue;
-
+	} else if (ql2xmaxqueues == 1 || !ha->npiv_info)
+		goto vport_queue;
 	/* Create a request queue in QoS mode for the vport */
 	for (cnt = 0; cnt < ha->nvram_npiv_size; cnt++) {
 		if (memcmp(ha->npiv_info[cnt].port_name, vha->port_name, 8) == 0
@@ -2102,20 +2103,20 @@ qla24xx_vport_create(struct fc_vport *fc_vport, bool disable)
 	}
 
 	if (qos) {
-		qpair = qla2xxx_create_qpair(vha, qos, vha->vp_idx, true);
-		if (!qpair)
+		ret = qla25xx_create_req_que(ha, options, vha->vp_idx, 0, 0,
+			qos);
+		if (!ret)
 			ql_log(ql_log_warn, vha, 0x7084,
-			    "Can't create qpair for VP[%d]\n",
+			    "Can't create request queue for VP[%d]\n",
 			    vha->vp_idx);
 		else {
 			ql_dbg(ql_dbg_multiq, vha, 0xc001,
-			    "Queue pair: %d Qos: %d) created for VP[%d]\n",
-			    qpair->id, qos, vha->vp_idx);
+			    "Request Que:%d Q0s: %d) created for VP[%d]\n",
+			    ret, qos, vha->vp_idx);
 			ql_dbg(ql_dbg_user, vha, 0x7085,
-			    "Queue Pair: %d Qos: %d) created for VP[%d]\n",
-			    qpair->id, qos, vha->vp_idx);
-			req = qpair->req;
-			vha->qpair = qpair;
+			    "Request Que:%d Q0s: %d) created for VP[%d]\n",
+			    ret, qos, vha->vp_idx);
+			req = ha->req_q_map[ret];
 		}
 	}
 
@@ -2142,7 +2143,6 @@ qla24xx_vport_delete(struct fc_vport *fc_vport)
 		msleep(1000);
 
 	qla24xx_disable_vp(vha);
-	qla2x00_wait_for_sess_deletion(vha);
 
 	vha->flags.delete_progress = 1;
 
@@ -2168,13 +2168,10 @@ qla24xx_vport_delete(struct fc_vport *fc_vport)
 	clear_bit(vha->vp_idx, ha->vp_idx_map);
 	mutex_unlock(&ha->vport_lock);
 
-	dma_free_coherent(&ha->pdev->dev, vha->gnl.size, vha->gnl.l,
-	    vha->gnl.ldma);
-
-	if (vha->qpair && vha->qpair->vp_idx == vha->vp_idx) {
-		if (qla2xxx_delete_qpair(vha, vha->qpair) != QLA_SUCCESS)
+	if (vha->req->id && !ha->flags.cpu_affinity_enabled) {
+		if (qla25xx_delete_req_que(vha, vha->req) != QLA_SUCCESS)
 			ql_log(ql_log_warn, vha, 0x7087,
-			    "Queue Pair delete failed.\n");
+			    "Queue delete failed.\n");
 	}
 
 	ql_log(ql_log_info, vha, 0x7088, "VP[%d] deleted.\n", id);
@@ -2296,7 +2293,7 @@ qla2x00_init_host_attr(scsi_qla_host_t *vha)
 	fc_host_dev_loss_tmo(vha->host) = ha->port_down_retry_count;
 	fc_host_node_name(vha->host) = wwn_to_u64(vha->node_name);
 	fc_host_port_name(vha->host) = wwn_to_u64(vha->port_name);
-	fc_host_supported_classes(vha->host) = ha->base_qpair->enable_class_2 ?
+	fc_host_supported_classes(vha->host) = ha->tgt.enable_class_2 ?
 			(FC_COS_CLASS2|FC_COS_CLASS3) : FC_COS_CLASS3;
 	fc_host_max_npiv_vports(vha->host) = ha->max_npiv_vports;
 	fc_host_npiv_vports_inuse(vha->host) = ha->cur_vport_count;

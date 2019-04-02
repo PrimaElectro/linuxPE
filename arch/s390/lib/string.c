@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *    Optimized string functions
  *
@@ -10,8 +9,7 @@
 #define IN_ARCH_STRING_C 1
 
 #include <linux/types.h>
-#include <linux/string.h>
-#include <linux/export.h>
+#include <linux/module.h>
 
 /*
  * Helper functions to find the end of a string
@@ -22,7 +20,7 @@ static inline char *__strend(const char *s)
 
 	asm volatile ("0: srst  %0,%1\n"
 		      "   jo    0b"
-		      : "+d" (r0), "+a" (s) :  : "cc", "memory");
+		      : "+d" (r0), "+a" (s) :  : "cc" );
 	return (char *) r0;
 }
 
@@ -33,7 +31,7 @@ static inline char *__strnend(const char *s, size_t n)
 
 	asm volatile ("0: srst  %0,%1\n"
 		      "   jo    0b"
-		      : "+d" (p), "+a" (s) : "d" (r0) : "cc", "memory");
+		      : "+d" (p), "+a" (s) : "d" (r0) : "cc" );
 	return (char *) p;
 }
 
@@ -215,7 +213,7 @@ int strcmp(const char *cs, const char *ct)
 		      "   sr   %0,%1\n"
 		      "1:"
 		      : "+d" (ret), "+d" (r0), "+a" (cs), "+a" (ct)
-		      : : "cc", "memory");
+		      : : "cc" );
 	return ret;
 }
 EXPORT_SYMBOL(strcmp);
@@ -252,7 +250,7 @@ static inline int clcle(const char *s1, unsigned long l1,
 		      "   ipm   %0\n"
 		      "   srl   %0,28"
 		      : "=&d" (cc), "+a" (r2), "+a" (r3),
-			"+a" (r4), "+a" (r5) : : "cc", "memory");
+			"+a" (r4), "+a" (r5) : : "cc");
 	return cc;
 }
 
@@ -300,7 +298,7 @@ void *memchr(const void *s, int c, size_t n)
 		      "   jl	1f\n"
 		      "   la    %0,0\n"
 		      "1:"
-		      : "+a" (ret), "+&a" (s) : "d" (r0) : "cc", "memory");
+		      : "+a" (ret), "+&a" (s) : "d" (r0) : "cc" );
 	return (void *) ret;
 }
 EXPORT_SYMBOL(memchr);
@@ -338,7 +336,7 @@ void *memscan(void *s, int c, size_t n)
 
 	asm volatile ("0: srst  %0,%1\n"
 		      "   jo    0b\n"
-		      : "+a" (ret), "+&a" (s) : "d" (r0) : "cc", "memory");
+		      : "+a" (ret), "+&a" (s) : "d" (r0) : "cc" );
 	return (void *) ret;
 }
 EXPORT_SYMBOL(memscan);

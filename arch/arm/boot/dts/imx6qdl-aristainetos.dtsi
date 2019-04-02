@@ -9,7 +9,7 @@
  *
  */
 
-#include "include/dt-bindings/gpio/gpio.h"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	regulators {
@@ -100,6 +100,7 @@
 };
 
 &ecspi4 {
+	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio3 20 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi4>;
@@ -118,7 +119,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rmii";
-	phy-reset-gpios = <&gpio3 29 GPIO_ACTIVE_LOW>;
+	phy-reset-gpios = <&gpio3 29 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 

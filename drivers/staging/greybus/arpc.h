@@ -74,6 +74,7 @@ struct arpc_response_message {
 	__u8	result;		/* Result of RPC */
 } __packed;
 
+
 /* ARPC requests */
 #define ARPC_TYPE_CPORT_CONNECTED		0x01
 #define ARPC_TYPE_CPORT_QUIESCE			0x02

@@ -5,9 +5,7 @@
  * even if we're invoked from userspace (think modprobe, hotplug cpu,
  * etc.).
  */
-#include <uapi/linux/sched/types.h>
 #include <linux/sched.h>
-#include <linux/sched/task.h>
 #include <linux/kthread.h>
 #include <linux/completion.h>
 #include <linux/err.h>
@@ -56,29 +54,20 @@ enum KTHREAD_BITS {
 	KTHREAD_IS_PARKED,
 };
 
-static inline void set_kthread_struct(void *kthread)
-{
-	/*
-	 * We abuse ->set_child_tid to avoid the new member and because it
-	 * can't be wrongly copied by copy_process(). We also rely on fact
-	 * that the caller can't exec, so PF_KTHREAD can't be cleared.
-	 */
-	current->set_child_tid = (__force void __user *)kthread;
-}
+#define __to_kthread(vfork)	\
+	container_of(vfork, struct kthread, exited)
 
 static inline struct kthread *to_kthread(struct task_struct *k)
 {
-	WARN_ON(!(k->flags & PF_KTHREAD));
-	return (__force void *)k->set_child_tid;
+	return __to_kthread(k->vfork_done);
 }
 
-void free_kthread_struct(struct task_struct *k)
+static struct kthread *to_live_kthread(struct task_struct *k)
 {
-	/*
-	 * Can be NULL if this kthread was created by kernel_thread()
-	 * or if kmalloc() in kthread() failed.
-	 */
-	kfree(to_kthread(k));
+	struct completion *vfork = ACCESS_ONCE(k->vfork_done);
+	if (likely(vfork) && try_get_task_stack(k))
+		return __to_kthread(vfork);
+	return NULL;
 }
 
 /**
@@ -169,13 +158,12 @@ void *kthread_probe_data(struct task_struct *task)
 
 static void __kthread_parkme(struct kthread *self)
 {
-	for (;;) {
-		set_current_state(TASK_PARKED);
-		if (!test_bit(KTHREAD_SHOULD_PARK, &self->flags))
-			break;
+	__set_current_state(TASK_PARKED);
+	while (test_bit(KTHREAD_SHOULD_PARK, &self->flags)) {
 		if (!test_and_set_bit(KTHREAD_IS_PARKED, &self->flags))
 			complete(&self->parked);
 		schedule();
+		__set_current_state(TASK_PARKED);
 	}
 	clear_bit(KTHREAD_IS_PARKED, &self->flags);
 	__set_current_state(TASK_RUNNING);
@@ -194,11 +182,14 @@ static int kthread(void *_create)
 	int (*threadfn)(void *data) = create->threadfn;
 	void *data = create->data;
 	struct completion *done;
-	struct kthread *self;
+	struct kthread self;
 	int ret;
 
-	self = kmalloc(sizeof(*self), GFP_KERNEL);
-	set_kthread_struct(self);
+	self.flags = 0;
+	self.data = data;
+	init_completion(&self.exited);
+	init_completion(&self.parked);
+	current->vfork_done = &self.exited;
 
 	/* If user was SIGKILLed, I release the structure. */
 	done = xchg(&create->done, NULL);
@@ -206,19 +197,6 @@ static int kthread(void *_create)
 		kfree(create);
 		do_exit(-EINTR);
 	}
-
-	if (!self) {
-		create->result = ERR_PTR(-ENOMEM);
-		complete(done);
-		do_exit(-ENOMEM);
-	}
-
-	self->flags = 0;
-	self->data = data;
-	init_completion(&self->exited);
-	init_completion(&self->parked);
-	current->vfork_done = &self->exited;
-
 	/* OK, tell user we're spawned, wait for stop or wakeup */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
 	create->result = current;
@@ -226,11 +204,13 @@ static int kthread(void *_create)
 	schedule();
 
 	ret = -EINTR;
-	if (!test_bit(KTHREAD_SHOULD_STOP, &self->flags)) {
+
+	if (!test_bit(KTHREAD_SHOULD_STOP, &self.flags)) {
 		cgroup_kthread_ready();
-		__kthread_parkme(self);
+		__kthread_parkme(&self);
 		ret = threadfn(data);
 	}
+	/* we can't just return, we must preserve "self" on stack */
 	do_exit(ret);
 }
 
@@ -266,8 +246,7 @@ static void create_kthread(struct kthread_create_info *create)
 	}
 }
 
-static __printf(4, 0)
-struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
+static struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 						    void *data, int node,
 						    const char namefmt[],
 						    va_list args)
@@ -311,14 +290,8 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	task = create->result;
 	if (!IS_ERR(task)) {
 		static const struct sched_param param = { .sched_priority = 0 };
-		char name[TASK_COMM_LEN];
 
-		/*
-		 * task is already visible to other tasks, so updating
-		 * COMM must be protected.
-		 */
-		vsnprintf(name, sizeof(name), namefmt, args);
-		set_task_comm(task, name);
+		vsnprintf(task->comm, sizeof(task->comm), namefmt, args);
 		/*
 		 * root may have changed our (kthreadd's) priority or CPU mask.
 		 * The kernel thread should not inherit these properties.
@@ -438,18 +411,8 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	return p;
 }
 
-/**
- * kthread_unpark - unpark a thread created by kthread_create().
- * @k:		thread created by kthread_create().
- *
- * Sets kthread_should_park() for @k to return false, wakes it, and
- * waits for it to return. If the thread is marked percpu then its
- * bound to the cpu again.
- */
-void kthread_unpark(struct task_struct *k)
+static void __kthread_unpark(struct task_struct *k, struct kthread *kthread)
 {
-	struct kthread *kthread = to_kthread(k);
-
 	clear_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
 	/*
 	 * We clear the IS_PARKED bit here as we don't wait
@@ -465,6 +428,24 @@ void kthread_unpark(struct task_struct *k)
 		if (test_bit(KTHREAD_IS_PER_CPU, &kthread->flags))
 			__kthread_bind(k, kthread->cpu, TASK_PARKED);
 		wake_up_state(k, TASK_PARKED);
+	}
+}
+
+/**
+ * kthread_unpark - unpark a thread created by kthread_create().
+ * @k:		thread created by kthread_create().
+ *
+ * Sets kthread_should_park() for @k to return false, wakes it, and
+ * waits for it to return. If the thread is marked percpu then its
+ * bound to the cpu again.
+ */
+void kthread_unpark(struct task_struct *k)
+{
+	struct kthread *kthread = to_live_kthread(k);
+
+	if (kthread) {
+		__kthread_unpark(k, kthread);
+		put_task_stack(k);
 	}
 }
 EXPORT_SYMBOL_GPL(kthread_unpark);
@@ -483,20 +464,21 @@ EXPORT_SYMBOL_GPL(kthread_unpark);
  */
 int kthread_park(struct task_struct *k)
 {
-	struct kthread *kthread = to_kthread(k);
+	struct kthread *kthread = to_live_kthread(k);
+	int ret = -ENOSYS;
 
-	if (WARN_ON(k->flags & PF_EXITING))
-		return -ENOSYS;
-
-	if (!test_bit(KTHREAD_IS_PARKED, &kthread->flags)) {
-		set_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
-		if (k != current) {
-			wake_up_process(k);
-			wait_for_completion(&kthread->parked);
+	if (kthread) {
+		if (!test_bit(KTHREAD_IS_PARKED, &kthread->flags)) {
+			set_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
+			if (k != current) {
+				wake_up_process(k);
+				wait_for_completion(&kthread->parked);
+			}
 		}
+		put_task_stack(k);
+		ret = 0;
 	}
-
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(kthread_park);
 
@@ -523,11 +505,14 @@ int kthread_stop(struct task_struct *k)
 	trace_sched_kthread_stop(k);
 
 	get_task_struct(k);
-	kthread = to_kthread(k);
-	set_bit(KTHREAD_SHOULD_STOP, &kthread->flags);
-	kthread_unpark(k);
-	wake_up_process(k);
-	wait_for_completion(&kthread->exited);
+	kthread = to_live_kthread(k);
+	if (kthread) {
+		set_bit(KTHREAD_SHOULD_STOP, &kthread->flags);
+		__kthread_unpark(k, kthread);
+		wake_up_process(k);
+		wait_for_completion(&kthread->exited);
+		put_task_stack(k);
+	}
 	ret = k->exit_code;
 	put_task_struct(k);
 
@@ -644,18 +629,16 @@ repeat:
 		schedule();
 
 	try_to_freeze();
-	cond_resched();
 	goto repeat;
 }
 EXPORT_SYMBOL_GPL(kthread_worker_fn);
 
-static __printf(3, 0) struct kthread_worker *
+static struct kthread_worker *
 __kthread_create_worker(int cpu, unsigned int flags,
 			const char namefmt[], va_list args)
 {
 	struct kthread_worker *worker;
 	struct task_struct *task;
-	int node = -1;
 
 	worker = kzalloc(sizeof(*worker), GFP_KERNEL);
 	if (!worker)
@@ -663,16 +646,24 @@ __kthread_create_worker(int cpu, unsigned int flags,
 
 	kthread_init_worker(worker);
 
-	if (cpu >= 0)
-		node = cpu_to_node(cpu);
+	if (cpu >= 0) {
+		char name[TASK_COMM_LEN];
 
-	task = __kthread_create_on_node(kthread_worker_fn, worker,
-						node, namefmt, args);
+		/*
+		 * kthread_create_worker_on_cpu() allows to pass a generic
+		 * namefmt in compare with kthread_create_on_cpu. We need
+		 * to format it here.
+		 */
+		vsnprintf(name, sizeof(name), namefmt, args);
+		task = kthread_create_on_cpu(kthread_worker_fn, worker,
+					     cpu, name);
+	} else {
+		task = __kthread_create_on_node(kthread_worker_fn, worker,
+						-1, namefmt, args);
+	}
+
 	if (IS_ERR(task))
 		goto fail_task;
-
-	if (cpu >= 0)
-		kthread_bind(task, cpu);
 
 	worker->flags = flags;
 	worker->task = task;
@@ -863,6 +854,7 @@ void __kthread_queue_delayed_work(struct kthread_worker *worker,
 
 	list_add(&work->node, &worker->delayed_work_list);
 	work->worker = worker;
+	timer_stats_timer_set_start_info(&dwork->timer);
 	timer->expires = jiffies + delay;
 	add_timer(timer);
 }

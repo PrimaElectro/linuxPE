@@ -262,8 +262,7 @@ static int fscache_objlist_show(struct seq_file *m, void *v)
 			type = "DT";
 			break;
 		default:
-			snprintf(_type, sizeof(_type), "%02u",
-				 cookie->def->type);
+			sprintf(_type, "%02u", cookie->def->type);
 			type = _type;
 			break;
 		}
@@ -330,7 +329,7 @@ static void fscache_objlist_config(struct fscache_objlist_data *data)
 	config = 0;
 	rcu_read_lock();
 
-	confkey = user_key_payload_rcu(key);
+	confkey = user_key_payload(key);
 	if (!confkey) {
 		/* key was revoked */
 		rcu_read_unlock();

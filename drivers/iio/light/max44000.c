@@ -204,18 +204,17 @@ static int max44000_write_alspga(struct max44000_data *data, int val)
 static int max44000_read_alsval(struct max44000_data *data)
 {
 	u16 regval;
-	__be16 val;
 	int alstim, ret;
 
 	ret = regmap_bulk_read(data->regmap, MAX44000_REG_ALS_DATA_HI,
-			       &val, sizeof(val));
+			       &regval, sizeof(regval));
 	if (ret < 0)
 		return ret;
 	alstim = ret = max44000_read_alstim(data);
 	if (ret < 0)
 		return ret;
 
-	regval = be16_to_cpu(val);
+	regval = be16_to_cpu(regval);
 
 	/*
 	 * Overflow is explained on datasheet page 17.

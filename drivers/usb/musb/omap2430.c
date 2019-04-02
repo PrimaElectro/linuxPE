@@ -277,12 +277,12 @@ static int omap2430_musb_init(struct musb *musb)
 		if (status == -ENXIO)
 			return status;
 
-		dev_dbg(dev, "HS USB OTG: no transceiver configured\n");
+		pr_err("HS USB OTG: no transceiver configured\n");
 		return -EPROBE_DEFER;
 	}
 
 	if (IS_ERR(musb->phy)) {
-		dev_err(dev, "HS USB OTG: no PHY configured\n");
+		pr_err("HS USB OTG: no PHY configured\n");
 		return PTR_ERR(musb->phy);
 	}
 	musb->isr = omap2430_musb_interrupt;
@@ -301,7 +301,7 @@ static int omap2430_musb_init(struct musb *musb)
 
 	musb_writel(musb->mregs, OTG_INTERFSEL, l);
 
-	dev_dbg(dev, "HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
+	pr_debug("HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
 			"sysstatus 0x%x, intrfsel 0x%x, simenable  0x%x\n",
 			musb_readl(musb->mregs, OTG_REVISION),
 			musb_readl(musb->mregs, OTG_SYSCONFIG),
@@ -575,7 +575,7 @@ static int omap2430_runtime_resume(struct device *dev)
 	return 0;
 }
 
-static const struct dev_pm_ops omap2430_pm_ops = {
+static struct dev_pm_ops omap2430_pm_ops = {
 	.runtime_suspend = omap2430_runtime_suspend,
 	.runtime_resume = omap2430_runtime_resume,
 };

@@ -16,6 +16,7 @@
 
 #include "greybus_authentication.h"
 #include "firmware.h"
+#include "greybus.h"
 
 #define CAP_TIMEOUT_MS		1000
 

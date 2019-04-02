@@ -14,7 +14,6 @@
 #include <linux/uaccess.h>
 #include <linux/tracehook.h>
 #include <linux/uprobes.h>
-#include <linux/syscalls.h>
 
 #include <asm/elf.h>
 #include <asm/cacheflush.h>
@@ -41,10 +40,8 @@ static int preserve_crunch_context(struct crunch_sigframe __user *frame)
 	return __copy_to_user(frame, kframe, sizeof(*frame));
 }
 
-static int restore_crunch_context(char __user **auxp)
+static int restore_crunch_context(struct crunch_sigframe __user *frame)
 {
-	struct crunch_sigframe __user *frame =
-		(struct crunch_sigframe __user *)*auxp;
 	char kbuf[sizeof(*frame) + 8];
 	struct crunch_sigframe *kframe;
 
@@ -55,7 +52,6 @@ static int restore_crunch_context(char __user **auxp)
 	if (kframe->magic != CRUNCH_MAGIC ||
 	    kframe->size != CRUNCH_STORAGE_SIZE)
 		return -1;
-	*auxp += CRUNCH_STORAGE_SIZE;
 	crunch_task_restore(current_thread_info(), &kframe->storage);
 	return 0;
 }
@@ -63,41 +59,21 @@ static int restore_crunch_context(char __user **auxp)
 
 #ifdef CONFIG_IWMMXT
 
-static int preserve_iwmmxt_context(struct iwmmxt_sigframe __user *frame)
+static int preserve_iwmmxt_context(struct iwmmxt_sigframe *frame)
 {
 	char kbuf[sizeof(*frame) + 8];
 	struct iwmmxt_sigframe *kframe;
-	int err = 0;
 
 	/* the iWMMXt context must be 64 bit aligned */
 	kframe = (struct iwmmxt_sigframe *)((unsigned long)(kbuf + 8) & ~7);
-
-	if (test_thread_flag(TIF_USING_IWMMXT)) {
-		kframe->magic = IWMMXT_MAGIC;
-		kframe->size = IWMMXT_STORAGE_SIZE;
-		iwmmxt_task_copy(current_thread_info(), &kframe->storage);
-	} else {
-		/*
-		 * For bug-compatibility with older kernels, some space
-		 * has to be reserved for iWMMXt even if it's not used.
-		 * Set the magic and size appropriately so that properly
-		 * written userspace can skip it reliably:
-		 */
-		*kframe = (struct iwmmxt_sigframe) {
-			.magic = DUMMY_MAGIC,
-			.size  = IWMMXT_STORAGE_SIZE,
-		};
-	}
-
-	err = __copy_to_user(frame, kframe, sizeof(*kframe));
-
-	return err;
+	kframe->magic = IWMMXT_MAGIC;
+	kframe->size = IWMMXT_STORAGE_SIZE;
+	iwmmxt_task_copy(current_thread_info(), &kframe->storage);
+	return __copy_to_user(frame, kframe, sizeof(*frame));
 }
 
-static int restore_iwmmxt_context(char __user **auxp)
+static int restore_iwmmxt_context(struct iwmmxt_sigframe *frame)
 {
-	struct iwmmxt_sigframe __user *frame =
-		(struct iwmmxt_sigframe __user *)*auxp;
 	char kbuf[sizeof(*frame) + 8];
 	struct iwmmxt_sigframe *kframe;
 
@@ -105,28 +81,10 @@ static int restore_iwmmxt_context(char __user **auxp)
 	kframe = (struct iwmmxt_sigframe *)((unsigned long)(kbuf + 8) & ~7);
 	if (__copy_from_user(kframe, frame, sizeof(*frame)))
 		return -1;
-
-	/*
-	 * For non-iWMMXt threads: a single iwmmxt_sigframe-sized dummy
-	 * block is discarded for compatibility with setup_sigframe() if
-	 * present, but we don't mandate its presence.  If some other
-	 * magic is here, it's not for us:
-	 */
-	if (!test_thread_flag(TIF_USING_IWMMXT) &&
-	    kframe->magic != DUMMY_MAGIC)
-		return 0;
-
-	if (kframe->size != IWMMXT_STORAGE_SIZE)
+	if (kframe->magic != IWMMXT_MAGIC ||
+	    kframe->size != IWMMXT_STORAGE_SIZE)
 		return -1;
-
-	if (test_thread_flag(TIF_USING_IWMMXT)) {
-		if (kframe->magic != IWMMXT_MAGIC)
-			return -1;
-
-		iwmmxt_task_restore(current_thread_info(), &kframe->storage);
-	}
-
-	*auxp += IWMMXT_STORAGE_SIZE;
+	iwmmxt_task_restore(current_thread_info(), &kframe->storage);
 	return 0;
 }
 
@@ -136,34 +94,34 @@ static int restore_iwmmxt_context(char __user **auxp)
 
 static int preserve_vfp_context(struct vfp_sigframe __user *frame)
 {
-	struct vfp_sigframe kframe;
+	const unsigned long magic = VFP_MAGIC;
+	const unsigned long size = VFP_STORAGE_SIZE;
 	int err = 0;
 
-	memset(&kframe, 0, sizeof(kframe));
-	kframe.magic = VFP_MAGIC;
-	kframe.size = VFP_STORAGE_SIZE;
+	__put_user_error(magic, &frame->magic, err);
+	__put_user_error(size, &frame->size, err);
 
-	err = vfp_preserve_user_clear_hwstate(&kframe.ufp, &kframe.ufp_exc);
 	if (err)
-		return err;
+		return -EFAULT;
 
-	return __copy_to_user(frame, &kframe, sizeof(kframe));
+	return vfp_preserve_user_clear_hwstate(&frame->ufp, &frame->ufp_exc);
 }
 
-static int restore_vfp_context(char __user **auxp)
+static int restore_vfp_context(struct vfp_sigframe __user *frame)
 {
-	struct vfp_sigframe frame;
-	int err;
+	unsigned long magic;
+	unsigned long size;
+	int err = 0;
 
-	err = __copy_from_user(&frame, *auxp, sizeof(frame));
+	__get_user_error(magic, &frame->magic, err);
+	__get_user_error(size, &frame->size, err);
+
 	if (err)
-		return err;
-
-	if (frame.magic != VFP_MAGIC || frame.size != VFP_STORAGE_SIZE)
+		return -EFAULT;
+	if (magic != VFP_MAGIC || size != VFP_STORAGE_SIZE)
 		return -EINVAL;
 
-	*auxp += sizeof(frame);
-	return vfp_restore_user_hwstate(&frame.ufp, &frame.ufp_exc);
+	return vfp_restore_user_hwstate(&frame->ufp, &frame->ufp_exc);
 }
 
 #endif
@@ -183,8 +141,7 @@ struct rt_sigframe {
 
 static int restore_sigframe(struct pt_regs *regs, struct sigframe __user *sf)
 {
-	struct sigcontext context;
-	char __user *aux;
+	struct aux_sigframe __user *aux;
 	sigset_t set;
 	int err;
 
@@ -192,41 +149,38 @@ static int restore_sigframe(struct pt_regs *regs, struct sigframe __user *sf)
 	if (err == 0)
 		set_current_blocked(&set);
 
-	err |= __copy_from_user(&context, &sf->uc.uc_mcontext, sizeof(context));
-	if (err == 0) {
-		regs->ARM_r0 = context.arm_r0;
-		regs->ARM_r1 = context.arm_r1;
-		regs->ARM_r2 = context.arm_r2;
-		regs->ARM_r3 = context.arm_r3;
-		regs->ARM_r4 = context.arm_r4;
-		regs->ARM_r5 = context.arm_r5;
-		regs->ARM_r6 = context.arm_r6;
-		regs->ARM_r7 = context.arm_r7;
-		regs->ARM_r8 = context.arm_r8;
-		regs->ARM_r9 = context.arm_r9;
-		regs->ARM_r10 = context.arm_r10;
-		regs->ARM_fp = context.arm_fp;
-		regs->ARM_ip = context.arm_ip;
-		regs->ARM_sp = context.arm_sp;
-		regs->ARM_lr = context.arm_lr;
-		regs->ARM_pc = context.arm_pc;
-		regs->ARM_cpsr = context.arm_cpsr;
-	}
+	__get_user_error(regs->ARM_r0, &sf->uc.uc_mcontext.arm_r0, err);
+	__get_user_error(regs->ARM_r1, &sf->uc.uc_mcontext.arm_r1, err);
+	__get_user_error(regs->ARM_r2, &sf->uc.uc_mcontext.arm_r2, err);
+	__get_user_error(regs->ARM_r3, &sf->uc.uc_mcontext.arm_r3, err);
+	__get_user_error(regs->ARM_r4, &sf->uc.uc_mcontext.arm_r4, err);
+	__get_user_error(regs->ARM_r5, &sf->uc.uc_mcontext.arm_r5, err);
+	__get_user_error(regs->ARM_r6, &sf->uc.uc_mcontext.arm_r6, err);
+	__get_user_error(regs->ARM_r7, &sf->uc.uc_mcontext.arm_r7, err);
+	__get_user_error(regs->ARM_r8, &sf->uc.uc_mcontext.arm_r8, err);
+	__get_user_error(regs->ARM_r9, &sf->uc.uc_mcontext.arm_r9, err);
+	__get_user_error(regs->ARM_r10, &sf->uc.uc_mcontext.arm_r10, err);
+	__get_user_error(regs->ARM_fp, &sf->uc.uc_mcontext.arm_fp, err);
+	__get_user_error(regs->ARM_ip, &sf->uc.uc_mcontext.arm_ip, err);
+	__get_user_error(regs->ARM_sp, &sf->uc.uc_mcontext.arm_sp, err);
+	__get_user_error(regs->ARM_lr, &sf->uc.uc_mcontext.arm_lr, err);
+	__get_user_error(regs->ARM_pc, &sf->uc.uc_mcontext.arm_pc, err);
+	__get_user_error(regs->ARM_cpsr, &sf->uc.uc_mcontext.arm_cpsr, err);
 
 	err |= !valid_user_regs(regs);
 
-	aux = (char __user *) sf->uc.uc_regspace;
+	aux = (struct aux_sigframe __user *) sf->uc.uc_regspace;
 #ifdef CONFIG_CRUNCH
 	if (err == 0)
-		err |= restore_crunch_context(&aux);
+		err |= restore_crunch_context(&aux->crunch);
 #endif
 #ifdef CONFIG_IWMMXT
-	if (err == 0)
-		err |= restore_iwmmxt_context(&aux);
+	if (err == 0 && test_thread_flag(TIF_USING_IWMMXT))
+		err |= restore_iwmmxt_context(&aux->iwmmxt);
 #endif
 #ifdef CONFIG_VFP
 	if (err == 0)
-		err |= restore_vfp_context(&aux);
+		err |= restore_vfp_context(&aux->vfp);
 #endif
 
 	return err;
@@ -299,35 +253,30 @@ static int
 setup_sigframe(struct sigframe __user *sf, struct pt_regs *regs, sigset_t *set)
 {
 	struct aux_sigframe __user *aux;
-	struct sigcontext context;
 	int err = 0;
 
-	context = (struct sigcontext) {
-		.arm_r0        = regs->ARM_r0,
-		.arm_r1        = regs->ARM_r1,
-		.arm_r2        = regs->ARM_r2,
-		.arm_r3        = regs->ARM_r3,
-		.arm_r4        = regs->ARM_r4,
-		.arm_r5        = regs->ARM_r5,
-		.arm_r6        = regs->ARM_r6,
-		.arm_r7        = regs->ARM_r7,
-		.arm_r8        = regs->ARM_r8,
-		.arm_r9        = regs->ARM_r9,
-		.arm_r10       = regs->ARM_r10,
-		.arm_fp        = regs->ARM_fp,
-		.arm_ip        = regs->ARM_ip,
-		.arm_sp        = regs->ARM_sp,
-		.arm_lr        = regs->ARM_lr,
-		.arm_pc        = regs->ARM_pc,
-		.arm_cpsr      = regs->ARM_cpsr,
+	__put_user_error(regs->ARM_r0, &sf->uc.uc_mcontext.arm_r0, err);
+	__put_user_error(regs->ARM_r1, &sf->uc.uc_mcontext.arm_r1, err);
+	__put_user_error(regs->ARM_r2, &sf->uc.uc_mcontext.arm_r2, err);
+	__put_user_error(regs->ARM_r3, &sf->uc.uc_mcontext.arm_r3, err);
+	__put_user_error(regs->ARM_r4, &sf->uc.uc_mcontext.arm_r4, err);
+	__put_user_error(regs->ARM_r5, &sf->uc.uc_mcontext.arm_r5, err);
+	__put_user_error(regs->ARM_r6, &sf->uc.uc_mcontext.arm_r6, err);
+	__put_user_error(regs->ARM_r7, &sf->uc.uc_mcontext.arm_r7, err);
+	__put_user_error(regs->ARM_r8, &sf->uc.uc_mcontext.arm_r8, err);
+	__put_user_error(regs->ARM_r9, &sf->uc.uc_mcontext.arm_r9, err);
+	__put_user_error(regs->ARM_r10, &sf->uc.uc_mcontext.arm_r10, err);
+	__put_user_error(regs->ARM_fp, &sf->uc.uc_mcontext.arm_fp, err);
+	__put_user_error(regs->ARM_ip, &sf->uc.uc_mcontext.arm_ip, err);
+	__put_user_error(regs->ARM_sp, &sf->uc.uc_mcontext.arm_sp, err);
+	__put_user_error(regs->ARM_lr, &sf->uc.uc_mcontext.arm_lr, err);
+	__put_user_error(regs->ARM_pc, &sf->uc.uc_mcontext.arm_pc, err);
+	__put_user_error(regs->ARM_cpsr, &sf->uc.uc_mcontext.arm_cpsr, err);
 
-		.trap_no       = current->thread.trap_no,
-		.error_code    = current->thread.error_code,
-		.fault_address = current->thread.address,
-		.oldmask       = set->sig[0],
-	};
-
-	err |= __copy_to_user(&sf->uc.uc_mcontext, &context, sizeof(context));
+	__put_user_error(current->thread.trap_no, &sf->uc.uc_mcontext.trap_no, err);
+	__put_user_error(current->thread.error_code, &sf->uc.uc_mcontext.error_code, err);
+	__put_user_error(current->thread.address, &sf->uc.uc_mcontext.fault_address, err);
+	__put_user_error(set->sig[0], &sf->uc.uc_mcontext.oldmask, err);
 
 	err |= __copy_to_user(&sf->uc.uc_sigmask, set, sizeof(*set));
 
@@ -337,14 +286,14 @@ setup_sigframe(struct sigframe __user *sf, struct pt_regs *regs, sigset_t *set)
 		err |= preserve_crunch_context(&aux->crunch);
 #endif
 #ifdef CONFIG_IWMMXT
-	if (err == 0)
+	if (err == 0 && test_thread_flag(TIF_USING_IWMMXT))
 		err |= preserve_iwmmxt_context(&aux->iwmmxt);
 #endif
 #ifdef CONFIG_VFP
 	if (err == 0)
 		err |= preserve_vfp_context(&aux->vfp);
 #endif
-	err |= __put_user(0, &aux->end_magic);
+	__put_user_error(0, &aux->end_magic, err);
 
 	return err;
 }
@@ -476,7 +425,7 @@ setup_frame(struct ksignal *ksig, sigset_t *set, struct pt_regs *regs)
 	/*
 	 * Set uc.uc_flags to a value which sc.trap_no would never have.
 	 */
-	err = __put_user(0x5ac3c35a, &frame->uc.uc_flags);
+	__put_user_error(0x5ac3c35a, &frame->uc.uc_flags, err);
 
 	err |= setup_sigframe(frame, regs, set);
 	if (err == 0)
@@ -496,8 +445,8 @@ setup_rt_frame(struct ksignal *ksig, sigset_t *set, struct pt_regs *regs)
 
 	err |= copy_siginfo_to_user(&frame->info, &ksig->info);
 
-	err |= __put_user(0, &frame->sig.uc.uc_flags);
-	err |= __put_user(NULL, &frame->sig.uc.uc_link);
+	__put_user_error(0, &frame->sig.uc.uc_flags, err);
+	__put_user_error(NULL, &frame->sig.uc.uc_link, err);
 
 	err |= __save_altstack(&frame->sig.uc.uc_stack, regs->ARM_sp);
 	err |= setup_sigframe(&frame->sig, regs, set);
@@ -623,7 +572,8 @@ do_work_pending(struct pt_regs *regs, unsigned int thread_flags, int syscall)
 	 */
 	trace_hardirqs_off();
 	do {
-		if (likely(thread_flags & _TIF_NEED_RESCHED)) {
+		if (likely(thread_flags & (_TIF_NEED_RESCHED |
+					   _TIF_NEED_RESCHED_LAZY))) {
 			schedule();
 		} else {
 			if (unlikely(!user_mode(regs)))
@@ -681,10 +631,4 @@ struct page *get_signal_page(void)
 	flush_icache_range(ptr, ptr + sizeof(sigreturn_codes));
 
 	return page;
-}
-
-/* Defer to generic check */
-asmlinkage void addr_limit_check_failed(void)
-{
-	addr_limit_user_check();
 }

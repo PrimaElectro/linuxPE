@@ -16,9 +16,8 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/init.h>
-#include <asm/param.h>
 #include <asm/delay.h>
 #include <asm/timex.h>
 #include <asm/processor.h>

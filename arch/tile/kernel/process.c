@@ -13,9 +13,6 @@
  */
 
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
 #include <linux/preempt.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -38,7 +35,7 @@
 #include <asm/syscalls.h>
 #include <asm/traps.h>
 #include <asm/setup.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif

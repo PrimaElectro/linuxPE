@@ -90,9 +90,6 @@ static unsigned long db_init = 0x7;
 module_param(db_init, ulong, 0644);
 MODULE_PARM_DESC(db_init, "Initial doorbell bits to ring on the peer");
 
-/* Only two-ports NTB devices are supported */
-#define PIDX		NTB_DEF_PEER_IDX
-
 struct pp_ctx {
 	struct ntb_dev			*ntb;
 	u64				db_bits;
@@ -138,7 +135,7 @@ static void pp_ping(unsigned long ctx)
 			"Ping bits %#llx read %#x write %#x\n",
 			db_bits, spad_rd, spad_wr);
 
-		ntb_peer_spad_write(pp->ntb, PIDX, 0, spad_wr);
+		ntb_peer_spad_write(pp->ntb, 0, spad_wr);
 		ntb_peer_db_set(pp->ntb, db_bits);
 		ntb_db_clear_mask(pp->ntb, db_mask);
 
@@ -225,12 +222,6 @@ static int pp_probe(struct ntb_client *client,
 		}
 	}
 
-	if (ntb_spad_count(ntb) < 1) {
-		dev_dbg(&ntb->dev, "no enough scratchpads\n");
-		rc = -EINVAL;
-		goto err_pp;
-	}
-
 	if (ntb_spad_is_unsafe(ntb)) {
 		dev_dbg(&ntb->dev, "scratchpad is unsafe\n");
 		if (!unsafe) {
@@ -238,9 +229,6 @@ static int pp_probe(struct ntb_client *client,
 			goto err_pp;
 		}
 	}
-
-	if (ntb_peer_port_count(ntb) != NTB_DEF_PEER_CNT)
-		dev_warn(&ntb->dev, "multi-port NTB is unsupported\n");
 
 	pp = kmalloc(sizeof(*pp), GFP_KERNEL);
 	if (!pp) {

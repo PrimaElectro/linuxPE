@@ -13,9 +13,6 @@
 
 #include <linux/module.h>
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/stddef.h>
@@ -178,7 +175,7 @@ void __show_regs(struct pt_regs *regs)
 		buf, interrupts_enabled(regs) ? "n" : "ff",
 		fast_interrupts_enabled(regs) ? "n" : "ff",
 		processor_modes[processor_mode(regs)],
-		uaccess_kernel() ? "kernel" : "user");
+		segment_eq(get_fs(), get_ds()) ? "kernel" : "user");
 	{
 		unsigned int ctrl;
 

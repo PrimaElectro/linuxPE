@@ -34,7 +34,8 @@ static int hwpoison_inject(void *data, u64 val)
 	if (!hwpoison_filter_enable)
 		goto inject;
 
-	shake_page(hpage, 0);
+	if (!PageLRU(hpage) && !PageHuge(p))
+		shake_page(hpage, 0);
 	/*
 	 * This implies unable to support non-LRU pages.
 	 */

@@ -45,10 +45,7 @@ struct stm32_pinctrl_match_data {
 	const unsigned int npins;
 };
 
-struct stm32_gpio_bank;
-
 int stm32_pctl_probe(struct platform_device *pdev);
-void stm32_pmx_get_mode(struct stm32_gpio_bank *bank,
-			int pin, u32 *mode, u32 *alt);
+
 #endif /* __PINCTRL_STM32_H */
 

@@ -8,7 +8,7 @@
 
 #include <linux/device.h>
 #include <linux/slab.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/capability.h>
 #include <linux/export.h>
 #include <linux/suspend.h>
@@ -28,8 +28,8 @@ bool events_check_enabled __read_mostly;
 /* First wakeup IRQ seen by the kernel in the last cycle. */
 unsigned int pm_wakeup_irq __read_mostly;
 
-/* If greater than 0 and the system is suspending, terminate the suspend. */
-static atomic_t pm_abort_suspend __read_mostly;
+/* If set and the system is suspending, terminate the suspend. */
+static bool pm_abort_suspend __read_mostly;
 
 /*
  * Combined counters of registered wakeup events and wakeup events in progress.
@@ -412,17 +412,15 @@ void device_set_wakeup_capable(struct device *dev, bool capable)
 	if (!!dev->power.can_wakeup == !!capable)
 		return;
 
-	dev->power.can_wakeup = capable;
 	if (device_is_registered(dev) && !list_empty(&dev->power.entry)) {
 		if (capable) {
-			int ret = wakeup_sysfs_add(dev);
-
-			if (ret)
-				dev_info(dev, "Wakeup sysfs attributes not added\n");
+			if (wakeup_sysfs_add(dev))
+				return;
 		} else {
 			wakeup_sysfs_remove(dev);
 		}
 	}
+	dev->power.can_wakeup = capable;
 }
 EXPORT_SYMBOL_GPL(device_set_wakeup_capable);
 
@@ -529,6 +527,12 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 			"unregistered wakeup source\n"))
 		return;
 
+	/*
+	 * active wakeup source should bring the system
+	 * out of PM_SUSPEND_FREEZE state
+	 */
+	freeze_wake();
+
 	ws->active = true;
 	ws->active_count++;
 	ws->last_time = ktime_get();
@@ -544,9 +548,8 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 /**
  * wakeup_source_report_event - Report wakeup event using the given source.
  * @ws: Wakeup source to report the event for.
- * @hard: If set, abort suspends in progress and wake up from suspend-to-idle.
  */
-static void wakeup_source_report_event(struct wakeup_source *ws, bool hard)
+static void wakeup_source_report_event(struct wakeup_source *ws)
 {
 	ws->event_count++;
 	/* This is racy, but the counter is approximate anyway. */
@@ -555,9 +558,6 @@ static void wakeup_source_report_event(struct wakeup_source *ws, bool hard)
 
 	if (!ws->active)
 		wakeup_source_activate(ws);
-
-	if (hard)
-		pm_system_wakeup();
 }
 
 /**
@@ -575,7 +575,7 @@ void __pm_stay_awake(struct wakeup_source *ws)
 
 	spin_lock_irqsave(&ws->lock, flags);
 
-	wakeup_source_report_event(ws, false);
+	wakeup_source_report_event(ws);
 	del_timer(&ws->timer);
 	ws->timer_expires = 0;
 
@@ -741,10 +741,9 @@ static void pm_wakeup_timer_fn(unsigned long data)
 }
 
 /**
- * pm_wakeup_ws_event - Notify the PM core of a wakeup event.
+ * __pm_wakeup_event - Notify the PM core of a wakeup event.
  * @ws: Wakeup source object associated with the event source.
  * @msec: Anticipated event processing time (in milliseconds).
- * @hard: If set, abort suspends in progress and wake up from suspend-to-idle.
  *
  * Notify the PM core of a wakeup event whose source is @ws that will take
  * approximately @msec milliseconds to be processed by the kernel.  If @ws is
@@ -753,7 +752,7 @@ static void pm_wakeup_timer_fn(unsigned long data)
  *
  * It is safe to call this function from interrupt context.
  */
-void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
+void __pm_wakeup_event(struct wakeup_source *ws, unsigned int msec)
 {
 	unsigned long flags;
 	unsigned long expires;
@@ -763,7 +762,7 @@ void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
 
 	spin_lock_irqsave(&ws->lock, flags);
 
-	wakeup_source_report_event(ws, hard);
+	wakeup_source_report_event(ws);
 
 	if (!msec) {
 		wakeup_source_deactivate(ws);
@@ -782,17 +781,17 @@ void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
  unlock:
 	spin_unlock_irqrestore(&ws->lock, flags);
 }
-EXPORT_SYMBOL_GPL(pm_wakeup_ws_event);
+EXPORT_SYMBOL_GPL(__pm_wakeup_event);
+
 
 /**
  * pm_wakeup_event - Notify the PM core of a wakeup event.
  * @dev: Device the wakeup event is related to.
  * @msec: Anticipated event processing time (in milliseconds).
- * @hard: If set, abort suspends in progress and wake up from suspend-to-idle.
  *
- * Call pm_wakeup_ws_event() for the @dev's wakeup source object.
+ * Call __pm_wakeup_event() for the @dev's wakeup source object.
  */
-void pm_wakeup_dev_event(struct device *dev, unsigned int msec, bool hard)
+void pm_wakeup_event(struct device *dev, unsigned int msec)
 {
 	unsigned long flags;
 
@@ -800,10 +799,10 @@ void pm_wakeup_dev_event(struct device *dev, unsigned int msec, bool hard)
 		return;
 
 	spin_lock_irqsave(&dev->power.lock, flags);
-	pm_wakeup_ws_event(dev->power.wakeup, msec, hard);
+	__pm_wakeup_event(dev->power.wakeup, msec);
 	spin_unlock_irqrestore(&dev->power.lock, flags);
 }
-EXPORT_SYMBOL_GPL(pm_wakeup_dev_event);
+EXPORT_SYMBOL_GPL(pm_wakeup_event);
 
 void pm_print_active_wakeup_sources(void)
 {
@@ -814,7 +813,7 @@ void pm_print_active_wakeup_sources(void)
 	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->active) {
-			pr_debug("active wakeup source: %s\n", ws->name);
+			pr_info("active wakeup source: %s\n", ws->name);
 			active = 1;
 		} else if (!active &&
 			   (!last_activity_ws ||
@@ -825,7 +824,7 @@ void pm_print_active_wakeup_sources(void)
 	}
 
 	if (!active && last_activity_ws)
-		pr_debug("last active wakeup source: %s\n",
+		pr_info("last active wakeup source: %s\n",
 			last_activity_ws->name);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
@@ -859,26 +858,20 @@ bool pm_wakeup_pending(void)
 		pm_print_active_wakeup_sources();
 	}
 
-	return ret || atomic_read(&pm_abort_suspend) > 0;
+	return ret || pm_abort_suspend;
 }
 
 void pm_system_wakeup(void)
 {
-	atomic_inc(&pm_abort_suspend);
-	s2idle_wake();
+	pm_abort_suspend = true;
+	freeze_wake();
 }
 EXPORT_SYMBOL_GPL(pm_system_wakeup);
 
-void pm_system_cancel_wakeup(void)
+void pm_wakeup_clear(void)
 {
-	atomic_dec(&pm_abort_suspend);
-}
-
-void pm_wakeup_clear(bool reset)
-{
+	pm_abort_suspend = false;
 	pm_wakeup_irq = 0;
-	if (reset)
-		atomic_set(&pm_abort_suspend, 0);
 }
 
 void pm_system_irq_wakeup(unsigned int irq_number)
@@ -914,7 +907,7 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			split_counters(&cnt, &inpr);
 			if (inpr == 0 || signal_pending(current))
 				break;
-			pm_print_active_wakeup_sources();
+
 			schedule();
 		}
 		finish_wait(&wakeup_count_wait_queue, &wait);
@@ -1008,14 +1001,14 @@ static int print_wakeup_source_stats(struct seq_file *m,
 
 		active_time = ktime_sub(now, ws->last_time);
 		total_time = ktime_add(total_time, active_time);
-		if (active_time > max_time)
+		if (active_time.tv64 > max_time.tv64)
 			max_time = active_time;
 
 		if (ws->autosleep_enabled)
 			prevent_sleep_time = ktime_add(prevent_sleep_time,
 				ktime_sub(now, ws->start_prevent_time));
 	} else {
-		active_time = 0;
+		active_time = ktime_set(0, 0);
 	}
 
 	seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",

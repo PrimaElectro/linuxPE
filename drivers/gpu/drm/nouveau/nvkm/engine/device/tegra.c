@@ -23,20 +23,14 @@
 #ifdef CONFIG_NOUVEAU_PLATFORM_DRIVER
 #include "priv.h"
 
-#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
-#include <asm/dma-iommu.h>
-#endif
-
 static int
 nvkm_device_tegra_power_up(struct nvkm_device_tegra *tdev)
 {
 	int ret;
 
-	if (tdev->vdd) {
-		ret = regulator_enable(tdev->vdd);
-		if (ret)
-			goto err_power;
-	}
+	ret = regulator_enable(tdev->vdd);
+	if (ret)
+		goto err_power;
 
 	ret = clk_prepare_enable(tdev->clk);
 	if (ret)
@@ -55,12 +49,10 @@ nvkm_device_tegra_power_up(struct nvkm_device_tegra *tdev)
 	reset_control_assert(tdev->rst);
 	udelay(10);
 
-	if (!tdev->pdev->dev.pm_domain) {
-		ret = tegra_powergate_remove_clamping(TEGRA_POWERGATE_3D);
-		if (ret)
-			goto err_clamp;
-		udelay(10);
-	}
+	ret = tegra_powergate_remove_clamping(TEGRA_POWERGATE_3D);
+	if (ret)
+		goto err_clamp;
+	udelay(10);
 
 	reset_control_deassert(tdev->rst);
 	udelay(10);
@@ -75,8 +67,7 @@ err_clk_pwr:
 err_clk_ref:
 	clk_disable_unprepare(tdev->clk);
 err_clk:
-	if (tdev->vdd)
-		regulator_disable(tdev->vdd);
+	regulator_disable(tdev->vdd);
 err_power:
 	return ret;
 }
@@ -84,7 +75,8 @@ err_power:
 static int
 nvkm_device_tegra_power_down(struct nvkm_device_tegra *tdev)
 {
-	int ret;
+	reset_control_assert(tdev->rst);
+	udelay(10);
 
 	clk_disable_unprepare(tdev->clk_pwr);
 	if (tdev->clk_ref)
@@ -92,13 +84,7 @@ nvkm_device_tegra_power_down(struct nvkm_device_tegra *tdev)
 	clk_disable_unprepare(tdev->clk);
 	udelay(10);
 
-	if (tdev->vdd) {
-		ret = regulator_disable(tdev->vdd);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
+	return regulator_disable(tdev->vdd);
 }
 
 static void
@@ -109,15 +95,6 @@ nvkm_device_tegra_probe_iommu(struct nvkm_device_tegra *tdev)
 	unsigned long pgsize_bitmap;
 	int ret;
 
-#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
-	if (dev->archdata.mapping) {
-		struct dma_iommu_mapping *mapping = to_dma_iommu_mapping(dev);
-
-		arm_iommu_detach_device(dev);
-		arm_iommu_release_mapping(mapping);
-	}
-#endif
-
 	if (!tdev->func->iommu_bit)
 		return;
 
@@ -125,7 +102,7 @@ nvkm_device_tegra_probe_iommu(struct nvkm_device_tegra *tdev)
 
 	if (iommu_present(&platform_bus_type)) {
 		tdev->iommu.domain = iommu_domain_alloc(&platform_bus_type);
-		if (!tdev->iommu.domain)
+		if (IS_ERR(tdev->iommu.domain))
 			goto error;
 
 		/*
@@ -287,12 +264,10 @@ nvkm_device_tegra_new(const struct nvkm_device_tegra_func *func,
 	tdev->func = func;
 	tdev->pdev = pdev;
 
-	if (func->require_vdd) {
-		tdev->vdd = devm_regulator_get(&pdev->dev, "vdd");
-		if (IS_ERR(tdev->vdd)) {
-			ret = PTR_ERR(tdev->vdd);
-			goto free;
-		}
+	tdev->vdd = devm_regulator_get(&pdev->dev, "vdd");
+	if (IS_ERR(tdev->vdd)) {
+		ret = PTR_ERR(tdev->vdd);
+		goto free;
 	}
 
 	tdev->rst = devm_reset_control_get(&pdev->dev, "gpu");

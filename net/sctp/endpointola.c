@@ -73,13 +73,13 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 		 * variables.  There are arrays that we encode directly
 		 * into parameters to make the rest of the operations easier.
 		 */
-		auth_hmacs = kzalloc(sizeof(*auth_hmacs) +
-				     sizeof(__u16) * SCTP_AUTH_NUM_HMACS, gfp);
+		auth_hmacs = kzalloc(sizeof(sctp_hmac_algo_param_t) +
+				sizeof(__u16) * SCTP_AUTH_NUM_HMACS, gfp);
 		if (!auth_hmacs)
 			goto nomem;
 
-		auth_chunks = kzalloc(sizeof(*auth_chunks) +
-				      SCTP_NUM_CHUNK_TYPES, gfp);
+		auth_chunks = kzalloc(sizeof(sctp_chunks_param_t) +
+					SCTP_NUM_CHUNK_TYPES, gfp);
 		if (!auth_chunks)
 			goto nomem;
 
@@ -90,13 +90,12 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 		 */
 		auth_hmacs->param_hdr.type = SCTP_PARAM_HMAC_ALGO;
 		auth_hmacs->param_hdr.length =
-					htons(sizeof(struct sctp_paramhdr) + 2);
+					htons(sizeof(sctp_paramhdr_t) + 2);
 		auth_hmacs->hmac_ids[0] = htons(SCTP_AUTH_HMAC_ID_SHA1);
 
 		/* Initialize the CHUNKS parameter */
 		auth_chunks->param_hdr.type = SCTP_PARAM_CHUNKS;
-		auth_chunks->param_hdr.length =
-					htons(sizeof(struct sctp_paramhdr));
+		auth_chunks->param_hdr.length = htons(sizeof(sctp_paramhdr_t));
 
 		/* If the Add-IP functionality is enabled, we must
 		 * authenticate, ASCONF and ASCONF-ACK chunks
@@ -105,7 +104,7 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 			auth_chunks->chunks[0] = SCTP_CID_ASCONF;
 			auth_chunks->chunks[1] = SCTP_CID_ASCONF_ACK;
 			auth_chunks->param_hdr.length =
-					htons(sizeof(struct sctp_paramhdr) + 2);
+					htons(sizeof(sctp_paramhdr_t) + 2);
 		}
 	}
 
@@ -114,7 +113,7 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 	ep->base.type = SCTP_EP_TYPE_SOCKET;
 
 	/* Initialize the basic object fields. */
-	refcount_set(&ep->base.refcnt, 1);
+	atomic_set(&ep->base.refcnt, 1);
 	ep->base.dead = false;
 
 	/* Create an input queue.  */
@@ -165,7 +164,6 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 	ep->auth_hmacs_list = auth_hmacs;
 	ep->auth_chunk_list = auth_chunks;
 	ep->prsctp_enable = net->sctp.prsctp_enable;
-	ep->reconf_enable = net->sctp.reconf_enable;
 
 	return ep;
 
@@ -269,14 +267,15 @@ static void sctp_endpoint_destroy(struct sctp_endpoint *ep)
 
 	memset(ep->secret_key, 0, sizeof(ep->secret_key));
 
+	/* Give up our hold on the sock. */
 	sk = ep->base.sk;
-	/* Remove and free the port */
-	if (sctp_sk(sk)->bind_hash)
-		sctp_put_port(sk);
+	if (sk != NULL) {
+		/* Remove and free the port */
+		if (sctp_sk(sk)->bind_hash)
+			sctp_put_port(sk);
 
-	sctp_sk(sk)->ep = NULL;
-	/* Give up our hold on the sock */
-	sock_put(sk);
+		sock_put(sk);
+	}
 
 	kfree(ep);
 	SCTP_DBG_OBJCNT_DEC(ep);
@@ -285,7 +284,7 @@ static void sctp_endpoint_destroy(struct sctp_endpoint *ep)
 /* Hold a reference to an endpoint. */
 void sctp_endpoint_hold(struct sctp_endpoint *ep)
 {
-	refcount_inc(&ep->base.refcnt);
+	atomic_inc(&ep->base.refcnt);
 }
 
 /* Release a reference to an endpoint and clean up if there are
@@ -293,7 +292,7 @@ void sctp_endpoint_hold(struct sctp_endpoint *ep)
  */
 void sctp_endpoint_put(struct sctp_endpoint *ep)
 {
-	if (refcount_dec_and_test(&ep->base.refcnt))
+	if (atomic_dec_and_test(&ep->base.refcnt))
 		sctp_endpoint_destroy(ep);
 }
 
@@ -332,9 +331,7 @@ struct sctp_association *sctp_endpoint_lookup_assoc(
 	 * on this endpoint.
 	 */
 	if (!ep->base.bind_addr.port)
-		return NULL;
-
-	rcu_read_lock();
+		goto out;
 	t = sctp_epaddr_lookup_transport(ep, paddr);
 	if (!t)
 		goto out;
@@ -342,7 +339,6 @@ struct sctp_association *sctp_endpoint_lookup_assoc(
 	*transport = t;
 	asoc = t->asoc;
 out:
-	rcu_read_unlock();
 	return asoc;
 }
 
@@ -382,8 +378,8 @@ static void sctp_endpoint_bh_rcv(struct work_struct *work)
 	struct sctp_transport *transport;
 	struct sctp_chunk *chunk;
 	struct sctp_inq *inqueue;
-	union sctp_subtype subtype;
-	enum sctp_state state;
+	sctp_subtype_t subtype;
+	sctp_state_t state;
 	int error = 0;
 	int first_time = 1;	/* is this the first time through the loop */
 

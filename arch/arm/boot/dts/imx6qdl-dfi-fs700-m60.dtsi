@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
-#include "include/dt-bindings/gpio/gpio.h"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	regulators {
@@ -30,6 +29,7 @@
 };
 
 &ecspi3 {
+	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 24 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi3>;

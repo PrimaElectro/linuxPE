@@ -16,9 +16,6 @@
 #include <linux/export.h>
 #include <linux/sysctl.h>
 #include <linux/utsname.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/debug.h>
-
 #include <trace/events/sched.h>
 
 /*
@@ -33,7 +30,7 @@ int __read_mostly sysctl_hung_task_check_count = PID_MAX_LIMIT;
  * is disabled during the critical section. It also controls the size of
  * the RCU grace period. So it needs to be upper-bound.
  */
-#define HUNG_TASK_LOCK_BREAK (HZ / 10)
+#define HUNG_TASK_BATCHING 1024
 
 /*
  * Zero means infinite timeout - no checking done:
@@ -43,8 +40,6 @@ unsigned long __read_mostly sysctl_hung_task_timeout_secs = CONFIG_DEFAULT_HUNG_
 int __read_mostly sysctl_hung_task_warnings = 10;
 
 static int __read_mostly did_panic;
-static bool hung_task_show_lock;
-static bool hung_task_call_panic;
 
 static struct task_struct *watchdog_task;
 
@@ -103,19 +98,15 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 
 	trace_sched_process_hang(t);
 
-	if (sysctl_hung_task_panic) {
-		console_verbose();
-		hung_task_show_lock = true;
-		hung_task_call_panic = true;
-	}
+	if (!sysctl_hung_task_warnings && !sysctl_hung_task_panic)
+		return;
 
 	/*
 	 * Ok, the task did not get scheduled for more than 2 minutes,
 	 * complain:
 	 */
 	if (sysctl_hung_task_warnings) {
-		if (sysctl_hung_task_warnings > 0)
-			sysctl_hung_task_warnings--;
+		sysctl_hung_task_warnings--;
 		pr_err("INFO: task %s:%d blocked for more than %ld seconds.\n",
 			t->comm, t->pid, timeout);
 		pr_err("      %s %s %.*s\n",
@@ -125,10 +116,15 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 		pr_err("\"echo 0 > /proc/sys/kernel/hung_task_timeout_secs\""
 			" disables this message.\n");
 		sched_show_task(t);
-		hung_task_show_lock = true;
+		debug_show_all_locks();
 	}
 
 	touch_nmi_watchdog();
+
+	if (sysctl_hung_task_panic) {
+		trigger_all_cpu_backtrace();
+		panic("hung_task: blocked tasks");
+	}
 }
 
 /*
@@ -162,7 +158,7 @@ static bool rcu_lock_break(struct task_struct *g, struct task_struct *t)
 static void check_hung_uninterruptible_tasks(unsigned long timeout)
 {
 	int max_count = sysctl_hung_task_check_count;
-	unsigned long last_break = jiffies;
+	int batch_count = HUNG_TASK_BATCHING;
 	struct task_struct *g, *t;
 
 	/*
@@ -172,15 +168,14 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 	if (test_taint(TAINT_DIE) || did_panic)
 		return;
 
-	hung_task_show_lock = false;
 	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		if (!max_count--)
 			goto unlock;
-		if (time_after(jiffies, last_break + HUNG_TASK_LOCK_BREAK)) {
+		if (!--batch_count) {
+			batch_count = HUNG_TASK_BATCHING;
 			if (!rcu_lock_break(g, t))
 				goto unlock;
-			last_break = jiffies;
 		}
 		/* use "==" to skip the TASK_KILLABLE tasks waiting on NFS */
 		if (t->state == TASK_UNINTERRUPTIBLE)
@@ -188,12 +183,6 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 	}
  unlock:
 	rcu_read_unlock();
-	if (hung_task_show_lock)
-		debug_show_all_locks();
-	if (hung_task_call_panic) {
-		trigger_all_cpu_backtrace();
-		panic("hung_task: blocked tasks");
-	}
 }
 
 static long hung_timeout_jiffies(unsigned long last_checked,

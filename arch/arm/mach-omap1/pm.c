@@ -581,6 +581,7 @@ static int omap_pm_enter(suspend_state_t state)
 {
 	switch (state)
 	{
+	case PM_SUSPEND_STANDBY:
 	case PM_SUSPEND_MEM:
 		omap1_pm_suspend();
 		break;

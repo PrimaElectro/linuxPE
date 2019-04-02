@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/fs.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -35,7 +34,7 @@ void pin_insert(struct fs_pin *pin, struct vfsmount *m)
 
 void pin_kill(struct fs_pin *p)
 {
-	wait_queue_entry_t wait;
+	wait_queue_t wait;
 
 	if (!p) {
 		rcu_read_unlock();
@@ -62,7 +61,7 @@ void pin_kill(struct fs_pin *p)
 		rcu_read_unlock();
 		schedule();
 		rcu_read_lock();
-		if (likely(list_empty(&wait.entry)))
+		if (likely(list_empty(&wait.task_list)))
 			break;
 		/* OK, we know p couldn't have been freed yet */
 		spin_lock_irq(&p->wait.lock);

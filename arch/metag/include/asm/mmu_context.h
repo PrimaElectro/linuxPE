@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __METAG_MMU_CONTEXT_H
 #define __METAG_MMU_CONTEXT_H
 
@@ -10,7 +9,6 @@
 #include <asm/cacheflush.h>
 
 #include <linux/io.h>
-#include <linux/mm_types.h>
 
 static inline void enter_lazy_tlb(struct mm_struct *mm,
 				  struct task_struct *tsk)

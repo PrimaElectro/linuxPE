@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_FS_NOTIFY_H
 #define _LINUX_FS_NOTIFY_H
 
@@ -18,7 +17,7 @@
 #include <linux/bug.h>
 
 /* Notify this dentry's parent about a child's events. */
-static inline int fsnotify_parent(const struct path *path, struct dentry *dentry, __u32 mask)
+static inline int fsnotify_parent(struct path *path, struct dentry *dentry, __u32 mask)
 {
 	if (!dentry)
 		dentry = path->dentry;
@@ -29,7 +28,7 @@ static inline int fsnotify_parent(const struct path *path, struct dentry *dentry
 /* simple call site for access decisions */
 static inline int fsnotify_perm(struct file *file, int mask)
 {
-	const struct path *path = &file->f_path;
+	struct path *path = &file->f_path;
 	/*
 	 * Do not use file_inode() here or anywhere in this file to get the
 	 * inode.  That would break *notity on overlayfs.
@@ -177,7 +176,7 @@ static inline void fsnotify_mkdir(struct inode *inode, struct dentry *dentry)
  */
 static inline void fsnotify_access(struct file *file)
 {
-	const struct path *path = &file->f_path;
+	struct path *path = &file->f_path;
 	struct inode *inode = path->dentry->d_inode;
 	__u32 mask = FS_ACCESS;
 
@@ -195,7 +194,7 @@ static inline void fsnotify_access(struct file *file)
  */
 static inline void fsnotify_modify(struct file *file)
 {
-	const struct path *path = &file->f_path;
+	struct path *path = &file->f_path;
 	struct inode *inode = path->dentry->d_inode;
 	__u32 mask = FS_MODIFY;
 
@@ -213,7 +212,7 @@ static inline void fsnotify_modify(struct file *file)
  */
 static inline void fsnotify_open(struct file *file)
 {
-	const struct path *path = &file->f_path;
+	struct path *path = &file->f_path;
 	struct inode *inode = path->dentry->d_inode;
 	__u32 mask = FS_OPEN;
 
@@ -229,7 +228,7 @@ static inline void fsnotify_open(struct file *file)
  */
 static inline void fsnotify_close(struct file *file)
 {
-	const struct path *path = &file->f_path;
+	struct path *path = &file->f_path;
 	struct inode *inode = path->dentry->d_inode;
 	fmode_t mode = file->f_mode;
 	__u32 mask = (mode & FMODE_WRITE) ? FS_CLOSE_WRITE : FS_CLOSE_NOWRITE;

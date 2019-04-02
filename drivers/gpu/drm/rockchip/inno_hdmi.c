@@ -294,7 +294,7 @@ static int inno_hdmi_config_video_avi(struct inno_hdmi *hdmi,
 	union hdmi_infoframe frame;
 	int rc;
 
-	rc = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi, mode, false);
+	rc = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi, mode);
 
 	if (hdmi->hdmi_data.enc_out_format == HDMI_COLORSPACE_YUV444)
 		frame.avi.colorspace = HDMI_COLORSPACE_YUV444;
@@ -592,7 +592,8 @@ static void inno_hdmi_connector_destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 }
 
-static const struct drm_connector_funcs inno_hdmi_connector_funcs = {
+static struct drm_connector_funcs inno_hdmi_connector_funcs = {
+	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = inno_hdmi_probe_single_connector_modes,
 	.detect = inno_hdmi_connector_detect,
 	.destroy = inno_hdmi_connector_destroy,
@@ -922,7 +923,7 @@ static const struct of_device_id inno_hdmi_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, inno_hdmi_dt_ids);
 
-struct platform_driver inno_hdmi_driver = {
+static struct platform_driver inno_hdmi_driver = {
 	.probe  = inno_hdmi_probe,
 	.remove = inno_hdmi_remove,
 	.driver = {
@@ -930,3 +931,11 @@ struct platform_driver inno_hdmi_driver = {
 		.of_match_table = inno_hdmi_dt_ids,
 	},
 };
+
+module_platform_driver(inno_hdmi_driver);
+
+MODULE_AUTHOR("Zheng Yang <zhengyang@rock-chips.com>");
+MODULE_AUTHOR("Yakir Yang <ykk@rock-chips.com>");
+MODULE_DESCRIPTION("Rockchip Specific INNO-HDMI Driver");
+MODULE_LICENSE("GPL v2");
+MODULE_ALIAS("platform:innohdmi-rockchip");

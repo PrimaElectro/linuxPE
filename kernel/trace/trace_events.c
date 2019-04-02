@@ -187,6 +187,8 @@ static int trace_define_common_fields(void)
 	__common_field(unsigned char, flags);
 	__common_field(unsigned char, preempt_count);
 	__common_field(int, pid);
+	__common_field(unsigned short, migrate_disable);
+	__common_field(unsigned short, padding);
 
 	return ret;
 }
@@ -283,6 +285,46 @@ void *trace_event_buffer_reserve(struct trace_event_buffer *fbuffer,
 }
 EXPORT_SYMBOL_GPL(trace_event_buffer_reserve);
 
+static DEFINE_SPINLOCK(tracepoint_iter_lock);
+
+static void output_printk(struct trace_event_buffer *fbuffer)
+{
+	struct trace_event_call *event_call;
+	struct trace_event *event;
+	unsigned long flags;
+	struct trace_iterator *iter = tracepoint_print_iter;
+
+	if (!iter)
+		return;
+
+	event_call = fbuffer->trace_file->event_call;
+	if (!event_call || !event_call->event.funcs ||
+	    !event_call->event.funcs->trace)
+		return;
+
+	event = &fbuffer->trace_file->event_call->event;
+
+	spin_lock_irqsave(&tracepoint_iter_lock, flags);
+	trace_seq_init(&iter->seq);
+	iter->ent = fbuffer->entry;
+	event_call->event.funcs->trace(iter, 0, event);
+	trace_seq_putc(&iter->seq, 0);
+	printk("%s", iter->seq.buffer);
+
+	spin_unlock_irqrestore(&tracepoint_iter_lock, flags);
+}
+
+void trace_event_buffer_commit(struct trace_event_buffer *fbuffer)
+{
+	if (tracepoint_printk)
+		output_printk(fbuffer);
+
+	event_trigger_unlock_commit(fbuffer->trace_file, fbuffer->buffer,
+				    fbuffer->event, fbuffer->entry,
+				    fbuffer->flags, fbuffer->pc);
+}
+EXPORT_SYMBOL_GPL(trace_event_buffer_commit);
+
 int trace_event_reg(struct trace_event_call *call,
 		    enum trace_reg type, void *data)
 {
@@ -343,28 +385,6 @@ void trace_event_enable_cmd_record(bool enable)
 	mutex_unlock(&event_mutex);
 }
 
-void trace_event_enable_tgid_record(bool enable)
-{
-	struct trace_event_file *file;
-	struct trace_array *tr;
-
-	mutex_lock(&event_mutex);
-	do_for_each_event_file(tr, file) {
-		if (!(file->flags & EVENT_FILE_FL_ENABLED))
-			continue;
-
-		if (enable) {
-			tracing_start_tgid_record();
-			set_bit(EVENT_FILE_FL_RECORDED_TGID_BIT, &file->flags);
-		} else {
-			tracing_stop_tgid_record();
-			clear_bit(EVENT_FILE_FL_RECORDED_TGID_BIT,
-				  &file->flags);
-		}
-	} while_for_each_event_file();
-	mutex_unlock(&event_mutex);
-}
-
 static int __ftrace_event_enable_disable(struct trace_event_file *file,
 					 int enable, int soft_disable)
 {
@@ -403,12 +423,6 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 				tracing_stop_cmdline_record();
 				clear_bit(EVENT_FILE_FL_RECORDED_CMD_BIT, &file->flags);
 			}
-
-			if (file->flags & EVENT_FILE_FL_RECORDED_TGID) {
-				tracing_stop_tgid_record();
-				clear_bit(EVENT_FILE_FL_RECORDED_TGID_BIT, &file->flags);
-			}
-
 			call->class->reg(call, TRACE_REG_UNREGISTER, file);
 		}
 		/* If in SOFT_MODE, just set the SOFT_DISABLE_BIT, else clear it */
@@ -435,30 +449,18 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 		}
 
 		if (!(file->flags & EVENT_FILE_FL_ENABLED)) {
-			bool cmd = false, tgid = false;
 
 			/* Keep the event disabled, when going to SOFT_MODE. */
 			if (soft_disable)
 				set_bit(EVENT_FILE_FL_SOFT_DISABLED_BIT, &file->flags);
 
 			if (tr->trace_flags & TRACE_ITER_RECORD_CMD) {
-				cmd = true;
 				tracing_start_cmdline_record();
 				set_bit(EVENT_FILE_FL_RECORDED_CMD_BIT, &file->flags);
 			}
-
-			if (tr->trace_flags & TRACE_ITER_RECORD_TGID) {
-				tgid = true;
-				tracing_start_tgid_record();
-				set_bit(EVENT_FILE_FL_RECORDED_TGID_BIT, &file->flags);
-			}
-
 			ret = call->class->reg(call, TRACE_REG_REGISTER, file);
 			if (ret) {
-				if (cmd)
-					tracing_stop_cmdline_record();
-				if (tgid)
-					tracing_stop_tgid_record();
+				tracing_stop_cmdline_record();
 				pr_info("event trace: Could not enable event "
 					"%s\n", trace_event_name(call));
 				break;
@@ -466,7 +468,7 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 			set_bit(EVENT_FILE_FL_ENABLED_BIT, &file->flags);
 
 			/* WAS_ENABLED gets set but never cleared. */
-			set_bit(EVENT_FILE_FL_WAS_ENABLED_BIT, &file->flags);
+			call->flags |= TRACE_EVENT_FL_WAS_ENABLED;
 		}
 		break;
 	}
@@ -742,7 +744,6 @@ __ftrace_set_clr_event_nolock(struct trace_array *tr, const char *match,
 	struct trace_event_call *call;
 	const char *name;
 	int ret = -EINVAL;
-	int eret = 0;
 
 	list_for_each_entry(file, &tr->events, list) {
 
@@ -766,17 +767,9 @@ __ftrace_set_clr_event_nolock(struct trace_array *tr, const char *match,
 		if (event && strcmp(event, name) != 0)
 			continue;
 
-		ret = ftrace_event_enable_disable(file, set);
+		ftrace_event_enable_disable(file, set);
 
-		/*
-		 * Save the first error and return that. Some events
-		 * may still have been enabled, but let the user
-		 * know that something went wrong.
-		 */
-		if (ret && !eret)
-			eret = ret;
-
-		ret = eret;
+		ret = 0;
 	}
 
 	return ret;
@@ -2058,10 +2051,6 @@ static void event_remove(struct trace_event_call *call)
 	do_for_each_event_file(tr, file) {
 		if (file->event_call != call)
 			continue;
-
-		if (file->flags & EVENT_FILE_FL_WAS_ENABLED)
-			tr->clear_trace = true;
-
 		ftrace_event_enable_disable(file, 0);
 		/*
 		 * The do_for_each_event_file() is
@@ -2111,18 +2100,18 @@ __register_event(struct trace_event_call *call, struct module *mod)
 	return 0;
 }
 
-static char *eval_replace(char *ptr, struct trace_eval_map *map, int len)
+static char *enum_replace(char *ptr, struct trace_enum_map *map, int len)
 {
 	int rlen;
 	int elen;
 
-	/* Find the length of the eval value as a string */
-	elen = snprintf(ptr, 0, "%ld", map->eval_value);
+	/* Find the length of the enum value as a string */
+	elen = snprintf(ptr, 0, "%ld", map->enum_value);
 	/* Make sure there's enough room to replace the string with the value */
 	if (len < elen)
 		return NULL;
 
-	snprintf(ptr, elen + 1, "%ld", map->eval_value);
+	snprintf(ptr, elen + 1, "%ld", map->enum_value);
 
 	/* Get the rest of the string of ptr */
 	rlen = strlen(ptr + len);
@@ -2134,11 +2123,11 @@ static char *eval_replace(char *ptr, struct trace_eval_map *map, int len)
 }
 
 static void update_event_printk(struct trace_event_call *call,
-				struct trace_eval_map *map)
+				struct trace_enum_map *map)
 {
 	char *ptr;
 	int quote = 0;
-	int len = strlen(map->eval_string);
+	int len = strlen(map->enum_string);
 
 	for (ptr = call->print_fmt; *ptr; ptr++) {
 		if (*ptr == '\\') {
@@ -2169,16 +2158,16 @@ static void update_event_printk(struct trace_event_call *call,
 			continue;
 		}
 		if (isalpha(*ptr) || *ptr == '_') {
-			if (strncmp(map->eval_string, ptr, len) == 0 &&
+			if (strncmp(map->enum_string, ptr, len) == 0 &&
 			    !isalnum(ptr[len]) && ptr[len] != '_') {
-				ptr = eval_replace(ptr, map, len);
-				/* enum/sizeof string smaller than value */
+				ptr = enum_replace(ptr, map, len);
+				/* Hmm, enum string smaller than value */
 				if (WARN_ON_ONCE(!ptr))
 					return;
 				/*
-				 * No need to decrement here, as eval_replace()
+				 * No need to decrement here, as enum_replace()
 				 * returns the pointer to the character passed
-				 * the eval, and two evals can not be placed
+				 * the enum, and two enums can not be placed
 				 * back to back without something in between.
 				 * We can skip that something in between.
 				 */
@@ -2209,7 +2198,7 @@ static void update_event_printk(struct trace_event_call *call,
 	}
 }
 
-void trace_event_eval_update(struct trace_eval_map **map, int len)
+void trace_event_enum_update(struct trace_enum_map **map, int len)
 {
 	struct trace_event_call *call, *p;
 	const char *last_system = NULL;
@@ -2414,11 +2403,15 @@ static void trace_module_add_events(struct module *mod)
 static void trace_module_remove_events(struct module *mod)
 {
 	struct trace_event_call *call, *p;
+	bool clear_trace = false;
 
 	down_write(&trace_event_sem);
 	list_for_each_entry_safe(call, p, &ftrace_events, list) {
-		if (call->mod == mod)
+		if (call->mod == mod) {
+			if (call->flags & TRACE_EVENT_FL_WAS_ENABLED)
+				clear_trace = true;
 			__trace_remove_event_call(call);
+		}
 	}
 	up_write(&trace_event_sem);
 
@@ -2430,7 +2423,8 @@ static void trace_module_remove_events(struct module *mod)
 	 * over from this module may be passed to the new module events and
 	 * unexpected results may occur.
 	 */
-	tracing_reset_all_online_cpus();
+	if (clear_trace)
+		tracing_reset_all_online_cpus();
 }
 
 static int trace_module_notify(struct notifier_block *self,
@@ -2513,8 +2507,15 @@ struct event_probe_data {
 	bool				enable;
 };
 
-static void update_event_probe(struct event_probe_data *data)
+static void
+event_enable_probe(unsigned long ip, unsigned long parent_ip, void **_data)
 {
+	struct event_probe_data **pdata = (struct event_probe_data **)_data;
+	struct event_probe_data *data = *pdata;
+
+	if (!data)
+		return;
+
 	if (data->enable)
 		clear_bit(EVENT_FILE_FL_SOFT_DISABLED_BIT, &data->file->flags);
 	else
@@ -2522,141 +2523,77 @@ static void update_event_probe(struct event_probe_data *data)
 }
 
 static void
-event_enable_probe(unsigned long ip, unsigned long parent_ip,
-		   struct trace_array *tr, struct ftrace_probe_ops *ops,
-		   void *data)
+event_enable_count_probe(unsigned long ip, unsigned long parent_ip, void **_data)
 {
-	struct ftrace_func_mapper *mapper = data;
-	struct event_probe_data *edata;
-	void **pdata;
+	struct event_probe_data **pdata = (struct event_probe_data **)_data;
+	struct event_probe_data *data = *pdata;
 
-	pdata = ftrace_func_mapper_find_ip(mapper, ip);
-	if (!pdata || !*pdata)
+	if (!data)
 		return;
 
-	edata = *pdata;
-	update_event_probe(edata);
-}
-
-static void
-event_enable_count_probe(unsigned long ip, unsigned long parent_ip,
-			 struct trace_array *tr, struct ftrace_probe_ops *ops,
-			 void *data)
-{
-	struct ftrace_func_mapper *mapper = data;
-	struct event_probe_data *edata;
-	void **pdata;
-
-	pdata = ftrace_func_mapper_find_ip(mapper, ip);
-	if (!pdata || !*pdata)
-		return;
-
-	edata = *pdata;
-
-	if (!edata->count)
+	if (!data->count)
 		return;
 
 	/* Skip if the event is in a state we want to switch to */
-	if (edata->enable == !(edata->file->flags & EVENT_FILE_FL_SOFT_DISABLED))
+	if (data->enable == !(data->file->flags & EVENT_FILE_FL_SOFT_DISABLED))
 		return;
 
-	if (edata->count != -1)
-		(edata->count)--;
+	if (data->count != -1)
+		(data->count)--;
 
-	update_event_probe(edata);
+	event_enable_probe(ip, parent_ip, _data);
 }
 
 static int
 event_enable_print(struct seq_file *m, unsigned long ip,
-		   struct ftrace_probe_ops *ops, void *data)
+		      struct ftrace_probe_ops *ops, void *_data)
 {
-	struct ftrace_func_mapper *mapper = data;
-	struct event_probe_data *edata;
-	void **pdata;
-
-	pdata = ftrace_func_mapper_find_ip(mapper, ip);
-
-	if (WARN_ON_ONCE(!pdata || !*pdata))
-		return 0;
-
-	edata = *pdata;
+	struct event_probe_data *data = _data;
 
 	seq_printf(m, "%ps:", (void *)ip);
 
 	seq_printf(m, "%s:%s:%s",
-		   edata->enable ? ENABLE_EVENT_STR : DISABLE_EVENT_STR,
-		   edata->file->event_call->class->system,
-		   trace_event_name(edata->file->event_call));
+		   data->enable ? ENABLE_EVENT_STR : DISABLE_EVENT_STR,
+		   data->file->event_call->class->system,
+		   trace_event_name(data->file->event_call));
 
-	if (edata->count == -1)
+	if (data->count == -1)
 		seq_puts(m, ":unlimited\n");
 	else
-		seq_printf(m, ":count=%ld\n", edata->count);
+		seq_printf(m, ":count=%ld\n", data->count);
 
 	return 0;
 }
 
 static int
-event_enable_init(struct ftrace_probe_ops *ops, struct trace_array *tr,
-		  unsigned long ip, void *init_data, void **data)
+event_enable_init(struct ftrace_probe_ops *ops, unsigned long ip,
+		  void **_data)
 {
-	struct ftrace_func_mapper *mapper = *data;
-	struct event_probe_data *edata = init_data;
-	int ret;
+	struct event_probe_data **pdata = (struct event_probe_data **)_data;
+	struct event_probe_data *data = *pdata;
 
-	if (!mapper) {
-		mapper = allocate_ftrace_func_mapper();
-		if (!mapper)
-			return -ENODEV;
-		*data = mapper;
-	}
-
-	ret = ftrace_func_mapper_add_ip(mapper, ip, edata);
-	if (ret < 0)
-		return ret;
-
-	edata->ref++;
-
-	return 0;
-}
-
-static int free_probe_data(void *data)
-{
-	struct event_probe_data *edata = data;
-
-	edata->ref--;
-	if (!edata->ref) {
-		/* Remove the SOFT_MODE flag */
-		__ftrace_event_enable_disable(edata->file, 0, 1);
-		module_put(edata->file->event_call->mod);
-		kfree(edata);
-	}
+	data->ref++;
 	return 0;
 }
 
 static void
-event_enable_free(struct ftrace_probe_ops *ops, struct trace_array *tr,
-		  unsigned long ip, void *data)
+event_enable_free(struct ftrace_probe_ops *ops, unsigned long ip,
+		  void **_data)
 {
-	struct ftrace_func_mapper *mapper = data;
-	struct event_probe_data *edata;
+	struct event_probe_data **pdata = (struct event_probe_data **)_data;
+	struct event_probe_data *data = *pdata;
 
-	if (!ip) {
-		if (!mapper)
-			return;
-		free_ftrace_func_mapper(mapper, free_probe_data);
+	if (WARN_ON_ONCE(data->ref <= 0))
 		return;
+
+	data->ref--;
+	if (!data->ref) {
+		/* Remove the SOFT_MODE flag */
+		__ftrace_event_enable_disable(data->file, 0, 1);
+		module_put(data->file->event_call->mod);
+		kfree(data);
 	}
-
-	edata = ftrace_func_mapper_remove_ip(mapper, ip);
-
-	if (WARN_ON_ONCE(!edata))
-		return;
-
-	if (WARN_ON_ONCE(edata->ref <= 0))
-		return;
-
-	free_probe_data(edata);
+	*pdata = NULL;
 }
 
 static struct ftrace_probe_ops event_enable_probe_ops = {
@@ -2688,9 +2625,10 @@ static struct ftrace_probe_ops event_disable_count_probe_ops = {
 };
 
 static int
-event_enable_func(struct trace_array *tr, struct ftrace_hash *hash,
+event_enable_func(struct ftrace_hash *hash,
 		  char *glob, char *cmd, char *param, int enabled)
 {
+	struct trace_array *tr = top_trace_array();
 	struct trace_event_file *file;
 	struct ftrace_probe_ops *ops;
 	struct event_probe_data *data;
@@ -2728,12 +2666,12 @@ event_enable_func(struct trace_array *tr, struct ftrace_hash *hash,
 		ops = param ? &event_disable_count_probe_ops : &event_disable_probe_ops;
 
 	if (glob[0] == '!') {
-		ret = unregister_ftrace_function_probe_func(glob+1, tr, ops);
+		unregister_ftrace_function_probe_func(glob+1, ops);
+		ret = 0;
 		goto out;
 	}
 
 	ret = -ENOMEM;
-
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		goto out;
@@ -2770,8 +2708,7 @@ event_enable_func(struct trace_array *tr, struct ftrace_hash *hash,
 	ret = __ftrace_event_enable_disable(file, 1, 1);
 	if (ret < 0)
 		goto out_put;
-
-	ret = register_ftrace_function_probe(glob, tr, ops, data);
+	ret = register_ftrace_function_probe(glob, ops, data);
 	/*
 	 * The above returns on success the # of functions enabled,
 	 * but if it didn't find any functions it returns zero.
@@ -2922,32 +2859,20 @@ create_event_toplevel_files(struct dentry *parent, struct trace_array *tr)
 		return -ENOMEM;
 	}
 
-	entry = trace_create_file("enable", 0644, d_events,
-				  tr, &ftrace_tr_enable_fops);
-	if (!entry) {
-		pr_warn("Could not create tracefs 'enable' entry\n");
-		return -ENOMEM;
-	}
-
-	/* There are not as crucial, just warn if they are not created */
-
 	entry = tracefs_create_file("set_event_pid", 0644, parent,
 				    tr, &ftrace_set_event_pid_fops);
-	if (!entry)
-		pr_warn("Could not create tracefs 'set_event_pid' entry\n");
 
 	/* ring buffer internal formats */
-	entry = trace_create_file("header_page", 0444, d_events,
-				  ring_buffer_print_page_header,
-				  &ftrace_show_header_fops);
-	if (!entry)
-		pr_warn("Could not create tracefs 'header_page' entry\n");
+	trace_create_file("header_page", 0444, d_events,
+			  ring_buffer_print_page_header,
+			  &ftrace_show_header_fops);
 
-	entry = trace_create_file("header_event", 0444, d_events,
-				  ring_buffer_print_entry_header,
-				  &ftrace_show_header_fops);
-	if (!entry)
-		pr_warn("Could not create tracefs 'header_event' entry\n");
+	trace_create_file("header_event", 0444, d_events,
+			  ring_buffer_print_entry_header,
+			  &ftrace_show_header_fops);
+
+	trace_create_file("enable", 0644, d_events,
+			  tr, &ftrace_tr_enable_fops);
 
 	tr->event_dir = d_events;
 

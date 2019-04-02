@@ -107,8 +107,7 @@ static int shadow_and_reallocate_code (struct snd_cs46xx * chip, u32 * data, u32
             
 						dev_dbg(chip->card->dev,
 							"handle_wideop:[2] %05x:%05x addr %04x\n",
-							hival, loval, address);
-						nreallocated++;
+							hival, loval, address);						nreallocated++;
 					} /* wide_opcodes[j] == wide_op */
 				} /* for */
 			} /* mod_type == 0 ... */
@@ -899,9 +898,6 @@ int cs46xx_dsp_proc_done (struct snd_cs46xx *chip)
 {
 	struct dsp_spos_instance * ins = chip->dsp_spos_instance;
 	int i;
-
-	if (!ins)
-		return 0;
 
 	snd_info_free_entry(ins->proc_sym_info_entry);
 	ins->proc_sym_info_entry = NULL;

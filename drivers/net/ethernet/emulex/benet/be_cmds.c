@@ -4500,7 +4500,7 @@ int be_cmd_get_profile_config(struct be_adapter *adapter,
 				port_res->max_vfs += le16_to_cpu(pcie->num_vfs);
 			}
 		}
-		goto err;
+		return status;
 	}
 
 	pcie = be_get_pcie_desc(resp->func_param, desc_count,
@@ -4939,9 +4939,8 @@ static int
 __be_cmd_set_logical_link_config(struct be_adapter *adapter,
 				 int link_state, int version, u8 domain)
 {
-	struct be_cmd_req_set_ll_link *req;
 	struct be_mcc_wrb *wrb;
-	u32 link_config = 0;
+	struct be_cmd_req_set_ll_link *req;
 	int status;
 
 	mutex_lock(&adapter->mcc_lock);
@@ -4963,12 +4962,10 @@ __be_cmd_set_logical_link_config(struct be_adapter *adapter,
 
 	if (link_state == IFLA_VF_LINK_STATE_ENABLE ||
 	    link_state == IFLA_VF_LINK_STATE_AUTO)
-		link_config |= PLINK_ENABLE;
+		req->link_config |= PLINK_ENABLE;
 
 	if (link_state == IFLA_VF_LINK_STATE_AUTO)
-		link_config |= PLINK_TRACK;
-
-	req->link_config = cpu_to_le32(link_config);
+		req->link_config |= PLINK_TRACK;
 
 	status = be_mcc_notify_wait(adapter);
 err:

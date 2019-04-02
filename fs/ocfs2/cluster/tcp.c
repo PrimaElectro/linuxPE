@@ -54,7 +54,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/sched/mm.h>
 #include <linux/jiffies.h>
 #include <linux/slab.h>
 #include <linux/idr.h>
@@ -63,7 +62,7 @@
 #include <linux/export.h>
 #include <net/tcp.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "heartbeat.h"
 #include "tcp.h"
@@ -98,7 +97,7 @@
 	typeof(sc) __sc = (sc);						\
 	mlog(ML_SOCKET, "[sc %p refs %d sock %p node %u page %p "	\
 	     "pg_off %zu] " fmt, __sc,					\
-	     kref_read(&__sc->sc_kref), __sc->sc_sock,	\
+	     atomic_read(&__sc->sc_kref.refcount), __sc->sc_sock,	\
 	    __sc->sc_node->nd_num, __sc->sc_page, __sc->sc_page_off ,	\
 	    ##args);							\
 } while (0)
@@ -450,8 +449,9 @@ static struct o2net_sock_container *sc_alloc(struct o2nm_node *node)
 	INIT_WORK(&sc->sc_shutdown_work, o2net_shutdown_sc);
 	INIT_DELAYED_WORK(&sc->sc_keepalive_work, o2net_sc_send_keep_req);
 
-	setup_timer(&sc->sc_idle_timeout, o2net_idle_timer,
-		    (unsigned long)sc);
+	init_timer(&sc->sc_idle_timeout);
+	sc->sc_idle_timeout.function = o2net_idle_timer;
+	sc->sc_idle_timeout.data = (unsigned long)sc;
 
 	sclog(sc, "alloced\n");
 
@@ -955,7 +955,7 @@ static void o2net_sendpage(struct o2net_sock_container *sc,
 		mutex_lock(&sc->sc_send_lock);
 		ret = sc->sc_sock->ops->sendpage(sc->sc_sock,
 						 virt_to_page(kmalloced_virt),
-						 offset_in_page(kmalloced_virt),
+						 (long)kmalloced_virt & ~PAGE_MASK,
 						 size, MSG_DONTWAIT);
 		mutex_unlock(&sc->sc_send_lock);
 		if (ret == size)
@@ -1459,10 +1459,27 @@ static void o2net_rx_until_empty(struct work_struct *work)
 
 static int o2net_set_nodelay(struct socket *sock)
 {
-	int val = 1;
+	int ret, val = 1;
+	mm_segment_t oldfs;
 
-	return kernel_setsockopt(sock, SOL_TCP, TCP_NODELAY,
-				    (void *)&val, sizeof(val));
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+
+	/*
+	 * Dear unsuspecting programmer,
+	 *
+	 * Don't use sock_setsockopt() for SOL_TCP.  It doesn't check its level
+	 * argument and assumes SOL_SOCKET so, say, your TCP_NODELAY will
+	 * silently turn into SO_DEBUG.
+	 *
+	 * Yours,
+	 * Keeper of hilariously fragile interfaces.
+	 */
+	ret = sock->ops->setsockopt(sock, SOL_TCP, TCP_NODELAY,
+				    (char __user *)&val, sizeof(val));
+
+	set_fs(oldfs);
+	return ret;
 }
 
 static int o2net_set_usertimeout(struct socket *sock)
@@ -1470,7 +1487,7 @@ static int o2net_set_usertimeout(struct socket *sock)
 	int user_timeout = O2NET_TCP_USER_TIMEOUT;
 
 	return kernel_setsockopt(sock, SOL_TCP, TCP_USER_TIMEOUT,
-				(void *)&user_timeout, sizeof(user_timeout));
+				(char *)&user_timeout, sizeof(user_timeout));
 }
 
 static void o2net_initialize_handshake(void)
@@ -1845,7 +1862,7 @@ static int o2net_accept_one(struct socket *sock, int *more)
 
 	new_sock->type = sock->type;
 	new_sock->ops = sock->ops;
-	ret = sock->ops->accept(sock, new_sock, O_NONBLOCK, false);
+	ret = sock->ops->accept(sock, new_sock, O_NONBLOCK);
 	if (ret < 0)
 		goto out;
 

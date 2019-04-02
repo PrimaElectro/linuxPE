@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _GPIO_KEYS_H
 #define _GPIO_KEYS_H
 
 struct device;
+struct gpio_desc;
 
 /**
  * struct gpio_keys_button - configuration parameters
@@ -18,6 +18,7 @@ struct device;
  *			disable button via sysfs
  * @value:		axis value for %EV_ABS
  * @irq:		Irq number in case of interrupt keys
+ * @gpiod:		GPIO descriptor
  */
 struct gpio_keys_button {
 	unsigned int code;
@@ -30,6 +31,7 @@ struct gpio_keys_button {
 	bool can_disable;
 	int value;
 	unsigned int irq;
+	struct gpio_desc *gpiod;
 };
 
 /**
@@ -44,7 +46,7 @@ struct gpio_keys_button {
  * @name:		input device name
  */
 struct gpio_keys_platform_data {
-	const struct gpio_keys_button *buttons;
+	struct gpio_keys_button *buttons;
 	int nbuttons;
 	unsigned int poll_interval;
 	unsigned int rep:1;

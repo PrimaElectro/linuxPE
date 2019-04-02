@@ -36,9 +36,7 @@
 #ifndef _INTERVAL_H__
 #define _INTERVAL_H__
 
-#include <linux/errno.h>
-#include <linux/string.h>
-#include <linux/types.h>
+#include "../../include/linux/libcfs/libcfs.h"	/* LASSERT. */
 
 struct interval_node {
 	struct interval_node   *in_left;
@@ -75,15 +73,13 @@ static inline __u64 interval_high(struct interval_node *node)
 	return node->in_extent.end;
 }
 
-static inline int interval_set(struct interval_node *node,
-			       __u64 start, __u64 end)
+static inline void interval_set(struct interval_node *node,
+				__u64 start, __u64 end)
 {
-	if (start > end)
-		return -ERANGE;
+	LASSERT(start <= end);
 	node->in_extent.start = start;
 	node->in_extent.end = end;
 	node->in_max_high = end;
-	return 0;
 }
 
 /*
@@ -110,9 +106,5 @@ void interval_erase(struct interval_node *node, struct interval_node **root);
 enum interval_iter interval_search(struct interval_node *root,
 				   struct interval_node_extent *ex,
 				   interval_callback_t func, void *data);
-
-enum interval_iter interval_iterate_reverse(struct interval_node *root,
-					    interval_callback_t func,
-					    void *data);
 
 #endif

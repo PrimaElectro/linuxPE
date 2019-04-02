@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <stdio.h>
 #include <stddef.h>
 #include <signal.h>
@@ -6,7 +5,7 @@
 #include <sys/mman.h>
 #include <sys/user.h>
 #define __FRAME_OFFSETS
-#include <linux/ptrace.h>
+#include <asm/ptrace.h>
 #include <asm/types.h>
 
 #ifdef __i386__
@@ -51,11 +50,7 @@ void foo(void)
 	DEFINE(HOST_GS, GS);
 	DEFINE(HOST_ORIG_AX, ORIG_EAX);
 #else
-#ifdef FP_XSTATE_MAGIC1
-	DEFINE_LONGS(HOST_FP_SIZE, 2696);
-#else
-	DEFINE(HOST_FP_SIZE, sizeof(struct _fpstate) / sizeof(unsigned long));
-#endif
+	DEFINE(HOST_FP_SIZE, sizeof(struct _xstate) / sizeof(unsigned long));
 	DEFINE_LONGS(HOST_BX, RBX);
 	DEFINE_LONGS(HOST_CX, RCX);
 	DEFINE_LONGS(HOST_DI, RDI);

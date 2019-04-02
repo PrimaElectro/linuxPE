@@ -69,7 +69,8 @@ static int smsc_i2c_probe(struct i2c_client *i2c,
 
 #ifdef CONFIG_OF
 	if (i2c->dev.of_node)
-		ret = devm_of_platform_populate(&i2c->dev);
+		ret = of_platform_populate(i2c->dev.of_node,
+					   NULL, NULL, &i2c->dev);
 #endif
 
 	return ret;

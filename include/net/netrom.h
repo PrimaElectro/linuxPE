@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *	Declarations of NET/ROM type objects.
  *
@@ -12,7 +11,6 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <net/sock.h>
-#include <linux/refcount.h>
 
 #define	NR_NETWORK_LEN			15
 #define	NR_TRANSPORT_LEN		5
@@ -95,7 +93,7 @@ struct nr_neigh {
 	unsigned short		count;
 	unsigned int		number;
 	unsigned char		failed;
-	refcount_t		refcount;
+	atomic_t		refcount;
 };
 
 struct nr_route {
@@ -111,7 +109,7 @@ struct nr_node {
 	unsigned char		which;
 	unsigned char		count;
 	struct nr_route		routes[3];
-	refcount_t		refcount;
+	atomic_t		refcount;
 	spinlock_t		node_lock;
 };
 
@@ -120,21 +118,21 @@ struct nr_node {
  *********************************************************************/
 
 #define nr_node_hold(__nr_node) \
-	refcount_inc(&((__nr_node)->refcount))
+	atomic_inc(&((__nr_node)->refcount))
 
 static __inline__ void nr_node_put(struct nr_node *nr_node)
 {
-	if (refcount_dec_and_test(&nr_node->refcount)) {
+	if (atomic_dec_and_test(&nr_node->refcount)) {
 		kfree(nr_node);
 	}
 }
 
 #define nr_neigh_hold(__nr_neigh) \
-	refcount_inc(&((__nr_neigh)->refcount))
+	atomic_inc(&((__nr_neigh)->refcount))
 
 static __inline__ void nr_neigh_put(struct nr_neigh *nr_neigh)
 {
-	if (refcount_dec_and_test(&nr_neigh->refcount)) {
+	if (atomic_dec_and_test(&nr_neigh->refcount)) {
 		if (nr_neigh->ax25)
 			ax25_cb_put(nr_neigh->ax25);
 		kfree(nr_neigh->digipeat);

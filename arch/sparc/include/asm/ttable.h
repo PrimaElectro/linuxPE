@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _SPARC64_TTABLE_H
 #define _SPARC64_TTABLE_H
 
@@ -185,12 +184,6 @@
 #define KPROBES_TRAP(lvl) TRAP_IRQ(kprobe_trap, lvl)
 #else
 #define KPROBES_TRAP(lvl) TRAP_ARG(bad_trap, lvl)
-#endif
-
-#ifdef CONFIG_UPROBES
-#define UPROBES_TRAP(lvl) TRAP_ARG(uprobe_trap, lvl)
-#else
-#define UPROBES_TRAP(lvl) TRAP_ARG(bad_trap, lvl)
 #endif
 
 #ifdef CONFIG_KGDB

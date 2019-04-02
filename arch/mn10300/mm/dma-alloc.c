@@ -121,7 +121,7 @@ static int mn10300_dma_supported(struct device *dev, u64 mask)
 	return 1;
 }
 
-const struct dma_map_ops mn10300_dma_ops = {
+struct dma_map_ops mn10300_dma_ops = {
 	.alloc			= mn10300_dma_alloc,
 	.free			= mn10300_dma_free,
 	.map_page		= mn10300_dma_map_page,

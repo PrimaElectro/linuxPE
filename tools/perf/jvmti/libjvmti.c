@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
-#include <linux/compiler.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,19 +12,6 @@
 static int has_line_numbers;
 void *jvmti_agent;
 
-static void print_error(jvmtiEnv *jvmti, const char *msg, jvmtiError ret)
-{
-	char *err_msg = NULL;
-	jvmtiError err;
-	err = (*jvmti)->GetErrorName(jvmti, ret, &err_msg);
-	if (err == JVMTI_ERROR_NONE) {
-		warnx("%s failed with %s", msg, err_msg);
-		(*jvmti)->Deallocate(jvmti, (unsigned char *)err_msg);
-	} else {
-		warnx("%s failed with an unknown error %d", msg, ret);
-	}
-}
-
 static jvmtiError
 do_get_line_numbers(jvmtiEnv *jvmti, void *pc, jmethodID m, jint bci,
 		    jvmti_line_info_t *tab, jint *nr)
@@ -37,10 +22,8 @@ do_get_line_numbers(jvmtiEnv *jvmti, void *pc, jmethodID m, jint bci,
 	jvmtiError ret;
 
 	ret = (*jvmti)->GetLineNumberTable(jvmti, m, &nr_lines, &loc_tab);
-	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "GetLineNumberTable", ret);
+	if (ret != JVMTI_ERROR_NONE)
 		return ret;
-	}
 
 	for (i = 0; i < nr_lines; i++) {
 		if (loc_tab[i].start_location < bci) {
@@ -88,8 +71,6 @@ get_line_numbers(jvmtiEnv *jvmti, const void *compile_info, jvmti_line_info_t **
 					/* free what was allocated for nothing */
 					(*jvmti)->Deallocate(jvmti, (unsigned char *)lne);
 					nr_total += (int)nr;
-				} else {
-					print_error(jvmti, "GetLineNumberTable", ret);
 				}
 			}
 		}
@@ -149,7 +130,7 @@ compiled_method_load_cb(jvmtiEnv *jvmti,
 	ret = (*jvmti)->GetMethodDeclaringClass(jvmti, method,
 						&decl_class);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "GetMethodDeclaringClass", ret);
+		warnx("jvmti: cannot get declaring class");
 		return;
 	}
 
@@ -163,21 +144,21 @@ compiled_method_load_cb(jvmtiEnv *jvmti,
 
 	ret = (*jvmti)->GetSourceFileName(jvmti, decl_class, &file_name);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "GetSourceFileName", ret);
+		warnx("jvmti: cannot get source filename ret=%d", ret);
 		goto error;
 	}
 
 	ret = (*jvmti)->GetClassSignature(jvmti, decl_class,
 					  &class_sign, NULL);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "GetClassSignature", ret);
+		warnx("jvmti: getclassignature failed");
 		goto error;
 	}
 
 	ret = (*jvmti)->GetMethodName(jvmti, method, &func_name,
 				      &func_sign, NULL);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "GetMethodName", ret);
+		warnx("jvmti: failed getmethodname");
 		goto error;
 	}
 
@@ -240,7 +221,7 @@ code_generated_cb(jvmtiEnv *jvmti,
 }
 
 JNIEXPORT jint JNICALL
-Agent_OnLoad(JavaVM *jvm, char *options, void *reserved __maybe_unused)
+Agent_OnLoad(JavaVM *jvm, char *options, void *reserved __unused)
 {
 	jvmtiEventCallbacks cb;
 	jvmtiCapabilities caps1;
@@ -272,7 +253,7 @@ Agent_OnLoad(JavaVM *jvm, char *options, void *reserved __maybe_unused)
 
 	ret = (*jvmti)->AddCapabilities(jvmti, &caps1);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "AddCapabilities", ret);
+		warnx("jvmti: acquire compiled_method capability failed");
 		return -1;
 	}
 	ret = (*jvmti)->GetJLocationFormat(jvmti, &format);
@@ -283,9 +264,7 @@ Agent_OnLoad(JavaVM *jvm, char *options, void *reserved __maybe_unused)
 		ret = (*jvmti)->AddCapabilities(jvmti, &caps1);
                 if (ret == JVMTI_ERROR_NONE)
                         has_line_numbers = 1;
-        } else if (ret != JVMTI_ERROR_NONE)
-		print_error(jvmti, "GetJLocationFormat", ret);
-
+        }
 
 	memset(&cb, 0, sizeof(cb));
 
@@ -294,28 +273,28 @@ Agent_OnLoad(JavaVM *jvm, char *options, void *reserved __maybe_unused)
 
 	ret = (*jvmti)->SetEventCallbacks(jvmti, &cb, sizeof(cb));
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "SetEventCallbacks", ret);
+		warnx("jvmti: cannot set event callbacks");
 		return -1;
 	}
 
 	ret = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE,
 			JVMTI_EVENT_COMPILED_METHOD_LOAD, NULL);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "SetEventNotificationMode(METHOD_LOAD)", ret);
+		warnx("jvmti: setnotification failed for method_load");
 		return -1;
 	}
 
 	ret = (*jvmti)->SetEventNotificationMode(jvmti, JVMTI_ENABLE,
 			JVMTI_EVENT_DYNAMIC_CODE_GENERATED, NULL);
 	if (ret != JVMTI_ERROR_NONE) {
-		print_error(jvmti, "SetEventNotificationMode(CODE_GENERATED)", ret);
+		warnx("jvmti: setnotification failed on code_generated");
 		return -1;
 	}
 	return 0;
 }
 
 JNIEXPORT void JNICALL
-Agent_OnUnload(JavaVM *jvm __maybe_unused)
+Agent_OnUnload(JavaVM *jvm __unused)
 {
 	int ret;
 

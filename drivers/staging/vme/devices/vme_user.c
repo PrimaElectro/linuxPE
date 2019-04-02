@@ -17,7 +17,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/refcount.h>
+#include <linux/atomic.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -47,8 +47,7 @@ static const char driver_name[] = "vme_user";
 static int bus[VME_USER_BUS_MAX];
 static unsigned int bus_num;
 
-/* Currently Documentation/admin-guide/devices.rst defines the
- * following for VME:
+/* Currently Documentation/devices.txt defines the following for VME:
  *
  * 221 char	VME bus
  *		  0 = /dev/bus/vme/m0		First master image
@@ -118,7 +117,7 @@ static const int type[VME_DEVS] = {	MASTER_MINOR,	MASTER_MINOR,
 
 struct vme_user_vma_priv {
 	unsigned int minor;
-	refcount_t refcnt;
+	atomic_t refcnt;
 };
 
 static ssize_t resource_to_user(int minor, char __user *buf, size_t count,
@@ -430,7 +429,7 @@ static void vme_user_vm_open(struct vm_area_struct *vma)
 {
 	struct vme_user_vma_priv *vma_priv = vma->vm_private_data;
 
-	refcount_inc(&vma_priv->refcnt);
+	atomic_inc(&vma_priv->refcnt);
 }
 
 static void vme_user_vm_close(struct vm_area_struct *vma)
@@ -438,7 +437,7 @@ static void vme_user_vm_close(struct vm_area_struct *vma)
 	struct vme_user_vma_priv *vma_priv = vma->vm_private_data;
 	unsigned int minor = vma_priv->minor;
 
-	if (!refcount_dec_and_test(&vma_priv->refcnt))
+	if (!atomic_dec_and_test(&vma_priv->refcnt))
 		return;
 
 	mutex_lock(&image[minor].mutex);
@@ -473,7 +472,7 @@ static int vme_user_master_mmap(unsigned int minor, struct vm_area_struct *vma)
 	}
 
 	vma_priv->minor = minor;
-	refcount_set(&vma_priv->refcnt, 1);
+	atomic_set(&vma_priv->refcnt, 1);
 	vma->vm_ops = &vme_user_vm_ops;
 	vma->vm_private_data = vma_priv;
 
@@ -662,7 +661,7 @@ err_sysfs:
 	}
 	class_destroy(vme_user_sysfs_class);
 
-	/* Ensure counter set correctly to unalloc all master windows */
+	/* Ensure counter set correcty to unalloc all master windows */
 	i = MASTER_MAX + 1;
 err_master:
 	while (i > MASTER_MINOR) {
@@ -672,7 +671,7 @@ err_master:
 	}
 
 	/*
-	 * Ensure counter set correctly to unalloc all slave windows and buffers
+	 * Ensure counter set correcty to unalloc all slave windows and buffers
 	 */
 	i = SLAVE_MAX + 1;
 err_slave:
@@ -717,7 +716,7 @@ static int vme_user_remove(struct vme_dev *dev)
 	/* Unregister device driver */
 	cdev_del(vme_user_cdev);
 
-	/* Unregister the major and minor device numbers */
+	/* Unregiser the major and minor device numbers */
 	unregister_chrdev_region(MKDEV(VME_MAJOR, 0), VME_DEVS);
 
 	return 0;

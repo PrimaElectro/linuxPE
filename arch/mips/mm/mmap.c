@@ -7,15 +7,13 @@
  *   written by Ralf Baechle <ralf@linux-mips.org>
  */
 #include <linux/compiler.h>
-#include <linux/elf-randomize.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/export.h>
 #include <linux/personality.h>
 #include <linux/random.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/mm.h>
+#include <linux/sched.h>
 
 unsigned long shm_align_mask = PAGE_SIZE - 1;	/* Sane caches */
 EXPORT_SYMBOL(shm_align_mask);
@@ -148,14 +146,14 @@ unsigned long arch_mmap_rnd(void)
 {
 	unsigned long rnd;
 
-#ifdef CONFIG_COMPAT
+	rnd = get_random_long();
+	rnd <<= PAGE_SHIFT;
 	if (TASK_IS_32BIT_ADDR)
-		rnd = get_random_long() & ((1UL << mmap_rnd_compat_bits) - 1);
+		rnd &= 0xfffffful;
 	else
-#endif /* CONFIG_COMPAT */
-		rnd = get_random_long() & ((1UL << mmap_rnd_bits) - 1);
+		rnd &= 0xffffffful;
 
-	return rnd << PAGE_SHIFT;
+	return rnd;
 }
 
 void arch_pick_mmap_layout(struct mm_struct *mm)

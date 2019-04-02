@@ -66,14 +66,19 @@ static int uvc_ioctl_ctrl_map(struct uvc_video_chain *chain,
 		if (xmap->menu_count == 0 ||
 		    xmap->menu_count > UVC_MAX_CONTROL_MENU_ENTRIES) {
 			ret = -EINVAL;
-			goto free_map;
+			goto done;
 		}
 
 		size = xmap->menu_count * sizeof(*map->menu_info);
-		map->menu_info = memdup_user(xmap->menu_info, size);
-		if (IS_ERR(map->menu_info)) {
-			ret = PTR_ERR(map->menu_info);
-			goto free_map;
+		map->menu_info = kmalloc(size, GFP_KERNEL);
+		if (map->menu_info == NULL) {
+			ret = -ENOMEM;
+			goto done;
+		}
+
+		if (copy_from_user(map->menu_info, xmap->menu_info, size)) {
+			ret = -EFAULT;
+			goto done;
 		}
 
 		map->menu_count = xmap->menu_count;
@@ -83,13 +88,13 @@ static int uvc_ioctl_ctrl_map(struct uvc_video_chain *chain,
 		uvc_trace(UVC_TRACE_CONTROL, "Unsupported V4L2 control type "
 			  "%u.\n", xmap->v4l2_type);
 		ret = -ENOTTY;
-		goto free_map;
+		goto done;
 	}
 
 	ret = uvc_ctrl_add_mapping(chain, map);
 
+done:
 	kfree(map->menu_info);
-free_map:
 	kfree(map);
 
 	return ret;

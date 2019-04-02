@@ -64,8 +64,7 @@ static const struct nla_policy xt_osf_policy[OSF_ATTR_MAX + 1] = {
 
 static int xt_osf_add_callback(struct net *net, struct sock *ctnl,
 			       struct sk_buff *skb, const struct nlmsghdr *nlh,
-			       const struct nlattr * const osf_attrs[],
-			       struct netlink_ext_ack *extack)
+			       const struct nlattr * const osf_attrs[])
 {
 	struct xt_osf_user_finger *f;
 	struct xt_osf_finger *kf = NULL, *sf;
@@ -112,8 +111,7 @@ static int xt_osf_add_callback(struct net *net, struct sock *ctnl,
 static int xt_osf_remove_callback(struct net *net, struct sock *ctnl,
 				  struct sk_buff *skb,
 				  const struct nlmsghdr *nlh,
-				  const struct nlattr * const osf_attrs[],
-				  struct netlink_ext_ack *extack)
+				  const struct nlattr * const osf_attrs[])
 {
 	struct xt_osf_user_finger *f;
 	struct xt_osf_finger *sf;
@@ -210,7 +208,7 @@ xt_osf_match_packet(const struct sk_buff *skb, struct xt_action_param *p)
 	unsigned char opts[MAX_IPOPTLEN];
 	const struct xt_osf_finger *kf;
 	const struct xt_osf_user_finger *f;
-	struct net *net = xt_net(p);
+	struct net *net = p->net;
 
 	if (!info)
 		return false;
@@ -233,6 +231,7 @@ xt_osf_match_packet(const struct sk_buff *skb, struct xt_action_param *p)
 				sizeof(struct tcphdr), optsize, opts);
 	}
 
+	rcu_read_lock();
 	list_for_each_entry_rcu(kf, &xt_osf_fingers[df], finger_entry) {
 		int foptsize, optnum;
 
@@ -334,8 +333,8 @@ xt_osf_match_packet(const struct sk_buff *skb, struct xt_action_param *p)
 		fcount++;
 
 		if (info->flags & XT_OSF_LOG)
-			nf_log_packet(net, xt_family(p), xt_hooknum(p), skb,
-				      xt_in(p), xt_out(p), NULL,
+			nf_log_packet(net, p->family, p->hooknum, skb,
+				      p->in, p->out, NULL,
 				      "%s [%s:%s] : %pI4:%d -> %pI4:%d hops=%d\n",
 				      f->genre, f->version, f->subtype,
 				      &ip->saddr, ntohs(tcp->source),
@@ -346,10 +345,11 @@ xt_osf_match_packet(const struct sk_buff *skb, struct xt_action_param *p)
 		    info->loglevel == XT_OSF_LOGLEVEL_FIRST)
 			break;
 	}
+	rcu_read_unlock();
 
 	if (!fcount && (info->flags & XT_OSF_LOG))
-		nf_log_packet(net, xt_family(p), xt_hooknum(p), skb, xt_in(p),
-			      xt_out(p), NULL,
+		nf_log_packet(net, p->family, p->hooknum, skb, p->in,
+			      p->out, NULL,
 			"Remote OS is not known: %pI4:%u -> %pI4:%u\n",
 				&ip->saddr, ntohs(tcp->source),
 				&ip->daddr, ntohs(tcp->dest));

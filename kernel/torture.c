@@ -30,7 +30,6 @@
 #include <linux/smp.h>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
 #include <linux/atomic.h>
 #include <linux/bitops.h>
 #include <linux/completion.h>
@@ -117,7 +116,7 @@ bool torture_offline(int cpu, long *n_offl_attempts, long *n_offl_successes,
 				 torture_type, cpu);
 		(*n_offl_successes)++;
 		delta = jiffies - starttime;
-		*sum_offl += delta;
+		sum_offl += delta;
 		if (*min_offl < 0) {
 			*min_offl = delta;
 			*max_offl = delta;
@@ -312,7 +311,7 @@ EXPORT_SYMBOL_GPL(torture_random);
 /*
  * Variables for shuffling.  The idea is to ensure that each CPU stays
  * idle for an extended period to test interactions with dyntick idle,
- * as well as interactions with any per-CPU variables.
+ * as well as interactions with any per-CPU varibles.
  */
 struct shuffle_task {
 	struct list_head st_l;

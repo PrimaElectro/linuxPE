@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Functions related to softirq rq completions
  */
@@ -10,7 +9,6 @@
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
-#include <linux/sched/topology.h>
 
 #include "blk.h"
 
@@ -53,6 +51,7 @@ static void trigger_softirq(void *data)
 		raise_softirq_irqoff(BLOCK_SOFTIRQ);
 
 	local_irq_restore(flags);
+	preempt_check_resched_rt();
 }
 
 /*
@@ -61,7 +60,7 @@ static void trigger_softirq(void *data)
 static int raise_blk_irq(int cpu, struct request *rq)
 {
 	if (cpu_online(cpu)) {
-		call_single_data_t *data = &rq->csd;
+		struct call_single_data *data = &rq->csd;
 
 		data->func = trigger_softirq;
 		data->info = rq;
@@ -91,6 +90,7 @@ static int blk_softirq_cpu_dead(unsigned int cpu)
 			 this_cpu_ptr(&blk_cpu_done));
 	raise_softirq_irqoff(BLOCK_SOFTIRQ);
 	local_irq_enable();
+	preempt_check_resched_rt();
 
 	return 0;
 }
@@ -143,6 +143,7 @@ do_local:
 		goto do_local;
 
 	local_irq_restore(flags);
+	preempt_check_resched_rt();
 }
 
 /**

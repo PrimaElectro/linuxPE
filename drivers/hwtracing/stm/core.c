@@ -27,7 +27,6 @@
 #include <linux/stm.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
-#include <linux/vmalloc.h>
 #include "stm.h"
 
 #include <uapi/linux/stm.h>
@@ -428,7 +427,7 @@ static int stm_file_assign(struct stm_file *stmf, char *id, unsigned int width)
 	return ret;
 }
 
-static ssize_t notrace stm_write(struct stm_data *data, unsigned int master,
+static ssize_t stm_write(struct stm_data *data, unsigned int master,
 			  unsigned int channel, const char *buf, size_t count)
 {
 	unsigned int flags = STP_PACKET_TIMESTAMPED;
@@ -567,7 +566,7 @@ static int stm_char_policy_set_ioctl(struct stm_file *stmf, void __user *arg)
 	if (copy_from_user(&size, arg, sizeof(size)))
 		return -EFAULT;
 
-	if (size < sizeof(*id) || size >= PATH_MAX + sizeof(*id))
+	if (size >= PATH_MAX + sizeof(*id))
 		return -EINVAL;
 
 	/*
@@ -683,7 +682,7 @@ static void stm_device_release(struct device *dev)
 {
 	struct stm_device *stm = to_stm_device(dev);
 
-	vfree(stm);
+	kfree(stm);
 }
 
 int stm_register_device(struct device *parent, struct stm_data *stm_data,
@@ -700,7 +699,7 @@ int stm_register_device(struct device *parent, struct stm_data *stm_data,
 		return -EINVAL;
 
 	nmasters = stm_data->sw_end - stm_data->sw_start + 1;
-	stm = vzalloc(sizeof(*stm) + nmasters * sizeof(void *));
+	stm = kzalloc(sizeof(*stm) + nmasters * sizeof(void *), GFP_KERNEL);
 	if (!stm)
 		return -ENOMEM;
 
@@ -753,7 +752,7 @@ err_device:
 	/* matches device_initialize() above */
 	put_device(&stm->dev);
 err_free:
-	vfree(stm);
+	kfree(stm);
 
 	return err;
 }
@@ -1124,9 +1123,8 @@ void stm_source_unregister_device(struct stm_source_data *data)
 }
 EXPORT_SYMBOL_GPL(stm_source_unregister_device);
 
-int notrace stm_source_write(struct stm_source_data *data,
-			     unsigned int chan,
-			     const char *buf, size_t count)
+int stm_source_write(struct stm_source_data *data, unsigned int chan,
+		     const char *buf, size_t count)
 {
 	struct stm_source_device *src = data->src;
 	struct stm_device *stm;

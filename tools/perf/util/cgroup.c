@@ -1,11 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
 #include "util.h"
 #include "../perf.h"
 #include <subcmd/parse-options.h>
 #include "evsel.h"
 #include "cgroup.h"
 #include "evlist.h"
-#include <linux/stringify.h>
 
 int nr_cgroups;
 
@@ -14,8 +12,8 @@ cgroupfs_find_mountpoint(char *buf, size_t maxlen)
 {
 	FILE *fp;
 	char mountpoint[PATH_MAX + 1], tokens[PATH_MAX + 1], type[PATH_MAX + 1];
-	char path_v1[PATH_MAX + 1], path_v2[PATH_MAX + 2], *path;
 	char *token, *saved_ptr = NULL;
+	int found = 0;
 
 	fp = fopen("/proc/mounts", "r");
 	if (!fp)
@@ -26,43 +24,31 @@ cgroupfs_find_mountpoint(char *buf, size_t maxlen)
 	 * and inspect every cgroupfs mount point to find one that has
 	 * perf_event subsystem
 	 */
-	path_v1[0] = '\0';
-	path_v2[0] = '\0';
-
-	while (fscanf(fp, "%*s %"__stringify(PATH_MAX)"s %"__stringify(PATH_MAX)"s %"
-				__stringify(PATH_MAX)"s %*d %*d\n",
+	while (fscanf(fp, "%*s %"STR(PATH_MAX)"s %"STR(PATH_MAX)"s %"
+				STR(PATH_MAX)"s %*d %*d\n",
 				mountpoint, type, tokens) == 3) {
 
-		if (!path_v1[0] && !strcmp(type, "cgroup")) {
+		if (!strcmp(type, "cgroup")) {
 
 			token = strtok_r(tokens, ",", &saved_ptr);
 
 			while (token != NULL) {
 				if (!strcmp(token, "perf_event")) {
-					strcpy(path_v1, mountpoint);
+					found = 1;
 					break;
 				}
 				token = strtok_r(NULL, ",", &saved_ptr);
 			}
 		}
-
-		if (!path_v2[0] && !strcmp(type, "cgroup2"))
-			strcpy(path_v2, mountpoint);
-
-		if (path_v1[0] && path_v2[0])
+		if (found)
 			break;
 	}
 	fclose(fp);
-
-	if (path_v1[0])
-		path = path_v1;
-	else if (path_v2[0])
-		path = path_v2;
-	else
+	if (!found)
 		return -1;
 
-	if (strlen(path) < maxlen) {
-		strcpy(buf, path);
+	if (strlen(mountpoint) < maxlen) {
+		strcpy(buf, mountpoint);
 		return 0;
 	}
 	return -1;
@@ -78,7 +64,7 @@ static int open_cgroup(char *name)
 	if (cgroupfs_find_mountpoint(mnt, PATH_MAX + 1))
 		return -1;
 
-	scnprintf(path, PATH_MAX, "%s/%s", mnt, name);
+	snprintf(path, PATH_MAX, "%s/%s", mnt, name);
 
 	fd = open(path, O_RDONLY);
 	if (fd == -1)
@@ -99,10 +85,8 @@ static int add_cgroup(struct perf_evlist *evlist, char *str)
 		cgrp = counter->cgrp;
 		if (!cgrp)
 			continue;
-		if (!strcmp(cgrp->name, str)) {
-			refcount_inc(&cgrp->refcnt);
+		if (!strcmp(cgrp->name, str))
 			break;
-		}
 
 		cgrp = NULL;
 	}
@@ -113,7 +97,6 @@ static int add_cgroup(struct perf_evlist *evlist, char *str)
 			return -1;
 
 		cgrp->name = str;
-		refcount_set(&cgrp->refcnt, 1);
 
 		cgrp->fd = open_cgroup(str);
 		if (cgrp->fd == -1) {
@@ -132,18 +115,19 @@ static int add_cgroup(struct perf_evlist *evlist, char *str)
 			goto found;
 		n++;
 	}
-	if (refcount_dec_and_test(&cgrp->refcnt))
+	if (atomic_read(&cgrp->refcnt) == 0)
 		free(cgrp);
 
 	return -1;
 found:
+	atomic_inc(&cgrp->refcnt);
 	counter->cgrp = cgrp;
 	return 0;
 }
 
 void close_cgroup(struct cgroup_sel *cgrp)
 {
-	if (cgrp && refcount_dec_and_test(&cgrp->refcnt)) {
+	if (cgrp && atomic_dec_and_test(&cgrp->refcnt)) {
 		close(cgrp->fd);
 		zfree(&cgrp->name);
 		free(cgrp);

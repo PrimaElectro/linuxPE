@@ -237,7 +237,7 @@ static int __acpi_processor_start(struct acpi_device *device)
 
 	result = acpi_cppc_processor_probe(pr);
 	if (result && !IS_ENABLED(CONFIG_ACPI_CPU_FREQ_PSS))
-		dev_dbg(&device->dev, "CPPC data invalid or not present\n");
+		dev_warn(&device->dev, "CPPC data invalid or not present\n");
 
 	if (!cpuidle_get_driver() || cpuidle_get_driver() == &acpi_idle_driver)
 		acpi_processor_power_init(pr);
@@ -251,9 +251,6 @@ static int __acpi_processor_start(struct acpi_device *device)
 	if (ACPI_SUCCESS(status))
 		return 0;
 
-	result = -ENODEV;
-	acpi_pss_perf_exit(pr, device);
-
 err_power_exit:
 	acpi_processor_power_exit(pr);
 	return result;
@@ -262,16 +259,11 @@ err_power_exit:
 static int acpi_processor_start(struct device *dev)
 {
 	struct acpi_device *device = ACPI_COMPANION(dev);
-	int ret;
 
 	if (!device)
 		return -ENODEV;
 
-	/* Protect against concurrent CPU hotplug operations */
-	cpu_hotplug_disable();
-	ret = __acpi_processor_start(device);
-	cpu_hotplug_enable();
-	return ret;
+	return __acpi_processor_start(device);
 }
 
 static int acpi_processor_stop(struct device *dev)

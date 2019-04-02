@@ -94,10 +94,10 @@
 
 #define DEBUG_SUBSYSTEM S_LDLM
 
-#include <lustre_dlm.h>
-#include <cl_object.h>
-#include <obd_class.h>
-#include <obd_support.h>
+#include "../include/lustre_dlm.h"
+#include "../include/cl_object.h"
+#include "../include/obd_class.h"
+#include "../include/obd_support.h"
 #include "ldlm_internal.h"
 
 /*
@@ -293,7 +293,7 @@ static int ldlm_cli_pool_recalc(struct ldlm_pool *pl)
 	 * take into account pl->pl_recalc_time here.
 	 */
 	ret = ldlm_cancel_lru(container_of(pl, struct ldlm_namespace, ns_pool),
-			      0, LCF_ASYNC, LDLM_LRU_FLAG_LRUR);
+			      0, LCF_ASYNC, LDLM_CANCEL_LRUR);
 
 out:
 	spin_lock(&pl->pl_lock);
@@ -339,7 +339,7 @@ static int ldlm_cli_pool_shrink(struct ldlm_pool *pl,
 	if (nr == 0)
 		return (unused / 100) * sysctl_vfs_cache_pressure;
 	else
-		return ldlm_cancel_lru(ns, nr, LCF_ASYNC, LDLM_LRU_FLAG_SHRINK);
+		return ldlm_cancel_lru(ns, nr, LCF_ASYNC, LDLM_CANCEL_SHRINK);
 }
 
 static const struct ldlm_pool_ops ldlm_cli_pool_ops = {
@@ -651,7 +651,7 @@ static void ldlm_pool_debugfs_fini(struct ldlm_pool *pl)
 }
 
 int ldlm_pool_init(struct ldlm_pool *pl, struct ldlm_namespace *ns,
-		   int idx, enum ldlm_side client)
+		   int idx, ldlm_side_t client)
 {
 	int rc;
 
@@ -684,6 +684,7 @@ int ldlm_pool_init(struct ldlm_pool *pl, struct ldlm_namespace *ns,
 
 	return rc;
 }
+EXPORT_SYMBOL(ldlm_pool_init);
 
 void ldlm_pool_fini(struct ldlm_pool *pl)
 {
@@ -697,6 +698,7 @@ void ldlm_pool_fini(struct ldlm_pool *pl)
 	 */
 	POISON(pl, 0x5a, sizeof(*pl));
 }
+EXPORT_SYMBOL(ldlm_pool_fini);
 
 /**
  * Add new taken ldlm lock \a lock into pool \a pl accounting.
@@ -722,6 +724,7 @@ void ldlm_pool_add(struct ldlm_pool *pl, struct ldlm_lock *lock)
 	 * with too long call paths.
 	 */
 }
+EXPORT_SYMBOL(ldlm_pool_add);
 
 /**
  * Remove ldlm lock \a lock from pool \a pl accounting.
@@ -740,6 +743,7 @@ void ldlm_pool_del(struct ldlm_pool *pl, struct ldlm_lock *lock)
 
 	lprocfs_counter_incr(pl->pl_stats, LDLM_POOL_CANCEL_STAT);
 }
+EXPORT_SYMBOL(ldlm_pool_del);
 
 /**
  * Returns current \a pl SLV.
@@ -788,18 +792,21 @@ static struct completion ldlm_pools_comp;
  * count locks from all namespaces (if possible). Returns number of
  * cached locks.
  */
-static unsigned long ldlm_pools_count(enum ldlm_side client, gfp_t gfp_mask)
+static unsigned long ldlm_pools_count(ldlm_side_t client, gfp_t gfp_mask)
 {
 	unsigned long total = 0;
 	int nr_ns;
 	struct ldlm_namespace *ns;
 	struct ldlm_namespace *ns_old = NULL; /* loop detection */
+	void *cookie;
 
 	if (client == LDLM_NAMESPACE_CLIENT && !(gfp_mask & __GFP_FS))
 		return 0;
 
 	CDEBUG(D_DLMTRACE, "Request to count %s locks from all pools\n",
 	       client == LDLM_NAMESPACE_CLIENT ? "client" : "server");
+
+	cookie = cl_env_reenter();
 
 	/*
 	 * Find out how many resources we may release.
@@ -809,6 +816,7 @@ static unsigned long ldlm_pools_count(enum ldlm_side client, gfp_t gfp_mask)
 		mutex_lock(ldlm_namespace_lock(client));
 		if (list_empty(ldlm_namespace_list(client))) {
 			mutex_unlock(ldlm_namespace_lock(client));
+			cl_env_reexit(cookie);
 			return 0;
 		}
 		ns = ldlm_namespace_first_locked(client);
@@ -834,18 +842,21 @@ static unsigned long ldlm_pools_count(enum ldlm_side client, gfp_t gfp_mask)
 		ldlm_namespace_put(ns);
 	}
 
+	cl_env_reexit(cookie);
 	return total;
 }
 
-static unsigned long ldlm_pools_scan(enum ldlm_side client, int nr,
-				     gfp_t gfp_mask)
+static unsigned long ldlm_pools_scan(ldlm_side_t client, int nr, gfp_t gfp_mask)
 {
 	unsigned long freed = 0;
 	int tmp, nr_ns;
 	struct ldlm_namespace *ns;
+	void *cookie;
 
 	if (client == LDLM_NAMESPACE_CLIENT && !(gfp_mask & __GFP_FS))
 		return -1;
+
+	cookie = cl_env_reenter();
 
 	/*
 	 * Shrink at least ldlm_namespace_nr_read(client) namespaces.
@@ -876,6 +887,7 @@ static unsigned long ldlm_pools_scan(enum ldlm_side client, int nr,
 		freed += ldlm_pool_shrink(&ns->ns_pool, cancel, gfp_mask);
 		ldlm_namespace_put(ns);
 	}
+	cl_env_reexit(cookie);
 	/*
 	 * we only decrease the SLV in server pools shrinker, return
 	 * SHRINK_STOP to kernel to avoid needless loop. LU-1128
@@ -896,13 +908,12 @@ static unsigned long ldlm_pools_cli_scan(struct shrinker *s,
 			       sc->gfp_mask);
 }
 
-static int ldlm_pools_recalc(enum ldlm_side client)
+static int ldlm_pools_recalc(ldlm_side_t client)
 {
 	struct ldlm_namespace *ns;
 	struct ldlm_namespace *ns_old = NULL;
-	/* seconds of sleep if no active namespaces */
-	int time = LDLM_POOL_CLI_DEF_RECALC_PERIOD;
 	int nr;
+	int time = 50; /* seconds of sleep if no active namespaces */
 
 	/*
 	 * Recalc at least ldlm_namespace_nr_read(client) namespaces.
@@ -975,10 +986,6 @@ static int ldlm_pools_recalc(enum ldlm_side client)
 			ldlm_namespace_put(ns);
 		}
 	}
-
-	/* Wake up the blocking threads from time to time. */
-	ldlm_bl_thread_wakeup();
-
 	return time;
 }
 
@@ -1088,6 +1095,7 @@ int ldlm_pools_init(void)
 
 	return rc;
 }
+EXPORT_SYMBOL(ldlm_pools_init);
 
 void ldlm_pools_fini(void)
 {
@@ -1096,3 +1104,4 @@ void ldlm_pools_fini(void)
 
 	ldlm_pools_thread_stop();
 }
+EXPORT_SYMBOL(ldlm_pools_fini);

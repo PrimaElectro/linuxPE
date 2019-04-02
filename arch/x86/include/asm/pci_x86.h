@@ -1,11 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *	Low-Level PCI Access for i386 machines.
  *
  *	(c) 1999 Martin Mares <mj@ucw.cz>
  */
-
-#include <linux/ioport.h>
 
 #undef DEBUG
 

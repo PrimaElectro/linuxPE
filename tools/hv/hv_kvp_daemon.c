@@ -22,6 +22,8 @@
  */
 
 
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/poll.h>
 #include <sys/utsname.h>
 #include <stdio.h>
@@ -32,6 +34,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <linux/hyperv.h>
+#include <linux/netlink.h>
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <syslog.h>
@@ -39,7 +42,6 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <net/if.h>
-#include <limits.h>
 #include <getopt.h>
 
 /*
@@ -94,14 +96,12 @@ static struct utsname uts_buf;
 
 #define KVP_CONFIG_LOC	"/var/lib/hyperv"
 
-#ifndef KVP_SCRIPTS_PATH
-#define KVP_SCRIPTS_PATH "/usr/libexec/hypervkvpd/"
-#endif
-
-#define KVP_NET_DIR "/sys/class/net/"
-
 #define MAX_FILE_NAME 100
 #define ENTRIES_PER_BLOCK 50
+
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
 
 struct kvp_record {
 	char key[HV_KVP_EXCHANGE_MAX_KEY_SIZE];
@@ -286,7 +286,7 @@ static int kvp_key_delete(int pool, const __u8 *key, int key_size)
 		 * Found a match; just move the remaining
 		 * entries up.
 		 */
-		if (i == (num_records - 1)) {
+		if (i == num_records) {
 			kvp_file_info[pool].num_records--;
 			kvp_update_file(pool);
 			return 0;
@@ -557,21 +557,26 @@ static char *kvp_get_if_name(char *guid)
 	DIR *dir;
 	struct dirent *entry;
 	FILE    *file;
-	char    *p, *x;
+	char    *p, *q, *x;
 	char    *if_name = NULL;
 	char    buf[256];
-	char dev_id[PATH_MAX];
+	char *kvp_net_dir = "/sys/class/net/";
+	char dev_id[256];
 
-	dir = opendir(KVP_NET_DIR);
+	dir = opendir(kvp_net_dir);
 	if (dir == NULL)
 		return NULL;
+
+	snprintf(dev_id, sizeof(dev_id), "%s", kvp_net_dir);
+	q = dev_id + strlen(kvp_net_dir);
 
 	while ((entry = readdir(dir)) != NULL) {
 		/*
 		 * Set the state for the next pass.
 		 */
-		snprintf(dev_id, sizeof(dev_id), "%s%s/device/device_id",
-			 KVP_NET_DIR, entry->d_name);
+		*q = '\0';
+		strcat(dev_id, entry->d_name);
+		strcat(dev_id, "/device/device_id");
 
 		file = fopen(dev_id, "r");
 		if (file == NULL)
@@ -609,12 +614,12 @@ static char *kvp_if_name_to_mac(char *if_name)
 	FILE    *file;
 	char    *p, *x;
 	char    buf[256];
-	char addr_file[PATH_MAX];
+	char addr_file[256];
 	unsigned int i;
 	char *mac_addr = NULL;
 
-	snprintf(addr_file, sizeof(addr_file), "%s%s%s", KVP_NET_DIR,
-		 if_name, "/address");
+	snprintf(addr_file, sizeof(addr_file), "%s%s%s", "/sys/class/net/",
+		if_name, "/address");
 
 	file = fopen(addr_file, "r");
 	if (file == NULL)
@@ -644,22 +649,28 @@ static char *kvp_mac_to_if_name(char *mac)
 	DIR *dir;
 	struct dirent *entry;
 	FILE    *file;
-	char    *p, *x;
+	char    *p, *q, *x;
 	char    *if_name = NULL;
 	char    buf[256];
-	char dev_id[PATH_MAX];
+	char *kvp_net_dir = "/sys/class/net/";
+	char dev_id[256];
 	unsigned int i;
 
-	dir = opendir(KVP_NET_DIR);
+	dir = opendir(kvp_net_dir);
 	if (dir == NULL)
 		return NULL;
+
+	snprintf(dev_id, sizeof(dev_id), kvp_net_dir);
+	q = dev_id + strlen(kvp_net_dir);
 
 	while ((entry = readdir(dir)) != NULL) {
 		/*
 		 * Set the state for the next pass.
 		 */
-		snprintf(dev_id, sizeof(dev_id), "%s%s/address", KVP_NET_DIR,
-			 entry->d_name);
+		*q = '\0';
+
+		strcat(dev_id, entry->d_name);
+		strcat(dev_id, "/address");
 
 		file = fopen(dev_id, "r");
 		if (file == NULL)
@@ -772,7 +783,7 @@ static void kvp_get_ipconfig_info(char *if_name,
 	 * .
 	 */
 
-	sprintf(cmd, KVP_SCRIPTS_PATH "%s",  "hv_get_dns_info");
+	sprintf(cmd, "%s",  "hv_get_dns_info");
 
 	/*
 	 * Execute the command to gather DNS info.
@@ -789,7 +800,7 @@ static void kvp_get_ipconfig_info(char *if_name,
 	 * Enabled: DHCP enabled.
 	 */
 
-	sprintf(cmd, KVP_SCRIPTS_PATH "%s %s", "hv_get_dhcp_info", if_name);
+	sprintf(cmd, "%s %s", "hv_get_dhcp_info", if_name);
 
 	file = popen(cmd, "r");
 	if (file == NULL)
@@ -1094,7 +1105,7 @@ static int process_ip_string(FILE *f, char *ip_string, int type)
 	int i = 0;
 	int j = 0;
 	char str[256];
-	char sub_str[13];
+	char sub_str[10];
 	int offset = 0;
 
 	memset(addr, 0, sizeof(addr));
@@ -1168,11 +1179,10 @@ static int process_ip_string(FILE *f, char *ip_string, int type)
 static int kvp_set_ip_info(char *if_name, struct hv_kvp_ipaddr_value *new_val)
 {
 	int error = 0;
-	char if_file[PATH_MAX];
+	char if_file[128];
 	FILE *file;
-	char cmd[PATH_MAX];
+	char cmd[512];
 	char *mac_addr;
-	int str_len;
 
 	/*
 	 * Set the configuration for the specified interface with
@@ -1296,18 +1306,7 @@ static int kvp_set_ip_info(char *if_name, struct hv_kvp_ipaddr_value *new_val)
 	 * invoke the external script to do its magic.
 	 */
 
-	str_len = snprintf(cmd, sizeof(cmd), KVP_SCRIPTS_PATH "%s %s",
-			   "hv_set_ifconfig", if_file);
-	/*
-	 * This is a little overcautious, but it's necessary to suppress some
-	 * false warnings from gcc 8.0.1.
-	 */
-	if (str_len <= 0 || (unsigned int)str_len >= sizeof(cmd)) {
-		syslog(LOG_ERR, "Cmd '%s' (len=%d) may be too long",
-		       cmd, str_len);
-		return HV_E_FAIL;
-	}
-
+	snprintf(cmd, sizeof(cmd), "%s %s", "hv_set_ifconfig", if_file);
 	if (system(cmd)) {
 		syslog(LOG_ERR, "Failed to execute cmd '%s'; error: %d %s",
 				cmd, errno, strerror(errno));

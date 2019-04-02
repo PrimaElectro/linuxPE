@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  S390 version
  *    Copyright IBM Corp. 1999, 2010
@@ -30,10 +29,7 @@
 #define MACHINE_FLAG_TE		_BITUL(11)
 #define MACHINE_FLAG_TLB_LC	_BITUL(12)
 #define MACHINE_FLAG_VX		_BITUL(13)
-#define MACHINE_FLAG_TLB_GUEST	_BITUL(14)
-#define MACHINE_FLAG_NX		_BITUL(15)
-#define MACHINE_FLAG_GS		_BITUL(16)
-#define MACHINE_FLAG_SCC	_BITUL(17)
+#define MACHINE_FLAG_CAD	_BITUL(14)
 
 #define LPP_MAGIC		_BITUL(31)
 #define LPP_PFAULT_PID_MASK	_AC(0xffffffff, UL)
@@ -62,6 +58,9 @@ extern void detect_memory_memblock(void);
 
 #define MACHINE_HAS_DIAG9C	(S390_lowcore.machine_flags & MACHINE_FLAG_DIAG9C)
 #define MACHINE_HAS_ESOP	(S390_lowcore.machine_flags & MACHINE_FLAG_ESOP)
+#define MACHINE_HAS_PFMF	MACHINE_HAS_EDAT1
+#define MACHINE_HAS_HPAGE	MACHINE_HAS_EDAT1
+
 #define MACHINE_HAS_IDTE	(S390_lowcore.machine_flags & MACHINE_FLAG_IDTE)
 #define MACHINE_HAS_DIAG44	(S390_lowcore.machine_flags & MACHINE_FLAG_DIAG44)
 #define MACHINE_HAS_EDAT1	(S390_lowcore.machine_flags & MACHINE_FLAG_EDAT1)
@@ -71,10 +70,7 @@ extern void detect_memory_memblock(void);
 #define MACHINE_HAS_TE		(S390_lowcore.machine_flags & MACHINE_FLAG_TE)
 #define MACHINE_HAS_TLB_LC	(S390_lowcore.machine_flags & MACHINE_FLAG_TLB_LC)
 #define MACHINE_HAS_VX		(S390_lowcore.machine_flags & MACHINE_FLAG_VX)
-#define MACHINE_HAS_TLB_GUEST	(S390_lowcore.machine_flags & MACHINE_FLAG_TLB_GUEST)
-#define MACHINE_HAS_NX		(S390_lowcore.machine_flags & MACHINE_FLAG_NX)
-#define MACHINE_HAS_GS		(S390_lowcore.machine_flags & MACHINE_FLAG_GS)
-#define MACHINE_HAS_SCC		(S390_lowcore.machine_flags & MACHINE_FLAG_SCC)
+#define MACHINE_HAS_CAD		(S390_lowcore.machine_flags & MACHINE_FLAG_CAD)
 
 /*
  * Console mode. Override with conmode=
@@ -109,16 +105,9 @@ extern void pfault_fini(void);
 #define pfault_fini()		do { } while (0)
 #endif /* CONFIG_PFAULT */
 
-#ifdef CONFIG_VMCP
-void vmcp_cma_reserve(void);
-#else
-static inline void vmcp_cma_reserve(void) { }
-#endif
-
 void report_user_fault(struct pt_regs *regs, long signr, int is_mm_fault);
 
-void cmma_init(void);
-void cmma_init_nodat(void);
+extern void cmma_init(void);
 
 extern void (*_machine_restart)(char *command);
 extern void (*_machine_halt)(void);

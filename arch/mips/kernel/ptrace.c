@@ -19,7 +19,6 @@
 #include <linux/elf.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/sched/task_stack.h>
 #include <linux/mm.h>
 #include <linux/errno.h>
 #include <linux/ptrace.h>
@@ -42,7 +41,7 @@
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/syscall.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/bootinfo.h>
 #include <asm/reg.h>
 
@@ -295,8 +294,23 @@ static int gpr32_get(struct task_struct *target,
 {
 	struct pt_regs *regs = task_pt_regs(target);
 	u32 uregs[ELF_NGREG] = {};
+	unsigned i;
 
-	mips_dump_regs32(uregs, regs);
+	for (i = MIPS32_EF_R1; i <= MIPS32_EF_R31; i++) {
+		/* k0/k1 are copied as zero. */
+		if (i == MIPS32_EF_R26 || i == MIPS32_EF_R27)
+			continue;
+
+		uregs[i] = regs->regs[i - MIPS32_EF_R0];
+	}
+
+	uregs[MIPS32_EF_LO] = regs->lo;
+	uregs[MIPS32_EF_HI] = regs->hi;
+	uregs[MIPS32_EF_CP0_EPC] = regs->cp0_epc;
+	uregs[MIPS32_EF_CP0_BADVADDR] = regs->cp0_badvaddr;
+	uregs[MIPS32_EF_CP0_STATUS] = regs->cp0_status;
+	uregs[MIPS32_EF_CP0_CAUSE] = regs->cp0_cause;
+
 	return user_regset_copyout(&pos, &count, &kbuf, &ubuf, uregs, 0,
 				   sizeof(uregs));
 }
@@ -359,8 +373,23 @@ static int gpr64_get(struct task_struct *target,
 {
 	struct pt_regs *regs = task_pt_regs(target);
 	u64 uregs[ELF_NGREG] = {};
+	unsigned i;
 
-	mips_dump_regs64(uregs, regs);
+	for (i = MIPS64_EF_R1; i <= MIPS64_EF_R31; i++) {
+		/* k0/k1 are copied as zero. */
+		if (i == MIPS64_EF_R26 || i == MIPS64_EF_R27)
+			continue;
+
+		uregs[i] = regs->regs[i - MIPS64_EF_R0];
+	}
+
+	uregs[MIPS64_EF_LO] = regs->lo;
+	uregs[MIPS64_EF_HI] = regs->hi;
+	uregs[MIPS64_EF_CP0_EPC] = regs->cp0_epc;
+	uregs[MIPS64_EF_CP0_BADVADDR] = regs->cp0_badvaddr;
+	uregs[MIPS64_EF_CP0_STATUS] = regs->cp0_status;
+	uregs[MIPS64_EF_CP0_CAUSE] = regs->cp0_cause;
+
 	return user_regset_copyout(&pos, &count, &kbuf, &ubuf, uregs, 0,
 				   sizeof(uregs));
 }
@@ -454,7 +483,7 @@ static int fpr_get_msa(struct task_struct *target,
 /*
  * Copy the floating-point context to the supplied NT_PRFPREG buffer.
  * Choose the appropriate helper for general registers, and then copy
- * the FCSR and FIR registers separately.
+ * the FCSR register separately.
  */
 static int fpr_get(struct task_struct *target,
 		   const struct user_regset *regset,
@@ -462,7 +491,6 @@ static int fpr_get(struct task_struct *target,
 		   void *kbuf, void __user *ubuf)
 {
 	const int fcr31_pos = NUM_FPU_REGS * sizeof(elf_fpreg_t);
-	const int fir_pos = fcr31_pos + sizeof(u32);
 	int err;
 
 	if (sizeof(target->thread.fpu.fpr[0]) == sizeof(elf_fpreg_t))
@@ -475,12 +503,6 @@ static int fpr_get(struct task_struct *target,
 	err = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
 				  &target->thread.fpu.fcr31,
 				  fcr31_pos, fcr31_pos + sizeof(u32));
-	if (err)
-		return err;
-
-	err = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-				  &boot_cpu_data.fpu_id,
-				  fir_pos, fir_pos + sizeof(u32));
 
 	return err;
 }
@@ -529,8 +551,7 @@ static int fpr_set_msa(struct task_struct *target,
 /*
  * Copy the supplied NT_PRFPREG buffer to the floating-point context.
  * Choose the appropriate helper for general registers, and then copy
- * the FCSR register separately.  Ignore the incoming FIR register
- * contents though, as the register is read-only.
+ * the FCSR register separately.
  *
  * We optimize for the case where `count % sizeof(elf_fpreg_t) == 0',
  * which is supposed to have been guaranteed by the kernel before
@@ -544,7 +565,6 @@ static int fpr_set(struct task_struct *target,
 		   const void *kbuf, const void __user *ubuf)
 {
 	const int fcr31_pos = NUM_FPU_REGS * sizeof(elf_fpreg_t);
-	const int fir_pos = fcr31_pos + sizeof(u32);
 	u32 fcr31;
 	int err;
 
@@ -571,11 +591,6 @@ static int fpr_set(struct task_struct *target,
 
 		ptrace_setfcr31(target, fcr31);
 	}
-
-	if (count > 0)
-		err = user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf,
-						fir_pos,
-						fir_pos + sizeof(u32));
 
 	return err;
 }
@@ -798,7 +813,7 @@ long arch_ptrace(struct task_struct *child, long request,
 			fregs = get_fpu_regs(child);
 
 #ifdef CONFIG_32BIT
-			if (test_tsk_thread_flag(child, TIF_32BIT_FPREGS)) {
+			if (test_thread_flag(TIF_32BIT_FPREGS)) {
 				/*
 				 * The odd registers are actually the high
 				 * order bits of the values stored in the even
@@ -809,7 +824,7 @@ long arch_ptrace(struct task_struct *child, long request,
 				break;
 			}
 #endif
-			tmp = get_fpr64(&fregs[addr - FPR_BASE], 0);
+			tmp = get_fpr32(&fregs[addr - FPR_BASE], 0);
 			break;
 		case PC:
 			tmp = regs->cp0_epc;
@@ -847,7 +862,7 @@ long arch_ptrace(struct task_struct *child, long request,
 				goto out;
 			}
 			dregs = __get_dsp_regs(child);
-			tmp = dregs[addr - DSP_BASE];
+			tmp = (unsigned long) (dregs[addr - DSP_BASE]);
 			break;
 		}
 		case DSP_CONTROL:
@@ -887,7 +902,7 @@ long arch_ptrace(struct task_struct *child, long request,
 
 			init_fp_ctx(child);
 #ifdef CONFIG_32BIT
-			if (test_tsk_thread_flag(child, TIF_32BIT_FPREGS)) {
+			if (test_thread_flag(TIF_32BIT_FPREGS)) {
 				/*
 				 * The odd registers are actually the high
 				 * order bits of the values stored in the even
@@ -996,37 +1011,14 @@ asmlinkage long syscall_trace_enter(struct pt_regs *regs, long syscall)
 	    tracehook_report_syscall_entry(regs))
 		return -1;
 
-#ifdef CONFIG_SECCOMP
-	if (unlikely(test_thread_flag(TIF_SECCOMP))) {
-		int ret, i;
-		struct seccomp_data sd;
-		unsigned long args[6];
-
-		sd.nr = syscall;
-		sd.arch = syscall_get_arch();
-		syscall_get_arguments(current, regs, 0, 6, args);
-		for (i = 0; i < 6; i++)
-			sd.args[i] = args[i];
-		sd.instruction_pointer = KSTK_EIP(current);
-
-		ret = __secure_computing(&sd);
-		if (ret == -1)
-			return ret;
-	}
-#endif
+	if (secure_computing(NULL) == -1)
+		return -1;
 
 	if (unlikely(test_thread_flag(TIF_SYSCALL_TRACEPOINT)))
 		trace_sys_enter(regs, regs->regs[2]);
 
 	audit_syscall_entry(syscall, regs->regs[4], regs->regs[5],
 			    regs->regs[6], regs->regs[7]);
-
-	/*
-	 * Negative syscall numbers are mistaken for rejected syscalls, but
-	 * won't have had the return value set appropriately, so we do so now.
-	 */
-	if (syscall < 0)
-		syscall_set_return_value(current, regs, -ENOSYS, 0);
 	return syscall;
 }
 

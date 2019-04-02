@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Serial port driver for the ETRAX 100LX chip
  *
@@ -13,7 +12,7 @@ static char *serial_version = "$Revision: 1.25 $";
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/signal.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/interrupt.h>
 #include <linux/tty.h>
@@ -29,6 +28,7 @@ static char *serial_version = "$Revision: 1.25 $";
 #include <linux/bitops.h>
 #include <linux/seq_file.h>
 #include <linux/delay.h>
+#include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 
@@ -3214,6 +3214,8 @@ get_serial_info(struct e100_serial * info,
 	 * should set them to something else than 0.
 	 */
 
+	if (!retinfo)
+		return -EFAULT;
 	memset(&tmp, 0, sizeof(tmp));
 	tmp.type = info->type;
 	tmp.line = info->line;
@@ -4096,7 +4098,7 @@ static void show_serial_version(void)
 	       &serial_version[11]); /* "$Revision: x.yy" */
 }
 
-/* rs_init inits the driver at boot (using the initcall chain) */
+/* rs_init inits the driver at boot (using the module_init chain) */
 
 static const struct tty_operations rs_ops = {
 	.open = rs_open,
@@ -4245,4 +4247,5 @@ static int __init rs_init(void)
 }
 
 /* this makes sure that rs_init is called during kernel boot */
-device_initcall(rs_init);
+
+module_init(rs_init);

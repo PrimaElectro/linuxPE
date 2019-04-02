@@ -27,7 +27,6 @@
 
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/sched/signal.h>
 #include <linux/mm.h>
 #include <linux/pci.h>
 #include <linux/errno.h>
@@ -46,7 +45,7 @@
 
 #include <asm/io.h>
 #include <linux/atomic.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/string.h>
 #include <asm/byteorder.h>
 
@@ -2867,7 +2866,7 @@ MODULE_PARM_DESC(max_tx_size, "maximum size of TX AAL5 frames");
 MODULE_PARM_DESC(max_rx_size, "maximum size of RX AAL5 frames");
 MODULE_PARM_DESC(pci_lat, "PCI latency in bus cycles");
 
-static const struct pci_device_id hrz_pci_tbl[] = {
+static struct pci_device_id hrz_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MADGE, PCI_DEVICE_ID_MADGE_HORIZON, PCI_ANY_ID, PCI_ANY_ID,
 	  0, 0, 0 },
 	{ 0, }
@@ -2885,7 +2884,12 @@ static struct pci_driver hrz_driver = {
 /********** module entry **********/
 
 static int __init hrz_module_init (void) {
-  BUILD_BUG_ON(sizeof(struct MEMMAP) != 128*1024/4);
+  // sanity check - cast is needed since printk does not support %Zu
+  if (sizeof(struct MEMMAP) != 128*1024/4) {
+    PRINTK (KERN_ERR, "Fix struct MEMMAP (is %lu fakewords).",
+	    (unsigned long) sizeof(struct MEMMAP));
+    return -ENOMEM;
+  }
   
   show_version();
   

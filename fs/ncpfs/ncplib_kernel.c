@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  ncplib_kernel.c
  *
@@ -981,10 +980,6 @@ ncp_read_kernel(struct ncp_server *server, const char *file_id,
 		goto out;
 	}
 	*bytes_read = ncp_reply_be16(server, 0);
-	if (*bytes_read > to_read) {
-		result = -EINVAL;
-		goto out;
-	}
 	source = ncp_reply_data(server, 2 + (offset & 1));
 
 	memcpy(target, source, *bytes_read);

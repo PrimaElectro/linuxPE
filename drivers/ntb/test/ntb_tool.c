@@ -119,10 +119,7 @@ MODULE_VERSION(DRIVER_VERSION);
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESCRIPTION);
 
-/* It is rare to have hadrware with greater than six MWs */
-#define MAX_MWS	6
-/* Only two-ports devices are supported */
-#define PIDX	NTB_DEF_PEER_IDX
+#define MAX_MWS 16
 
 static struct dentry *tool_dbgfs;
 
@@ -462,22 +459,13 @@ static TOOL_FOPS_RDWR(tool_spad_fops,
 		      tool_spad_read,
 		      tool_spad_write);
 
-static u32 ntb_tool_peer_spad_read(struct ntb_dev *ntb, int sidx)
-{
-	return ntb_peer_spad_read(ntb, PIDX, sidx);
-}
-
 static ssize_t tool_peer_spad_read(struct file *filep, char __user *ubuf,
 				   size_t size, loff_t *offp)
 {
 	struct tool_ctx *tc = filep->private_data;
 
-	return tool_spadfn_read(tc, ubuf, size, offp, ntb_tool_peer_spad_read);
-}
-
-static int ntb_tool_peer_spad_write(struct ntb_dev *ntb, int sidx, u32 val)
-{
-	return ntb_peer_spad_write(ntb, PIDX, sidx, val);
+	return tool_spadfn_read(tc, ubuf, size, offp,
+				tc->ntb->ops->peer_spad_read);
 }
 
 static ssize_t tool_peer_spad_write(struct file *filep, const char __user *ubuf,
@@ -486,7 +474,7 @@ static ssize_t tool_peer_spad_write(struct file *filep, const char __user *ubuf,
 	struct tool_ctx *tc = filep->private_data;
 
 	return tool_spadfn_write(tc, ubuf, size, offp,
-				 ntb_tool_peer_spad_write);
+				 tc->ntb->ops->peer_spad_write);
 }
 
 static TOOL_FOPS_RDWR(tool_peer_spad_fops,
@@ -680,27 +668,28 @@ static int tool_setup_mw(struct tool_ctx *tc, int idx, size_t req_size)
 {
 	int rc;
 	struct tool_mw *mw = &tc->mws[idx];
-	resource_size_t size, align_addr, align_size;
+	phys_addr_t base;
+	resource_size_t size, align, align_size;
 	char buf[16];
 
 	if (mw->peer)
 		return 0;
 
-	rc = ntb_mw_get_align(tc->ntb, PIDX, idx, &align_addr,
-				&align_size, &size);
+	rc = ntb_mw_get_range(tc->ntb, idx, &base, &size, &align,
+			      &align_size);
 	if (rc)
 		return rc;
 
 	mw->size = min_t(resource_size_t, req_size, size);
-	mw->size = round_up(mw->size, align_addr);
+	mw->size = round_up(mw->size, align);
 	mw->size = round_up(mw->size, align_size);
 	mw->peer = dma_alloc_coherent(&tc->ntb->pdev->dev, mw->size,
 				      &mw->peer_dma, GFP_KERNEL);
 
-	if (!mw->peer || !IS_ALIGNED(mw->peer_dma, align_addr))
+	if (!mw->peer)
 		return -ENOMEM;
 
-	rc = ntb_mw_set_trans(tc->ntb, PIDX, idx, mw->peer_dma, mw->size);
+	rc = ntb_mw_set_trans(tc->ntb, idx, mw->peer_dma, mw->size);
 	if (rc)
 		goto err_free_dma;
 
@@ -727,7 +716,7 @@ static void tool_free_mw(struct tool_ctx *tc, int idx)
 	struct tool_mw *mw = &tc->mws[idx];
 
 	if (mw->peer) {
-		ntb_mw_clear_trans(tc->ntb, PIDX, idx);
+		ntb_mw_clear_trans(tc->ntb, idx);
 		dma_free_coherent(&tc->ntb->pdev->dev, mw->size,
 				  mw->peer,
 				  mw->peer_dma);
@@ -753,9 +742,8 @@ static ssize_t tool_peer_mw_trans_read(struct file *filep,
 
 	phys_addr_t base;
 	resource_size_t mw_size;
-	resource_size_t align_addr;
+	resource_size_t align;
 	resource_size_t align_size;
-	resource_size_t max_size;
 
 	buf_size = min_t(size_t, size, 512);
 
@@ -763,9 +751,8 @@ static ssize_t tool_peer_mw_trans_read(struct file *filep,
 	if (!buf)
 		return -ENOMEM;
 
-	ntb_mw_get_align(mw->tc->ntb, PIDX, mw->idx,
-			 &align_addr, &align_size, &max_size);
-	ntb_peer_mw_get_addr(mw->tc->ntb, mw->idx, &base, &mw_size);
+	ntb_mw_get_range(mw->tc->ntb, mw->idx,
+			 &base, &mw_size, &align, &align_size);
 
 	off += scnprintf(buf + off, buf_size - off,
 			 "Peer MW %d Information:\n", mw->idx);
@@ -780,15 +767,11 @@ static ssize_t tool_peer_mw_trans_read(struct file *filep,
 
 	off += scnprintf(buf + off, buf_size - off,
 			 "Alignment             \t%lld\n",
-			 (unsigned long long)align_addr);
+			 (unsigned long long)align);
 
 	off += scnprintf(buf + off, buf_size - off,
 			 "Size Alignment        \t%lld\n",
 			 (unsigned long long)align_size);
-
-	off += scnprintf(buf + off, buf_size - off,
-			 "Size Max              \t%lld\n",
-			 (unsigned long long)max_size);
 
 	off += scnprintf(buf + off, buf_size - off,
 			 "Ready                 \t%c\n",
@@ -844,7 +827,8 @@ static int tool_init_mw(struct tool_ctx *tc, int idx)
 	phys_addr_t base;
 	int rc;
 
-	rc = ntb_peer_mw_get_addr(tc->ntb, idx, &base, &mw->win_size);
+	rc = ntb_mw_get_range(tc->ntb, idx, &base, &mw->win_size,
+			      NULL, NULL);
 	if (rc)
 		return rc;
 
@@ -929,26 +913,11 @@ static int tool_probe(struct ntb_client *self, struct ntb_dev *ntb)
 	int rc;
 	int i;
 
-	if (!ntb->ops->mw_set_trans) {
-		dev_dbg(&ntb->dev, "need inbound MW based NTB API\n");
-		rc = -EINVAL;
-		goto err_tc;
-	}
-
-	if (ntb_spad_count(ntb) < 1) {
-		dev_dbg(&ntb->dev, "no enough scratchpads\n");
-		rc = -EINVAL;
-		goto err_tc;
-	}
-
 	if (ntb_db_is_unsafe(ntb))
 		dev_dbg(&ntb->dev, "doorbell is unsafe\n");
 
 	if (ntb_spad_is_unsafe(ntb))
 		dev_dbg(&ntb->dev, "scratchpad is unsafe\n");
-
-	if (ntb_peer_port_count(ntb) != NTB_DEF_PEER_CNT)
-		dev_warn(&ntb->dev, "multi-port NTB is unsupported\n");
 
 	tc = kzalloc(sizeof(*tc), GFP_KERNEL);
 	if (!tc) {
@@ -959,7 +928,7 @@ static int tool_probe(struct ntb_client *self, struct ntb_dev *ntb)
 	tc->ntb = ntb;
 	init_waitqueue_head(&tc->link_wq);
 
-	tc->mw_count = min(ntb_peer_mw_count(tc->ntb), MAX_MWS);
+	tc->mw_count = min(ntb_mw_count(tc->ntb), MAX_MWS);
 	for (i = 0; i < tc->mw_count; i++) {
 		rc = tool_init_mw(tc, i);
 		if (rc)

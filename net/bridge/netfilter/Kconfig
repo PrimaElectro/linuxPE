@@ -22,7 +22,6 @@ config NFT_BRIDGE_REJECT
 
 config NF_LOG_BRIDGE
 	tristate "Bridge packet logging"
-	select NF_LOG_COMMON
 
 endif # NF_TABLES_BRIDGE
 

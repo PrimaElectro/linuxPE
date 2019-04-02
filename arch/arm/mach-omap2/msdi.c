@@ -30,6 +30,7 @@
 #include "control.h"
 #include "omap_hwmod.h"
 #include "omap_device.h"
+#include "mux.h"
 #include "mmc.h"
 
 /*

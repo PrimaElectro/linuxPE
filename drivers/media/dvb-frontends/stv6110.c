@@ -16,6 +16,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *
  * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <linux/slab.h>
@@ -55,10 +59,11 @@ static s32 abssub(s32 a, s32 b)
 		return b - a;
 };
 
-static void stv6110_release(struct dvb_frontend *fe)
+static int stv6110_release(struct dvb_frontend *fe)
 {
 	kfree(fe->tuner_priv);
 	fe->tuner_priv = NULL;
+	return 0;
 }
 
 static int stv6110_write_regs(struct dvb_frontend *fe, u8 buf[],

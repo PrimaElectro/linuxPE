@@ -125,20 +125,25 @@ static ssize_t kexec_crash_size_store(struct kobject *kobj,
 }
 KERNEL_ATTR_RW(kexec_crash_size);
 
-#endif /* CONFIG_KEXEC_CORE */
-
-#ifdef CONFIG_CRASH_CORE
-
 static ssize_t vmcoreinfo_show(struct kobject *kobj,
 			       struct kobj_attribute *attr, char *buf)
 {
 	phys_addr_t vmcore_base = paddr_vmcoreinfo_note();
 	return sprintf(buf, "%pa %x\n", &vmcore_base,
-			(unsigned int)VMCOREINFO_NOTE_SIZE);
+		       (unsigned int)sizeof(vmcoreinfo_note));
 }
 KERNEL_ATTR_RO(vmcoreinfo);
 
-#endif /* CONFIG_CRASH_CORE */
+#endif /* CONFIG_KEXEC_CORE */
+
+#if defined(CONFIG_PREEMPT_RT_FULL)
+static ssize_t  realtime_show(struct kobject *kobj,
+			      struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", 1);
+}
+KERNEL_ATTR_RO(realtime);
+#endif
 
 /* whether file capabilities are enabled */
 static ssize_t fscaps_show(struct kobject *kobj,
@@ -199,7 +204,7 @@ static ssize_t notes_read(struct file *filp, struct kobject *kobj,
 	return count;
 }
 
-static struct bin_attribute notes_attr __ro_after_init  = {
+static struct bin_attribute notes_attr = {
 	.attr = {
 		.name = "notes",
 		.mode = S_IRUGO,
@@ -223,18 +228,19 @@ static struct attribute * kernel_attrs[] = {
 	&kexec_loaded_attr.attr,
 	&kexec_crash_loaded_attr.attr,
 	&kexec_crash_size_attr.attr,
-#endif
-#ifdef CONFIG_CRASH_CORE
 	&vmcoreinfo_attr.attr,
 #endif
 #ifndef CONFIG_TINY_RCU
 	&rcu_expedited_attr.attr,
 	&rcu_normal_attr.attr,
 #endif
+#ifdef CONFIG_PREEMPT_RT_FULL
+	&realtime_attr.attr,
+#endif
 	NULL
 };
 
-static const struct attribute_group kernel_attr_group = {
+static struct attribute_group kernel_attr_group = {
 	.attrs = kernel_attrs,
 };
 

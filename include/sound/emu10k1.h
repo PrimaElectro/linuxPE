@@ -1688,8 +1688,7 @@ struct snd_emu1010 {
 	unsigned int internal_clock; /* 44100 or 48000 */
 	unsigned int optical_in; /* 0:SPDIF, 1:ADAT */
 	unsigned int optical_out; /* 0:SPDIF, 1:ADAT */
-	struct delayed_work firmware_work;
-	u32 last_reg;
+	struct task_struct *firmware_thread;
 };
 
 struct snd_emu10k1 {

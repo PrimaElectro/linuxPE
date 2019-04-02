@@ -13,8 +13,12 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * To obtain the license, point your browser to
- * http://www.gnu.org/copyleft/gpl.html
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA
+ * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/kernel.h>
@@ -638,10 +642,8 @@ static int SetCfgIfAgc(struct drxd_state *state, struct SCfgAgc *cfg)
 			/* == Speed == */
 			{
 				const u16 maxRur = 8;
-				static const u16 slowIncrDecLUT[] = {
-					3, 4, 4, 5, 6 };
-				const u16 fastIncrDecLUT[] = {
-					14, 15, 15, 16,
+				const u16 slowIncrDecLUT[] = { 3, 4, 4, 5, 6 };
+				const u16 fastIncrDecLUT[] = { 14, 15, 15, 16,
 					17, 18, 18, 19,
 					20, 21, 22, 23,
 					24, 26, 27, 28,
@@ -1519,14 +1521,12 @@ static int SetDeviceTypeId(struct drxd_state *state)
 			switch (deviceId) {
 			case 4:
 				state->diversity = 1;
-				/* fall through */
 			case 3:
 			case 7:
 				state->PGA = 1;
 				break;
 			case 6:
 				state->diversity = 1;
-				/* fall through */
 			case 5:
 			case 8:
 				break;
@@ -1973,8 +1973,7 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 		switch (p->transmission_mode) {
 		default:	/* Not set, detect it automatically */
 			operationMode |= SC_RA_RAM_OP_AUTO_MODE__M;
-			/* try first guess DRX_FFTMODE_8K */
-			/* fall through */
+			/* fall through , try first guess DRX_FFTMODE_8K */
 		case TRANSMISSION_MODE_8K:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_MODE_8K;
 			if (state->type_A) {
@@ -2148,8 +2147,8 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 		switch (p->modulation) {
 		default:
 			operationMode |= SC_RA_RAM_OP_AUTO_CONST__M;
-			/* try first guess DRX_CONSTELLATION_QAM64 */
-			/* fall through */
+			/* fall through , try first guess
+			   DRX_CONSTELLATION_QAM64 */
 		case QAM_64:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_CONST_QAM64;
 			if (state->type_A) {
@@ -2285,7 +2284,6 @@ static int DRX_Start(struct drxd_state *state, s32 off)
 			break;
 		default:
 			operationMode |= SC_RA_RAM_OP_AUTO_RATE__M;
-			/* fall through */
 		case FEC_2_3:
 			transmissionParams |= SC_RA_RAM_OP_PARAM_RATE_2_3;
 			if (state->type_A) {
@@ -2914,7 +2912,7 @@ static void drxd_release(struct dvb_frontend *fe)
 	kfree(state);
 }
 
-static const struct dvb_frontend_ops drxd_ops = {
+static struct dvb_frontend_ops drxd_ops = {
 	.delsys = { SYS_DVBT},
 	.info = {
 		 .name = "Micronas DRXD DVB-T",

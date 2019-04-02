@@ -5,8 +5,7 @@ The Mediatek vencsys controller provides various clocks to the system.
 
 Required Properties:
 
-- compatible: Should be one of:
-	- "mediatek,mt6797-vencsys", "syscon"
+- compatible: Should be:
 	- "mediatek,mt8173-vencsys", "syscon"
 - #clock-cells: Must be 1
 

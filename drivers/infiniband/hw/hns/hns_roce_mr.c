@@ -32,7 +32,6 @@
  */
 
 #include <linux/platform_device.h>
-#include <linux/vmalloc.h>
 #include <rdma/ib_umem.h>
 #include "hns_roce_device.h"
 #include "hns_roce_cmd.h"
@@ -43,7 +42,7 @@ static u32 hw_index_to_key(unsigned long ind)
 	return (u32)(ind >> 24) | (ind << 8);
 }
 
-unsigned long key_to_hw_index(u32 key)
+static unsigned long key_to_hw_index(u32 key)
 {
 	return (key << 24) | (key >> 8);
 }
@@ -54,16 +53,16 @@ static int hns_roce_sw2hw_mpt(struct hns_roce_dev *hr_dev,
 {
 	return hns_roce_cmd_mbox(hr_dev, mailbox->dma, 0, mpt_index, 0,
 				 HNS_ROCE_CMD_SW2HW_MPT,
-				 HNS_ROCE_CMD_TIMEOUT_MSECS);
+				 HNS_ROCE_CMD_TIME_CLASS_B);
 }
 
-int hns_roce_hw2sw_mpt(struct hns_roce_dev *hr_dev,
+static int hns_roce_hw2sw_mpt(struct hns_roce_dev *hr_dev,
 			      struct hns_roce_cmd_mailbox *mailbox,
 			      unsigned long mpt_index)
 {
 	return hns_roce_cmd_mbox(hr_dev, 0, mailbox ? mailbox->dma : 0,
 				 mpt_index, !mailbox, HNS_ROCE_CMD_HW2SW_MPT,
-				 HNS_ROCE_CMD_TIMEOUT_MSECS);
+				 HNS_ROCE_CMD_TIME_CLASS_B);
 }
 
 static int hns_roce_buddy_alloc(struct hns_roce_buddy *buddy, int order,
@@ -128,24 +127,21 @@ static int hns_roce_buddy_init(struct hns_roce_buddy *buddy, int max_order)
 
 	buddy->max_order = max_order;
 	spin_lock_init(&buddy->lock);
-	buddy->bits = kcalloc(buddy->max_order + 1,
-			      sizeof(*buddy->bits),
-			      GFP_KERNEL);
-	buddy->num_free = kcalloc(buddy->max_order + 1,
-				  sizeof(*buddy->num_free),
-				  GFP_KERNEL);
+
+	buddy->bits = kzalloc((buddy->max_order + 1) * sizeof(long *),
+			       GFP_KERNEL);
+	buddy->num_free = kzalloc((buddy->max_order + 1) * sizeof(int *),
+				   GFP_KERNEL);
 	if (!buddy->bits || !buddy->num_free)
 		goto err_out;
 
 	for (i = 0; i <= buddy->max_order; ++i) {
 		s = BITS_TO_LONGS(1 << (buddy->max_order - i));
-		buddy->bits[i] = kcalloc(s, sizeof(long), GFP_KERNEL |
-					 __GFP_NOWARN);
-		if (!buddy->bits[i]) {
-			buddy->bits[i] = vzalloc(s * sizeof(long));
-			if (!buddy->bits[i])
-				goto err_out_free;
-		}
+		buddy->bits[i] = kmalloc_array(s, sizeof(long), GFP_KERNEL);
+		if (!buddy->bits[i])
+			goto err_out_free;
+
+		bitmap_zero(buddy->bits[i], 1 << (buddy->max_order - i));
 	}
 
 	set_bit(0, buddy->bits[buddy->max_order]);
@@ -155,7 +151,7 @@ static int hns_roce_buddy_init(struct hns_roce_buddy *buddy, int max_order)
 
 err_out_free:
 	for (i = 0; i <= buddy->max_order; ++i)
-		kvfree(buddy->bits[i]);
+		kfree(buddy->bits[i]);
 
 err_out:
 	kfree(buddy->bits);
@@ -168,7 +164,7 @@ static void hns_roce_buddy_cleanup(struct hns_roce_buddy *buddy)
 	int i;
 
 	for (i = 0; i <= buddy->max_order; ++i)
-		kvfree(buddy->bits[i]);
+		kfree(buddy->bits[i]);
 
 	kfree(buddy->bits);
 	kfree(buddy->num_free);
@@ -206,7 +202,7 @@ int hns_roce_mtt_init(struct hns_roce_dev *hr_dev, int npages, int page_shift,
 		return 0;
 	}
 
-	/* Note: if page_shift is zero, FAST memory register */
+	/* Note: if page_shift is zero, FAST memory regsiter */
 	mtt->page_shift = page_shift;
 
 	/* Compute MTT entry necessary */
@@ -291,7 +287,7 @@ static void hns_roce_mr_free(struct hns_roce_dev *hr_dev,
 	}
 
 	hns_roce_bitmap_free(&hr_dev->mr_table.mtpt_bitmap,
-			     key_to_hw_index(mr->key), BITMAP_NO_RR);
+			     key_to_hw_index(mr->key));
 }
 
 static int hns_roce_mr_enable(struct hns_roce_dev *hr_dev,
@@ -505,8 +501,7 @@ int hns_roce_ib_umem_write_mtt(struct hns_roce_dev *hr_dev,
 	for_each_sg(umem->sg_head.sgl, sg, umem->nmap, entry) {
 		len = sg_dma_len(sg) >> mtt->page_shift;
 		for (k = 0; k < len; ++k) {
-			pages[i++] = sg_dma_address(sg) +
-				(k << umem->page_shift);
+			pages[i++] = sg_dma_address(sg) + umem->page_size * k;
 			if (i == PAGE_SIZE / sizeof(u64)) {
 				ret = hns_roce_write_mtt(hr_dev, mtt, n, i,
 							 pages);
@@ -566,9 +561,9 @@ struct ib_mr *hns_roce_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	}
 
 	n = ib_umem_page_count(mr->umem);
-	if (mr->umem->page_shift != HNS_ROCE_HEM_PAGE_SHIFT) {
-		dev_err(dev, "Just support 4K page size but is 0x%lx now!\n",
-			BIT(mr->umem->page_shift));
+	if (mr->umem->page_size != HNS_ROCE_HEM_PAGE_SIZE) {
+		dev_err(dev, "Just support 4K page size but is 0x%x now!\n",
+			mr->umem->page_size);
 		ret = -EINVAL;
 		goto err_umem;
 	}
@@ -610,20 +605,13 @@ err_free:
 
 int hns_roce_dereg_mr(struct ib_mr *ibmr)
 {
-	struct hns_roce_dev *hr_dev = to_hr_dev(ibmr->device);
 	struct hns_roce_mr *mr = to_hr_mr(ibmr);
-	int ret = 0;
 
-	if (hr_dev->hw->dereg_mr) {
-		ret = hr_dev->hw->dereg_mr(hr_dev, mr);
-	} else {
-		hns_roce_mr_free(hr_dev, mr);
+	hns_roce_mr_free(to_hr_dev(ibmr->device), mr);
+	if (mr->umem)
+		ib_umem_release(mr->umem);
 
-		if (mr->umem)
-			ib_umem_release(mr->umem);
+	kfree(mr);
 
-		kfree(mr);
-	}
-
-	return ret;
+	return 0;
 }

@@ -14,8 +14,6 @@
 #include <linux/sched.h>
 #include <linux/cred.h>
 #include <linux/err.h>
-#include <linux/slab.h>
-#include <linux/verification.h>
 #include <keys/asymmetric-type.h>
 #include <keys/system_keyring.h>
 #include <crypto/pkcs7.h>
@@ -34,13 +32,11 @@ extern __initconst const unsigned long system_certificate_list_size;
  * Restrict the addition of keys into a keyring based on the key-to-be-added
  * being vouched for by a key in the built in system keyring.
  */
-int restrict_link_by_builtin_trusted(struct key *dest_keyring,
+int restrict_link_by_builtin_trusted(struct key *keyring,
 				     const struct key_type *type,
-				     const union key_payload *payload,
-				     struct key *restriction_key)
+				     const union key_payload *payload)
 {
-	return restrict_link_by_signature(dest_keyring, type, payload,
-					  builtin_trusted_keys);
+	return restrict_link_by_signature(builtin_trusted_keys, type, payload);
 }
 
 #ifdef CONFIG_SECONDARY_TRUSTED_KEYRING
@@ -53,40 +49,20 @@ int restrict_link_by_builtin_trusted(struct key *dest_keyring,
  * keyrings.
  */
 int restrict_link_by_builtin_and_secondary_trusted(
-	struct key *dest_keyring,
+	struct key *keyring,
 	const struct key_type *type,
-	const union key_payload *payload,
-	struct key *restrict_key)
+	const union key_payload *payload)
 {
 	/* If we have a secondary trusted keyring, then that contains a link
 	 * through to the builtin keyring and the search will follow that link.
 	 */
 	if (type == &key_type_keyring &&
-	    dest_keyring == secondary_trusted_keys &&
+	    keyring == secondary_trusted_keys &&
 	    payload == &builtin_trusted_keys->payload)
 		/* Allow the builtin keyring to be added to the secondary */
 		return 0;
 
-	return restrict_link_by_signature(dest_keyring, type, payload,
-					  secondary_trusted_keys);
-}
-
-/**
- * Allocate a struct key_restriction for the "builtin and secondary trust"
- * keyring. Only for use in system_trusted_keyring_init().
- */
-static __init struct key_restriction *get_builtin_and_secondary_restriction(void)
-{
-	struct key_restriction *restriction;
-
-	restriction = kzalloc(sizeof(struct key_restriction), GFP_KERNEL);
-
-	if (!restriction)
-		panic("Can't allocate secondary trusted keyring restriction\n");
-
-	restriction->check = restrict_link_by_builtin_and_secondary_trusted;
-
-	return restriction;
+	return restrict_link_by_signature(secondary_trusted_keys, type, payload);
 }
 #endif
 
@@ -115,7 +91,7 @@ static __init int system_trusted_keyring_init(void)
 			       KEY_USR_VIEW | KEY_USR_READ | KEY_USR_SEARCH |
 			       KEY_USR_WRITE),
 			      KEY_ALLOC_NOT_IN_QUOTA,
-			      get_builtin_and_secondary_restriction(),
+			      restrict_link_by_builtin_and_secondary_trusted,
 			      NULL);
 	if (IS_ERR(secondary_trusted_keys))
 		panic("Can't allocate secondary trusted keyring\n");
@@ -231,7 +207,7 @@ int verify_pkcs7_signature(const void *data, size_t len,
 
 	if (!trusted_keys) {
 		trusted_keys = builtin_trusted_keys;
-	} else if (trusted_keys == VERIFY_USE_SECONDARY_KEYRING) {
+	} else if (trusted_keys == (void *)1UL) {
 #ifdef CONFIG_SECONDARY_TRUSTED_KEYRING
 		trusted_keys = secondary_trusted_keys;
 #else

@@ -22,7 +22,7 @@
 #include <linux/swap.h>
 #include <linux/crc32.h>
 #include <linux/writeback.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/dlm.h>
 #include <linux/dlm_plock.h>
 #include <linux/delay.h>
@@ -381,10 +381,10 @@ static int gfs2_allocate_page_backing(struct page *page)
  * blocks allocated on disk to back that page.
  */
 
-static int gfs2_page_mkwrite(struct vm_fault *vmf)
+static int gfs2_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct page *page = vmf->page;
-	struct inode *inode = file_inode(vmf->vma->vm_file);
+	struct inode *inode = file_inode(vma->vm_file);
 	struct gfs2_inode *ip = GFS2_I(inode);
 	struct gfs2_sbd *sdp = GFS2_SB(inode);
 	struct gfs2_alloc_parms ap = { .aflags = 0, };
@@ -401,7 +401,7 @@ static int gfs2_page_mkwrite(struct vm_fault *vmf)
 	if (ret)
 		goto out;
 
-	gfs2_size_hint(vmf->vma->vm_file, pos, PAGE_SIZE);
+	gfs2_size_hint(vma->vm_file, pos, PAGE_SIZE);
 
 	gfs2_holder_init(ip->i_gl, LM_ST_EXCLUSIVE, 0, &gh);
 	ret = gfs2_glock_nq(&gh);
@@ -409,7 +409,7 @@ static int gfs2_page_mkwrite(struct vm_fault *vmf)
 		goto out_uninit;
 
 	/* Update file times before taking page lock */
-	file_update_time(vmf->vma->vm_file);
+	file_update_time(vma->vm_file);
 
 	set_bit(GLF_DIRTY, &ip->i_gl->gl_flags);
 	set_bit(GIF_SW_PAGED, &ip->i_flags);
@@ -670,14 +670,12 @@ static int gfs2_fsync(struct file *file, loff_t start, loff_t end,
 		if (ret)
 			return ret;
 		if (gfs2_is_jdata(ip))
-			ret = file_write_and_wait(file);
-		if (ret)
-			return ret;
+			filemap_write_and_wait(mapping);
 		gfs2_ail_flush(ip->i_gl, 1);
 	}
 
 	if (mapping->nrpages)
-		ret = file_fdatawait_range(file, start, end);
+		ret = filemap_fdatawait_range(mapping, start, end);
 
 	return ret ? ret : ret1;
 }
@@ -803,7 +801,7 @@ static long __gfs2_fallocate(struct file *file, int mode, loff_t offset, loff_t 
 	struct gfs2_inode *ip = GFS2_I(inode);
 	struct gfs2_alloc_parms ap = { .aflags = 0, };
 	unsigned int data_blocks = 0, ind_blocks = 0, rblocks;
-	loff_t bytes, max_bytes, max_blks;
+	loff_t bytes, max_bytes, max_blks = UINT_MAX;
 	int error;
 	const loff_t pos = offset;
 	const loff_t count = len;
@@ -855,8 +853,7 @@ static long __gfs2_fallocate(struct file *file, int mode, loff_t offset, loff_t 
 			return error;
 		/* ap.allowed tells us how many blocks quota will allow
 		 * us to write. Check if this reduces max_blks */
-		max_blks = UINT_MAX;
-		if (ap.allowed)
+		if (ap.allowed && ap.allowed < max_blks)
 			max_blks = ap.allowed;
 
 		error = gfs2_inplace_reserve(ip, &ap);
@@ -916,15 +913,11 @@ out_qunlock:
 static long gfs2_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 {
 	struct inode *inode = file_inode(file);
-	struct gfs2_sbd *sdp = GFS2_SB(inode);
 	struct gfs2_inode *ip = GFS2_I(inode);
 	struct gfs2_holder gh;
 	int ret;
 
-	if (mode & ~FALLOC_FL_KEEP_SIZE)
-		return -EOPNOTSUPP;
-	/* fallocate is needed by gfs2_grow to reserve space in the rindex */
-	if (gfs2_is_jdata(ip) && inode != sdp->sd_rindex)
+	if ((mode & ~FALLOC_FL_KEEP_SIZE) || gfs2_is_jdata(ip))
 		return -EOPNOTSUPP;
 
 	inode_lock(inode);
@@ -1035,7 +1028,8 @@ static int do_flock(struct file *file, int cmd, struct file_lock *fl)
 
 	mutex_lock(&fp->f_fl_mutex);
 
-	if (gfs2_holder_initialized(fl_gh)) {
+	gl = fl_gh->gh_gl;
+	if (gl) {
 		if (fl_gh->gh_state == state)
 			goto out;
 		locks_lock_file_wait(file,

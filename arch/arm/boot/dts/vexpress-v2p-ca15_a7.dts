@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * ARM Ltd. Versatile Express
  *
@@ -40,7 +39,6 @@
 			reg = <0>;
 			cci-control-port = <&cci_control1>;
 			cpu-idle-states = <&CLUSTER_SLEEP_BIG>;
-			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu1: cpu@1 {
@@ -49,7 +47,6 @@
 			reg = <1>;
 			cci-control-port = <&cci_control1>;
 			cpu-idle-states = <&CLUSTER_SLEEP_BIG>;
-			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu2: cpu@2 {
@@ -58,7 +55,6 @@
 			reg = <0x100>;
 			cci-control-port = <&cci_control2>;
 			cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
-			capacity-dmips-mhz = <516>;
 		};
 
 		cpu3: cpu@3 {
@@ -67,7 +63,6 @@
 			reg = <0x101>;
 			cci-control-port = <&cci_control2>;
 			cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
-			capacity-dmips-mhz = <516>;
 		};
 
 		cpu4: cpu@4 {
@@ -76,7 +71,6 @@
 			reg = <0x102>;
 			cci-control-port = <&cci_control2>;
 			cpu-idle-states = <&CLUSTER_SLEEP_LITTLE>;
-			capacity-dmips-mhz = <516>;
 		};
 
 		idle-states {
@@ -132,7 +126,7 @@
 		#address-cells = <0>;
 		interrupt-controller;
 		reg = <0 0x2c001000 0 0x1000>,
-		      <0 0x2c002000 0 0x2000>,
+		      <0 0x2c002000 0 0x1000>,
 		      <0 0x2c004000 0 0x2000>,
 		      <0 0x2c006000 0 0x2000>;
 		interrupts = <1 9 0xf04>;
@@ -386,7 +380,7 @@
 		};
 	};
 
-	etb@20010000 {
+	etb@0,20010000 {
 		compatible = "arm,coresight-etb10", "arm,primecell";
 		reg = <0 0x20010000 0 0x1000>;
 
@@ -400,7 +394,7 @@
 		};
 	};
 
-	tpiu@20030000 {
+	tpiu@0,20030000 {
 		compatible = "arm,coresight-tpiu", "arm,primecell";
 		reg = <0 0x20030000 0 0x1000>;
 
@@ -450,7 +444,7 @@
 		};
 	};
 
-	funnel@20040000 {
+	funnel@0,20040000 {
 		compatible = "arm,coresight-funnel", "arm,primecell";
 		reg = <0 0x20040000 0 0x1000>;
 
@@ -514,7 +508,7 @@
 		};
 	};
 
-	ptm@2201c000 {
+	ptm@0,2201c000 {
 		compatible = "arm,coresight-etm3x", "arm,primecell";
 		reg = <0 0x2201c000 0 0x1000>;
 
@@ -528,7 +522,7 @@
 		};
 	};
 
-	ptm@2201d000 {
+	ptm@0,2201d000 {
 		compatible = "arm,coresight-etm3x", "arm,primecell";
 		reg = <0 0x2201d000 0 0x1000>;
 
@@ -542,7 +536,7 @@
 		};
 	};
 
-	etm@2203c000 {
+	etm@0,2203c000 {
 		compatible = "arm,coresight-etm3x", "arm,primecell";
 		reg = <0 0x2203c000 0 0x1000>;
 
@@ -556,7 +550,7 @@
 		};
 	};
 
-	etm@2203d000 {
+	etm@0,2203d000 {
 		compatible = "arm,coresight-etm3x", "arm,primecell";
 		reg = <0 0x2203d000 0 0x1000>;
 
@@ -570,7 +564,7 @@
 		};
 	};
 
-	etm@2203e000 {
+	etm@0,2203e000 {
 		compatible = "arm,coresight-etm3x", "arm,primecell";
 		reg = <0 0x2203e000 0 0x1000>;
 
@@ -584,7 +578,7 @@
 		};
 	};
 
-	smb@8000000 {
+	smb@08000000 {
 		compatible = "simple-bus";
 
 		#address-cells = <2>;

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright 2001-2003 Pavel Machek <pavel@suse.cz>
  * Based on code
@@ -43,7 +42,8 @@ struct saved_context {
 	set_debugreg((thread)->debugreg##register, register)
 
 /* routines for saving/restoring kernel state */
-extern char core_restore_code[];
-extern char restore_registers[];
+extern int acpi_save_state_mem(void);
+extern char core_restore_code;
+extern char restore_registers;
 
 #endif /* _ASM_X86_SUSPEND_64_H */

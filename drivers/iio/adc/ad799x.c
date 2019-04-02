@@ -520,7 +520,7 @@ static struct attribute *ad799x_event_attributes[] = {
 	NULL,
 };
 
-static const struct attribute_group ad799x_event_attrs_group = {
+static struct attribute_group ad799x_event_attrs_group = {
 	.attrs = ad799x_event_attributes,
 };
 

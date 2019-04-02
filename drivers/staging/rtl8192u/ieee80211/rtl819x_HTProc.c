@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 
 //As this function is mainly ported from Windows driver, so leave the name little changed. If any confusion caused, tell me. Created by WB. 2008.05.08
 #include "ieee80211.h"
@@ -177,7 +176,7 @@ void HTDebugHTInfo(u8 *InfoIE, u8 *TitleString)
 	IEEE80211_DEBUG(IEEE80211_DL_HT, "<Log HT Information Element>. Called by %s\n", TitleString);
 
 	IEEE80211_DEBUG(IEEE80211_DL_HT, "\tPrimary channel = %d\n", pHTInfoEle->ControlChl);
-	IEEE80211_DEBUG(IEEE80211_DL_HT, "\tSecondary channel =");
+	IEEE80211_DEBUG(IEEE80211_DL_HT, "\tSenondary channel =");
 	switch (pHTInfoEle->ExtChlOffset)
 	{
 		case 0:
@@ -977,16 +976,17 @@ void HTOnAssocRsp(struct ieee80211_device *ieee)
 	//
 	HTSetConnectBwMode(ieee, (HT_CHANNEL_WIDTH)(pPeerHTCap->ChlWidth), (HT_EXTCHNL_OFFSET)(pPeerHTInfo->ExtChlOffset));
 
-	pHTInfo->bCurTxBW40MHz = (pPeerHTInfo->RecommemdedTxWidth == 1);
+//	if (pHTInfo->bCurBW40MHz)
+		pHTInfo->bCurTxBW40MHz = ((pPeerHTInfo->RecommemdedTxWidth == 1)?true:false);
 
 	//
 	// Update short GI/ long GI setting
 	//
 	// TODO:
-	pHTInfo->bCurShortGI20MHz = pHTInfo->bRegShortGI20MHz &&
-				    (pPeerHTCap->ShortGI20Mhz == 1);
-	pHTInfo->bCurShortGI40MHz = pHTInfo->bRegShortGI40MHz &&
-				   (pPeerHTCap->ShortGI40Mhz == 1);
+	pHTInfo->bCurShortGI20MHz=
+		((pHTInfo->bRegShortGI20MHz)?((pPeerHTCap->ShortGI20Mhz==1)?true:false):false);
+	pHTInfo->bCurShortGI40MHz=
+		((pHTInfo->bRegShortGI40MHz)?((pPeerHTCap->ShortGI40Mhz==1)?true:false):false);
 
 	//
 	// Config TX STBC setting
@@ -997,8 +997,8 @@ void HTOnAssocRsp(struct ieee80211_device *ieee)
 	// Config DSSS/CCK  mode in 40MHz mode
 	//
 	// TODO:
-	pHTInfo->bCurSuppCCK = pHTInfo->bRegSuppCCK &&
-			       (pPeerHTCap->DssCCk == 1);
+	pHTInfo->bCurSuppCCK =
+		((pHTInfo->bRegSuppCCK)?((pPeerHTCap->DssCCk==1)?true:false):false);
 
 
 	//

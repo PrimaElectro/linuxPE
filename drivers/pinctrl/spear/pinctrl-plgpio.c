@@ -13,7 +13,7 @@
 #include <linux/err.h>
 #include <linux/gpio/driver.h>
 #include <linux/io.h>
-#include <linux/init.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pinctrl/consumer.h>
@@ -705,6 +705,7 @@ static const struct of_device_id plgpio_of_match[] = {
 	{ .compatible = "st,spear-plgpio" },
 	{}
 };
+MODULE_DEVICE_TABLE(of, plgpio_of_match);
 
 static struct platform_driver plgpio_driver = {
 	.probe = plgpio_probe,
@@ -720,3 +721,7 @@ static int __init plgpio_init(void)
 	return platform_driver_register(&plgpio_driver);
 }
 subsys_initcall(plgpio_init);
+
+MODULE_AUTHOR("Viresh Kumar <viresh.kumar@linaro.org>");
+MODULE_DESCRIPTION("STMicroelectronics SPEAr PLGPIO driver");
+MODULE_LICENSE("GPL");

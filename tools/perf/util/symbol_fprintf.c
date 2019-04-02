@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <elf.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -16,15 +15,14 @@ size_t symbol__fprintf(struct symbol *sym, FILE *fp)
 
 size_t __symbol__fprintf_symname_offs(const struct symbol *sym,
 				      const struct addr_location *al,
-				      bool unknown_as_addr,
-				      bool print_offsets, FILE *fp)
+				      bool unknown_as_addr, FILE *fp)
 {
 	unsigned long offset;
 	size_t length;
 
-	if (sym) {
+	if (sym && sym->name) {
 		length = fprintf(fp, "%s", sym->name);
-		if (al && print_offsets) {
+		if (al) {
 			if (al->addr < sym->end)
 				offset = al->addr - sym->start;
 			else
@@ -42,19 +40,19 @@ size_t symbol__fprintf_symname_offs(const struct symbol *sym,
 				    const struct addr_location *al,
 				    FILE *fp)
 {
-	return __symbol__fprintf_symname_offs(sym, al, false, true, fp);
+	return __symbol__fprintf_symname_offs(sym, al, false, fp);
 }
 
 size_t __symbol__fprintf_symname(const struct symbol *sym,
 				 const struct addr_location *al,
 				 bool unknown_as_addr, FILE *fp)
 {
-	return __symbol__fprintf_symname_offs(sym, al, unknown_as_addr, false, fp);
+	return __symbol__fprintf_symname_offs(sym, al, unknown_as_addr, fp);
 }
 
 size_t symbol__fprintf_symname(const struct symbol *sym, FILE *fp)
 {
-	return __symbol__fprintf_symname_offs(sym, NULL, false, false, fp);
+	return __symbol__fprintf_symname_offs(sym, NULL, false, fp);
 }
 
 size_t dso__fprintf_symbols_by_name(struct dso *dso,

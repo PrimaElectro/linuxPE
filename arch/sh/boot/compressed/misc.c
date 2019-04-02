@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * arch/sh/boot/compressed/misc.c
  *
@@ -12,7 +11,7 @@
  * Modified to use standard LinuxSH BIOS by Greg Banks 7Jul2000
  */
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/addrspace.h>
 #include <asm/page.h>
 

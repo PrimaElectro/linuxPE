@@ -2079,7 +2079,7 @@ void
 mpt_detach(struct pci_dev *pdev)
 {
 	MPT_ADAPTER 	*ioc = pci_get_drvdata(pdev);
-	char pname[64];
+	char pname[32];
 	u8 cb_idx;
 	unsigned long flags;
 	struct workqueue_struct *wq;
@@ -2100,11 +2100,11 @@ mpt_detach(struct pci_dev *pdev)
 	spin_unlock_irqrestore(&ioc->fw_event_lock, flags);
 	destroy_workqueue(wq);
 
-	snprintf(pname, sizeof(pname), MPT_PROCFS_MPTBASEDIR "/%s/summary", ioc->name);
+	sprintf(pname, MPT_PROCFS_MPTBASEDIR "/%s/summary", ioc->name);
 	remove_proc_entry(pname, NULL);
-	snprintf(pname, sizeof(pname), MPT_PROCFS_MPTBASEDIR "/%s/info", ioc->name);
+	sprintf(pname, MPT_PROCFS_MPTBASEDIR "/%s/info", ioc->name);
 	remove_proc_entry(pname, NULL);
-	snprintf(pname, sizeof(pname), MPT_PROCFS_MPTBASEDIR "/%s", ioc->name);
+	sprintf(pname, MPT_PROCFS_MPTBASEDIR "/%s", ioc->name);
 	remove_proc_entry(pname, NULL);
 
 	/* call per device driver remove entry point */
@@ -2585,7 +2585,10 @@ mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag)
 				(void) GetLanConfigPages(ioc);
 				a = (u8*)&ioc->lan_cnfg_page1.HardwareAddressLow;
 				dprintk(ioc, printk(MYIOC_s_DEBUG_FMT
-					"LanAddr = %pMR\n", ioc->name, a));
+					"LanAddr = %02X:%02X:%02X"
+					":%02X:%02X:%02X\n",
+					ioc->name, a[5], a[4],
+					a[3], a[2], a[1], a[0]));
 			}
 			break;
 
@@ -2865,21 +2868,21 @@ MptDisplayIocCapabilities(MPT_ADAPTER *ioc)
 
 	printk(KERN_INFO "%s: ", ioc->name);
 	if (ioc->prod_name)
-		pr_cont("%s: ", ioc->prod_name);
-	pr_cont("Capabilities={");
+		printk("%s: ", ioc->prod_name);
+	printk("Capabilities={");
 
 	if (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_INITIATOR) {
-		pr_cont("Initiator");
+		printk("Initiator");
 		i++;
 	}
 
 	if (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_TARGET) {
-		pr_cont("%sTarget", i ? "," : "");
+		printk("%sTarget", i ? "," : "");
 		i++;
 	}
 
 	if (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_LAN) {
-		pr_cont("%sLAN", i ? "," : "");
+		printk("%sLAN", i ? "," : "");
 		i++;
 	}
 
@@ -2888,12 +2891,12 @@ MptDisplayIocCapabilities(MPT_ADAPTER *ioc)
 	 *  This would probably evoke more questions than it's worth
 	 */
 	if (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_TARGET) {
-		pr_cont("%sLogBusAddr", i ? "," : "");
+		printk("%sLogBusAddr", i ? "," : "");
 		i++;
 	}
 #endif
 
-	pr_cont("}\n");
+	printk("}\n");
 }
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
@@ -6780,7 +6783,8 @@ static int mpt_iocinfo_proc_show(struct seq_file *m, void *v)
 		if (ioc->bus_type == FC) {
 			if (ioc->pfacts[p].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_LAN) {
 				u8 *a = (u8*)&ioc->lan_cnfg_page1.HardwareAddressLow;
-				seq_printf(m, "    LanAddr = %pMR\n", a);
+				seq_printf(m, "    LanAddr = %02X:%02X:%02X:%02X:%02X:%02X\n",
+						a[5], a[4], a[3], a[2], a[1], a[0]);
 			}
 			seq_printf(m, "    WWN = %08X%08X:%08X%08X\n",
 					ioc->fc_port_page0[p].WWNN.High,
@@ -6857,7 +6861,8 @@ mpt_print_ioc_summary(MPT_ADAPTER *ioc, char *buffer, int *size, int len, int sh
 
 	if (showlan && (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_LAN)) {
 		u8 *a = (u8*)&ioc->lan_cnfg_page1.HardwareAddressLow;
-		y += sprintf(buffer+len+y, ", LanAddr=%pMR", a);
+		y += sprintf(buffer+len+y, ", LanAddr=%02X:%02X:%02X:%02X:%02X:%02X",
+			a[5], a[4], a[3], a[2], a[1], a[0]);
 	}
 
 	y += sprintf(buffer+len+y, ", IRQ=%d", ioc->pci_irq);
@@ -6891,7 +6896,8 @@ static void seq_mpt_print_ioc_summary(MPT_ADAPTER *ioc, struct seq_file *m, int 
 
 	if (showlan && (ioc->pfacts[0].ProtocolFlags & MPI_PORTFACTS_PROTOCOL_LAN)) {
 		u8 *a = (u8*)&ioc->lan_cnfg_page1.HardwareAddressLow;
-		seq_printf(m, ", LanAddr=%pMR", a);
+		seq_printf(m, ", LanAddr=%02X:%02X:%02X:%02X:%02X:%02X",
+			a[5], a[4], a[3], a[2], a[1], a[0]);
 	}
 
 	seq_printf(m, ", IRQ=%d", ioc->pci_irq);
@@ -7396,7 +7402,7 @@ mpt_display_event_info(MPT_ADAPTER *ioc, EventNotificationReply_t *pEventReply)
 			break;
 		case MPI_EVENT_SAS_DEV_STAT_RC_NO_PERSIST_ADDED:
 			snprintf(evStr, EVENT_DESCR_STR_SZ,
-			    "SAS Device Status Change: No Persistency: "
+			    "SAS Device Status Change: No Persistancy: "
 			    "id=%d channel=%d", id, channel);
 			break;
 		case MPI_EVENT_SAS_DEV_STAT_RC_UNSUPPORTED:

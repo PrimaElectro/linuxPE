@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * devtmpfs - kernel-maintained tmpfs-based /dev
  *
@@ -310,8 +309,7 @@ static int handle_remove(const char *nodename, struct device *dev)
 	if (d_really_is_positive(dentry)) {
 		struct kstat stat;
 		struct path p = {.mnt = parent.mnt, .dentry = dentry};
-		err = vfs_getattr(&p, &stat, STATX_TYPE | STATX_MODE,
-				  AT_STATX_SYNC_AS_STAT);
+		err = vfs_getattr(&p, &stat);
 		if (!err && dev_mynode(dev, d_inode(dentry), &stat)) {
 			struct iattr newattrs;
 			/*

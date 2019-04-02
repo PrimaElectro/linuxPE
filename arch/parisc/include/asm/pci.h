@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_PARISC_PCI_H
 #define __ASM_PARISC_PCI_H
 
@@ -201,6 +200,8 @@ static inline int pci_get_legacy_ide_irq(struct pci_dev *dev, int channel)
 }
 
 #define HAVE_PCI_MMAP
-#define ARCH_GENERIC_PCI_MMAP_RESOURCE
+
+extern int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
+	enum pci_mmap_state mmap_state, int write_combine);
 
 #endif /* __ASM_PARISC_PCI_H */

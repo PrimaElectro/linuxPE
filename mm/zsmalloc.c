@@ -24,7 +24,8 @@
  *
  * Usage of struct page flags:
  *	PG_private: identifies the first component page
- *	PG_owner_priv_1: identifies the huge component page
+ *	PG_private2: identifies the last component page
+ *	PG_owner_priv_1: indentifies the huge component page
  *
  */
 
@@ -33,7 +34,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/magic.h>
 #include <linux/bitops.h>
 #include <linux/errno.h>
 #include <linux/highmem.h>
@@ -53,6 +53,7 @@
 #include <linux/mount.h>
 #include <linux/migrate.h>
 #include <linux/pagemap.h>
+#include <linux/locallock.h>
 
 #define ZSPAGE_MAGIC	0x58
 
@@ -70,8 +71,21 @@
  */
 #define ZS_MAX_ZSPAGE_ORDER 2
 #define ZS_MAX_PAGES_PER_ZSPAGE (_AC(1, UL) << ZS_MAX_ZSPAGE_ORDER)
-
 #define ZS_HANDLE_SIZE (sizeof(unsigned long))
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+
+struct zsmalloc_handle {
+	unsigned long addr;
+	struct mutex lock;
+};
+
+#define ZS_HANDLE_ALLOC_SIZE (sizeof(struct zsmalloc_handle))
+
+#else
+
+#define ZS_HANDLE_ALLOC_SIZE (sizeof(unsigned long))
+#endif
 
 /*
  * Object location (<PFN>, <obj_idx>) is encoded as
@@ -116,11 +130,6 @@
 #define OBJ_INDEX_BITS	(BITS_PER_LONG - _PFN_BITS - OBJ_TAG_BITS)
 #define OBJ_INDEX_MASK	((_AC(1, UL) << OBJ_INDEX_BITS) - 1)
 
-#define FULLNESS_BITS	2
-#define CLASS_BITS	8
-#define ISOLATED_BITS	3
-#define MAGIC_VAL_BITS	8
-
 #define MAX(a, b) ((a) >= (b) ? (a) : (b))
 /* ZS_MIN_ALLOC_SIZE must be multiple of ZS_ALIGN */
 #define ZS_MIN_ALLOC_SIZE \
@@ -142,8 +151,6 @@
  *  (reason above)
  */
 #define ZS_SIZE_CLASS_DELTA	(PAGE_SIZE >> CLASS_BITS)
-#define ZS_SIZE_CLASSES	(DIV_ROUND_UP(ZS_MAX_ALLOC_SIZE - ZS_MIN_ALLOC_SIZE, \
-				      ZS_SIZE_CLASS_DELTA) + 1)
 
 enum fullness_group {
 	ZS_EMPTY,
@@ -174,6 +181,11 @@ static struct dentry *zs_stat_root;
 #ifdef CONFIG_COMPACTION
 static struct vfsmount *zsmalloc_mnt;
 #endif
+
+/*
+ * number of size_classes
+ */
+static int zs_size_classes;
 
 /*
  * We assign a page to ZS_ALMOST_EMPTY fullness group when:
@@ -246,7 +258,7 @@ struct link_free {
 struct zs_pool {
 	const char *name;
 
-	struct size_class *size_class[ZS_SIZE_CLASSES];
+	struct size_class **size_class;
 	struct kmem_cache *handle_cachep;
 	struct kmem_cache *zspage_cachep;
 
@@ -269,6 +281,15 @@ struct zs_pool {
 	struct work_struct free_work;
 #endif
 };
+
+/*
+ * A zspage's class index and fullness group
+ * are encoded in its (first)page->mapping
+ */
+#define FULLNESS_BITS	2
+#define CLASS_BITS	8
+#define ISOLATED_BITS	3
+#define MAGIC_VAL_BITS	8
 
 struct zspage {
 	struct {
@@ -320,7 +341,7 @@ static void SetZsPageMovable(struct zs_pool *pool, struct zspage *zspage) {}
 
 static int create_cache(struct zs_pool *pool)
 {
-	pool->handle_cachep = kmem_cache_create("zs_handle", ZS_HANDLE_SIZE,
+	pool->handle_cachep = kmem_cache_create("zs_handle", ZS_HANDLE_ALLOC_SIZE,
 					0, 0, NULL);
 	if (!pool->handle_cachep)
 		return 1;
@@ -344,9 +365,26 @@ static void destroy_cache(struct zs_pool *pool)
 
 static unsigned long cache_alloc_handle(struct zs_pool *pool, gfp_t gfp)
 {
-	return (unsigned long)kmem_cache_alloc(pool->handle_cachep,
-			gfp & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
+	void *p;
+
+	p = kmem_cache_alloc(pool->handle_cachep,
+			     gfp & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
+#ifdef CONFIG_PREEMPT_RT_FULL
+	if (p) {
+		struct zsmalloc_handle *zh = p;
+
+		mutex_init(&zh->lock);
+	}
+#endif
+	return (unsigned long)p;
 }
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+static struct zsmalloc_handle *zs_get_pure_handle(unsigned long handle)
+{
+	return (void *)(handle &~((1 << OBJ_TAG_BITS) - 1));
+}
+#endif
 
 static void cache_free_handle(struct zs_pool *pool, unsigned long handle)
 {
@@ -357,7 +395,7 @@ static struct zspage *cache_alloc_zspage(struct zs_pool *pool, gfp_t flags)
 {
 	return kmem_cache_alloc(pool->zspage_cachep,
 			flags & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
-}
+};
 
 static void cache_free_zspage(struct zs_pool *pool, struct zspage *zspage)
 {
@@ -366,12 +404,18 @@ static void cache_free_zspage(struct zs_pool *pool, struct zspage *zspage)
 
 static void record_obj(unsigned long handle, unsigned long obj)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	WRITE_ONCE(zh->addr, obj);
+#else
 	/*
 	 * lsb of @obj represents handle lock while other bits
 	 * represent object value the handle is pointing so
 	 * updating shouldn't do store tearing.
 	 */
 	WRITE_ONCE(*(unsigned long *)handle, obj);
+#endif
 }
 
 /* zpool driver */
@@ -460,13 +504,14 @@ MODULE_ALIAS("zpool-zsmalloc");
 
 /* per-cpu VM mapping areas for zspage accesses that cross page boundaries */
 static DEFINE_PER_CPU(struct mapping_area, zs_map_area);
+static DEFINE_LOCAL_IRQ_LOCK(zs_map_area_lock);
 
 static bool is_zspage_isolated(struct zspage *zspage)
 {
 	return zspage->isolated;
 }
 
-static __maybe_unused int is_first_page(struct page *page)
+static int is_first_page(struct page *page)
 {
 	return PagePrivate(page);
 }
@@ -548,26 +593,23 @@ static int get_size_class_index(int size)
 		idx = DIV_ROUND_UP(size - ZS_MIN_ALLOC_SIZE,
 				ZS_SIZE_CLASS_DELTA);
 
-	return min_t(int, ZS_SIZE_CLASSES - 1, idx);
+	return min(zs_size_classes - 1, idx);
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline void zs_stat_inc(struct size_class *class,
-				int type, unsigned long cnt)
+				enum zs_stat_type type, unsigned long cnt)
 {
 	class->stats.objs[type] += cnt;
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline void zs_stat_dec(struct size_class *class,
-				int type, unsigned long cnt)
+				enum zs_stat_type type, unsigned long cnt)
 {
 	class->stats.objs[type] -= cnt;
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline unsigned long zs_stat_get(struct size_class *class,
-				int type)
+				enum zs_stat_type type)
 {
 	return class->stats.objs[type];
 }
@@ -610,7 +652,7 @@ static int zs_stats_size_show(struct seq_file *s, void *v)
 			"obj_allocated", "obj_used", "pages_used",
 			"pages_per_zspage", "freeable");
 
-	for (i = 0; i < ZS_SIZE_CLASSES; i++) {
+	for (i = 0; i < zs_size_classes; i++) {
 		class = pool->size_class[i];
 
 		if (class->index != i)
@@ -898,7 +940,13 @@ static unsigned long location_to_obj(struct page *page, unsigned int obj_idx)
 
 static unsigned long handle_to_obj(unsigned long handle)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	return zh->addr;
+#else
 	return *(unsigned long *)handle;
+#endif
 }
 
 static unsigned long obj_to_head(struct page *page, void *obj)
@@ -912,28 +960,53 @@ static unsigned long obj_to_head(struct page *page, void *obj)
 
 static inline int testpin_tag(unsigned long handle)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	return mutex_is_locked(&zh->lock);
+#else
 	return bit_spin_is_locked(HANDLE_PIN_BIT, (unsigned long *)handle);
+#endif
 }
 
 static inline int trypin_tag(unsigned long handle)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	return mutex_trylock(&zh->lock);
+#else
 	return bit_spin_trylock(HANDLE_PIN_BIT, (unsigned long *)handle);
+#endif
 }
 
 static void pin_tag(unsigned long handle)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	return mutex_lock(&zh->lock);
+#else
 	bit_spin_lock(HANDLE_PIN_BIT, (unsigned long *)handle);
+#endif
 }
 
 static void unpin_tag(unsigned long handle)
 {
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct zsmalloc_handle *zh = zs_get_pure_handle(handle);
+
+	return mutex_unlock(&zh->lock);
+#else
 	bit_spin_unlock(HANDLE_PIN_BIT, (unsigned long *)handle);
+#endif
 }
 
 static void reset_page(struct page *page)
 {
 	__ClearPageMovable(page);
 	ClearPagePrivate(page);
+	ClearPagePrivate2(page);
 	set_page_private(page, 0);
 	page_mapcount_reset(page);
 	ClearPageHugeObject(page);
@@ -1080,7 +1153,7 @@ static void create_page_chain(struct size_class *class, struct zspage *zspage,
 	 * 2. each sub-page point to zspage using page->private
 	 *
 	 * we set PG_private to identify the first page (i.e. no other sub-page
-	 * has this flag set).
+	 * has this flag set) and PG_private_2 to identify the last page.
 	 */
 	for (i = 0; i < nr_pages; i++) {
 		page = pages[i];
@@ -1095,6 +1168,8 @@ static void create_page_chain(struct size_class *class, struct zspage *zspage,
 		} else {
 			prev_page->freelist = page;
 		}
+		if (i == nr_pages - 1)
+			SetPagePrivate2(page);
 		prev_page = page;
 	}
 }
@@ -1277,21 +1352,72 @@ out:
 
 #endif /* CONFIG_PGTABLE_MAPPING */
 
-static int zs_cpu_prepare(unsigned int cpu)
+static int zs_cpu_notifier(struct notifier_block *nb, unsigned long action,
+				void *pcpu)
 {
+	int ret, cpu = (long)pcpu;
 	struct mapping_area *area;
 
-	area = &per_cpu(zs_map_area, cpu);
-	return __zs_cpu_up(area);
+	switch (action) {
+	case CPU_UP_PREPARE:
+		area = &per_cpu(zs_map_area, cpu);
+		ret = __zs_cpu_up(area);
+		if (ret)
+			return notifier_from_errno(ret);
+		break;
+	case CPU_DEAD:
+	case CPU_UP_CANCELED:
+		area = &per_cpu(zs_map_area, cpu);
+		__zs_cpu_down(area);
+		break;
+	}
+
+	return NOTIFY_OK;
 }
 
-static int zs_cpu_dead(unsigned int cpu)
-{
-	struct mapping_area *area;
+static struct notifier_block zs_cpu_nb = {
+	.notifier_call = zs_cpu_notifier
+};
 
-	area = &per_cpu(zs_map_area, cpu);
-	__zs_cpu_down(area);
-	return 0;
+static int zs_register_cpu_notifier(void)
+{
+	int cpu, uninitialized_var(ret);
+
+	cpu_notifier_register_begin();
+
+	__register_cpu_notifier(&zs_cpu_nb);
+	for_each_online_cpu(cpu) {
+		ret = zs_cpu_notifier(NULL, CPU_UP_PREPARE, (void *)(long)cpu);
+		if (notifier_to_errno(ret))
+			break;
+	}
+
+	cpu_notifier_register_done();
+	return notifier_to_errno(ret);
+}
+
+static void zs_unregister_cpu_notifier(void)
+{
+	int cpu;
+
+	cpu_notifier_register_begin();
+
+	for_each_online_cpu(cpu)
+		zs_cpu_notifier(NULL, CPU_DEAD, (void *)(long)cpu);
+	__unregister_cpu_notifier(&zs_cpu_nb);
+
+	cpu_notifier_register_done();
+}
+
+static void __init init_zs_size_classes(void)
+{
+	int nr;
+
+	nr = (ZS_MAX_ALLOC_SIZE - ZS_MIN_ALLOC_SIZE) / ZS_SIZE_CLASS_DELTA + 1;
+	if ((ZS_MAX_ALLOC_SIZE - ZS_MIN_ALLOC_SIZE) % ZS_SIZE_CLASS_DELTA)
+		nr += 1;
+
+	zs_size_classes = nr;
 }
 
 static bool can_merge(struct size_class *prev, int pages_per_zspage,
@@ -1365,7 +1491,7 @@ void *zs_map_object(struct zs_pool *pool, unsigned long handle,
 	class = pool->size_class[class_idx];
 	off = (class->size * obj_idx) & ~PAGE_MASK;
 
-	area = &get_cpu_var(zs_map_area);
+	area = &get_locked_var(zs_map_area_lock, zs_map_area);
 	area->vm_mm = mm;
 	if (off + class->size <= PAGE_SIZE) {
 		/* this object is contained entirely within a page */
@@ -1419,7 +1545,7 @@ void zs_unmap_object(struct zs_pool *pool, unsigned long handle)
 
 		__zs_unmap_object(area, pages, off, class->size);
 	}
-	put_cpu_var(zs_map_area);
+	put_locked_var(zs_map_area_lock, zs_map_area);
 
 	migrate_read_unlock(zspage);
 	unpin_tag(handle);
@@ -1972,14 +2098,6 @@ int zs_page_migrate(struct address_space *mapping, struct page *newpage,
 	unsigned int obj_idx;
 	int ret = -EAGAIN;
 
-	/*
-	 * We cannot support the _NO_COPY case here, because copy needs to
-	 * happen under the zs lock, which does not work with
-	 * MIGRATE_SYNC_NO_COPY workflow.
-	 */
-	if (mode == MIGRATE_SYNC_NO_COPY)
-		return -EINVAL;
-
 	VM_BUG_ON_PAGE(!PageMovable(page), page);
 	VM_BUG_ON_PAGE(!PageIsolated(page), page);
 
@@ -1994,11 +2112,8 @@ int zs_page_migrate(struct address_space *mapping, struct page *newpage,
 
 	spin_lock(&class->lock);
 	if (!get_zspage_inuse(zspage)) {
-		/*
-		 * Set "offset" to end of the page so that every loops
-		 * skips unnecessary object scanning.
-		 */
-		offset = PAGE_SIZE;
+		ret = -EBUSY;
+		goto unlock_class;
 	}
 
 	pos = offset;
@@ -2066,6 +2181,7 @@ unpin_objects:
 		}
 	}
 	kunmap_atomic(s_addr);
+unlock_class:
 	spin_unlock(&class->lock);
 	migrate_write_unlock(zspage);
 
@@ -2144,7 +2260,7 @@ static void async_free_zspage(struct work_struct *work)
 	struct zs_pool *pool = container_of(work, struct zs_pool,
 					free_work);
 
-	for (i = 0; i < ZS_SIZE_CLASSES; i++) {
+	for (i = 0; i < zs_size_classes; i++) {
 		class = pool->size_class[i];
 		if (class->index != i)
 			continue;
@@ -2262,7 +2378,7 @@ unsigned long zs_compact(struct zs_pool *pool)
 	int i;
 	struct size_class *class;
 
-	for (i = ZS_SIZE_CLASSES - 1; i >= 0; i--) {
+	for (i = zs_size_classes - 1; i >= 0; i--) {
 		class = pool->size_class[i];
 		if (!class)
 			continue;
@@ -2308,7 +2424,7 @@ static unsigned long zs_shrinker_count(struct shrinker *shrinker,
 	struct zs_pool *pool = container_of(shrinker, struct zs_pool,
 			shrinker);
 
-	for (i = ZS_SIZE_CLASSES - 1; i >= 0; i--) {
+	for (i = zs_size_classes - 1; i >= 0; i--) {
 		class = pool->size_class[i];
 		if (!class)
 			continue;
@@ -2360,6 +2476,12 @@ struct zs_pool *zs_create_pool(const char *name)
 		return NULL;
 
 	init_deferred_free(pool);
+	pool->size_class = kcalloc(zs_size_classes, sizeof(struct size_class *),
+			GFP_KERNEL);
+	if (!pool->size_class) {
+		kfree(pool);
+		return NULL;
+	}
 
 	pool->name = kstrdup(name, GFP_KERNEL);
 	if (!pool->name)
@@ -2369,10 +2491,10 @@ struct zs_pool *zs_create_pool(const char *name)
 		goto err;
 
 	/*
-	 * Iterate reversely, because, size of size_class that we want to use
+	 * Iterate reversly, because, size of size_class that we want to use
 	 * for merging should be larger or equal to current size.
 	 */
-	for (i = ZS_SIZE_CLASSES - 1; i >= 0; i--) {
+	for (i = zs_size_classes - 1; i >= 0; i--) {
 		int size;
 		int pages_per_zspage;
 		int objs_per_zspage;
@@ -2446,7 +2568,7 @@ void zs_destroy_pool(struct zs_pool *pool)
 	zs_unregister_migration(pool);
 	zs_pool_stat_destroy(pool);
 
-	for (i = 0; i < ZS_SIZE_CLASSES; i++) {
+	for (i = 0; i < zs_size_classes; i++) {
 		int fg;
 		struct size_class *class = pool->size_class[i];
 
@@ -2466,6 +2588,7 @@ void zs_destroy_pool(struct zs_pool *pool)
 	}
 
 	destroy_cache(pool);
+	kfree(pool->size_class);
 	kfree(pool->name);
 	kfree(pool);
 }
@@ -2479,10 +2602,12 @@ static int __init zs_init(void)
 	if (ret)
 		goto out;
 
-	ret = cpuhp_setup_state(CPUHP_MM_ZS_PREPARE, "mm/zsmalloc:prepare",
-				zs_cpu_prepare, zs_cpu_dead);
+	ret = zs_register_cpu_notifier();
+
 	if (ret)
-		goto hp_setup_fail;
+		goto notifier_fail;
+
+	init_zs_size_classes();
 
 #ifdef CONFIG_ZPOOL
 	zpool_register_driver(&zs_zpool_driver);
@@ -2492,7 +2617,8 @@ static int __init zs_init(void)
 
 	return 0;
 
-hp_setup_fail:
+notifier_fail:
+	zs_unregister_cpu_notifier();
 	zsmalloc_unmount();
 out:
 	return ret;
@@ -2504,7 +2630,7 @@ static void __exit zs_exit(void)
 	zpool_unregister_driver(&zs_zpool_driver);
 #endif
 	zsmalloc_unmount();
-	cpuhp_remove_state(CPUHP_MM_ZS_PREPARE);
+	zs_unregister_cpu_notifier();
 
 	zs_stat_exit();
 }

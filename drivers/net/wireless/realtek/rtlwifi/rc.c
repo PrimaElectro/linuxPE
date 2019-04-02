@@ -267,7 +267,8 @@ static void *rtl_rate_alloc_sta(void *ppriv,
 
 	rate_priv = kzalloc(sizeof(struct rtl_rate_priv), gfp);
 	if (!rate_priv) {
-		pr_err("Unable to allocate private rc structure\n");
+		RT_TRACE(rtlpriv, COMP_ERR, DBG_EMERG,
+			 "Unable to allocate private rc structure\n");
 		return NULL;
 	}
 
@@ -283,7 +284,7 @@ static void rtl_rate_free_sta(void *rtlpriv,
 	kfree(rate_priv);
 }
 
-static const struct rate_control_ops rtl_rate_ops = {
+static struct rate_control_ops rtl_rate_ops = {
 	.name = "rtl_rc",
 	.alloc = rtl_rate_alloc,
 	.free = rtl_rate_free,

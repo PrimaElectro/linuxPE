@@ -1,7 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef HOST_INT_H
 #define HOST_INT_H
-#include <linux/ieee80211.h>
+
 #include "coreconfigurator.h"
 
 #define IP_ALEN  4
@@ -48,11 +47,10 @@
 #define ETH_ALEN				6
 #define PMKID_LEN				16
 #define WILC_MAX_NUM_PMKIDS			16
+#define WILC_SUPP_MCS_SET_SIZE			16
 #define WILC_ADD_STA_LENGTH			40
 #define SCAN_EVENT_DONE_ABORTED
 #define NUM_CONCURRENT_IFC			2
-#define DRV_HANDLER_SIZE			5
-#define DRV_HANDLER_MASK			0x000000FF
 
 struct rf_info {
 	u8 link_speed;
@@ -219,8 +217,7 @@ struct user_conn_req {
 
 struct drv_handler {
 	u32 handler;
-	u8 mode;
-	u8 name;
+	u8 mac_idx;
 };
 
 struct op_mode {
@@ -284,7 +281,6 @@ struct host_if_drv {
 	struct timer_list remain_on_ch_timer;
 
 	bool IFC_UP;
-	int driver_handler_id;
 };
 
 struct add_sta_param {
@@ -293,7 +289,12 @@ struct add_sta_param {
 	u8 rates_len;
 	const u8 *rates;
 	bool ht_supported;
-	struct ieee80211_ht_cap ht_capa;
+	u16 ht_capa_info;
+	u8 ht_ampdu_params;
+	u8 ht_supp_mcs_set[16];
+	u16 ht_ext_params;
+	u32 ht_tx_bf_cap;
+	u8 ht_ante_sel;
 	u16 flags_mask;
 	u16 flags_set;
 };
@@ -353,8 +354,7 @@ int wilc_remain_on_channel(struct wilc_vif *vif, u32 session_id,
 			   void *user_arg);
 int wilc_listen_state_expired(struct wilc_vif *vif, u32 session_id);
 int wilc_frame_register(struct wilc_vif *vif, u16 frame_type, bool reg);
-int wilc_set_wfi_drv_handler(struct wilc_vif *vif, int index, u8 mode,
-			     u8 ifc_id);
+int wilc_set_wfi_drv_handler(struct wilc_vif *vif, int index, u8 mac_idx);
 int wilc_set_operation_mode(struct wilc_vif *vif, u32 mode);
 int wilc_get_statistics(struct wilc_vif *vif, struct rf_info *stats);
 void wilc_resolve_disconnect_aberration(struct wilc_vif *vif);
@@ -367,6 +367,7 @@ extern u8 wilc_connected_ssid[6];
 extern u8 wilc_multicast_mac_addr_list[WILC_MULTICAST_TABLE_SIZE][ETH_ALEN];
 
 extern int wilc_connecting;
+extern u8 wilc_initialized;
 extern struct timer_list wilc_during_ip_timer;
 
 #endif

@@ -23,6 +23,7 @@
 #include <linux/pwm_backlight.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
+#include <video/displayconfig.h>
 
 struct pwm_bl_data {
 	struct pwm_device	*pwm;
@@ -42,6 +43,71 @@ struct pwm_bl_data {
 	int			(*check_fb)(struct device *, struct fb_info *);
 	void			(*exit)(struct device *);
 };
+/*----------------------------------------------------------------------------------------------------------------*
+Exported function which allows to get the actual backlight enable status from kernel.
+It is needed for example by the working hours driver to correctly compute the effective backlight on time.
+*----------------------------------------------------------------------------------------------------------------*/
+bool pwm_backlight_is_enabled(struct backlight_device* bl)
+{
+    struct pwm_bl_data *pb = bl_get_data(bl);
+    return pb->enabled;
+}
+EXPORT_SYMBOL(pwm_backlight_is_enabled);
+
+/*----------------------------------------------------------------------------------------------------------------*
+Helper functions to retrieve the display id value, when passed from the cmdline, and use it to set the
+backlight parameters (the contents of the DTB file are overridden, if a valid dispaly id is passed from
+cmdline.)
+*----------------------------------------------------------------------------------------------------------------*/
+extern int hw_dispid; //Exported variable which holds the display id value, when passed from the cmdline
+
+/*
+* Writes the pwm_bl_data structure according with the contents of the displayconfig.h file and the passed dispid parameter.
+* Returns 0 if success, -1 if failure (ie: no match found)
+*/
+int dispid_get_backlight(struct pwm_bl_data* pb, int dispid, int maxlevels)
+{
+    int i=0;
+    int j;
+    int step = 0;
+
+    // Scan the display array to search for the required dispid
+    if(dispid == NODISPLAY)
+        return -1;
+
+    while((displayconfig[i].dispid != NODISPLAY) && (displayconfig[i].dispid != dispid))
+        i++;
+
+    if(displayconfig[i].dispid == NODISPLAY)
+        return -1;
+
+    // If we are here, we have a valid array index pointing to the desired display
+    // Configure the backlight controller, based on a 0-100% dutycycle range.
+    pb->lth_brightness = 0;
+    pb->scale = 100;
+
+    if(displayconfig[i].pwmfreq == 0)
+	displayconfig[i].pwmfreq = 1000;
+
+    pb->period = 1000000000l / displayconfig[i].pwmfreq;
+
+    //Now override the levels based on linear interpolation between brightness_min and brightness_max
+    if(displayconfig[i].brightness_max > 100)
+        displayconfig[i].brightness_max = 100;
+
+    if(displayconfig[i].brightness_min > displayconfig[i].brightness_max)
+	displayconfig[i].brightness_min = displayconfig[i].brightness_max;
+
+    if(maxlevels > 1)
+        step = 100 * (displayconfig[i].brightness_max - displayconfig[i].brightness_min) / (maxlevels-1);
+    for(j=1; j<maxlevels; j++)
+        pb->levels[j] = displayconfig[i].brightness_min + (step *(j-1))/100;
+
+    pb->levels[1] = displayconfig[i].brightness_min;
+    pb->levels[maxlevels] = displayconfig[i].brightness_max;
+
+    return 0;
+}
 
 static void pwm_backlight_power_on(struct pwm_bl_data *pb, int brightness)
 {
@@ -181,7 +247,7 @@ static int pwm_backlight_parse_dt(struct device *dev,
 	return 0;
 }
 
-static const struct of_device_id pwm_backlight_of_match[] = {
+static struct of_device_id pwm_backlight_of_match[] = {
 	{ .compatible = "pwm-backlight" },
 	{ }
 };
@@ -195,36 +261,6 @@ static int pwm_backlight_parse_dt(struct device *dev,
 }
 #endif
 
-static int pwm_backlight_initial_power_state(const struct pwm_bl_data *pb)
-{
-	struct device_node *node = pb->dev->of_node;
-
-	/* Not booted with device tree or no phandle link to the node */
-	if (!node || !node->phandle)
-		return FB_BLANK_UNBLANK;
-
-	/*
-	 * If the driver is probed from the device tree and there is a
-	 * phandle link pointing to the backlight node, it is safe to
-	 * assume that another driver will enable the backlight at the
-	 * appropriate time. Therefore, if it is disabled, keep it so.
-	 */
-
-	/* if the enable GPIO is disabled, do not enable the backlight */
-	if (pb->enable_gpio && gpiod_get_value(pb->enable_gpio) == 0)
-		return FB_BLANK_POWERDOWN;
-
-	/* The regulator is disabled, do not enable the backlight */
-	if (!regulator_is_enabled(pb->power_supply))
-		return FB_BLANK_POWERDOWN;
-
-	/* The PWM is disabled, keep it like this */
-	if (!pwm_is_enabled(pb->pwm))
-		return FB_BLANK_POWERDOWN;
-
-	return FB_BLANK_UNBLANK;
-}
-
 static int pwm_backlight_probe(struct platform_device *pdev)
 {
 	struct platform_pwm_backlight_data *data = dev_get_platdata(&pdev->dev);
@@ -233,6 +269,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	struct backlight_device *bl;
 	struct device_node *node = pdev->dev.of_node;
 	struct pwm_bl_data *pb;
+	int initial_blank = FB_BLANK_UNBLANK;
 	struct pwm_args pargs;
 	int ret;
 
@@ -299,23 +336,29 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		pb->enable_gpio = gpio_to_desc(data->enable_gpio);
 	}
 
-	/*
-	 * If the GPIO is not known to be already configured as output, that
-	 * is, if gpiod_get_direction returns either 1 or -EINVAL, change the
-	 * direction to output and set the GPIO as active.
-	 * Do not force the GPIO to active when it was already output as it
-	 * could cause backlight flickering or we would enable the backlight too
-	 * early. Leave the decision of the initial backlight state for later.
-	 */
-	if (pb->enable_gpio &&
-	    gpiod_get_direction(pb->enable_gpio) != 0)
-		gpiod_direction_output(pb->enable_gpio, 1);
+	if (pb->enable_gpio) {
+		/*
+		 * If the driver is probed from the device tree and there is a
+		 * phandle link pointing to the backlight node, it is safe to
+		 * assume that another driver will enable the backlight at the
+		 * appropriate time. Therefore, if it is disabled, keep it so.
+		 */
+		if (node && node->phandle &&
+		    gpiod_get_direction(pb->enable_gpio) == GPIOF_DIR_OUT &&
+		    gpiod_get_value(pb->enable_gpio) == 0)
+			initial_blank = FB_BLANK_POWERDOWN;
+		else
+			gpiod_direction_output(pb->enable_gpio, 1);
+	}
 
 	pb->power_supply = devm_regulator_get(&pdev->dev, "power");
 	if (IS_ERR(pb->power_supply)) {
 		ret = PTR_ERR(pb->power_supply);
 		goto err_alloc;
 	}
+
+	if (node && node->phandle && !regulator_is_enabled(pb->power_supply))
+		initial_blank = FB_BLANK_POWERDOWN;
 
 	pb->pwm = devm_pwm_get(&pdev->dev, NULL);
 	if (IS_ERR(pb->pwm) && PTR_ERR(pb->pwm) != -EPROBE_DEFER && !node) {
@@ -352,6 +395,8 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 
 	pb->lth_brightness = data->lth_brightness * (pb->period / pb->scale);
 
+	dispid_get_backlight(pb, hw_dispid, data->max_brightness);
+
 	memset(&props, 0, sizeof(struct backlight_properties));
 	props.type = BACKLIGHT_RAW;
 	props.max_brightness = data->max_brightness;
@@ -373,7 +418,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	}
 
 	bl->props.brightness = data->dft_brightness;
-	bl->props.power = pwm_backlight_initial_power_state(pb);
+	bl->props.power = initial_blank;
 	backlight_update_status(bl);
 
 	platform_set_drvdata(pdev, bl);

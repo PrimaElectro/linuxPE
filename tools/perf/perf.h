@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _PERF_PERF_H
 #define _PERF_PERF_H
 
@@ -8,7 +7,6 @@
 #include <linux/perf_event.h>
 
 extern bool test_attr__enabled;
-void test_attr__ready(void);
 void test_attr__init(void);
 void test_attr__open(struct perf_event_attr *attr, pid_t pid, int cpu,
 		     int fd, int group_fd, unsigned long flags);
@@ -24,9 +22,7 @@ static inline unsigned long long rdclock(void)
 	return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 
-#ifndef MAX_NR_CPUS
 #define MAX_NR_CPUS			1024
-#endif
 
 extern const char *input_name;
 extern bool perf_host, perf_guest;
@@ -46,23 +42,19 @@ struct record_opts {
 	bool	     no_samples;
 	bool	     raw_samples;
 	bool	     sample_address;
-	bool	     sample_phys_addr;
 	bool	     sample_weight;
 	bool	     sample_time;
 	bool	     sample_time_set;
 	bool	     sample_cpu;
 	bool	     period;
-	bool	     period_set;
 	bool	     running_time;
 	bool	     full_auxtrace;
 	bool	     auxtrace_snapshot_mode;
-	bool	     record_namespaces;
 	bool	     record_switch_events;
 	bool	     all_kernel;
 	bool	     all_user;
 	bool	     tail_synthesize;
 	bool	     overwrite;
-	bool	     ignore_missing_thread;
 	unsigned int freq;
 	unsigned int mmap_pages;
 	unsigned int auxtrace_mmap_pages;

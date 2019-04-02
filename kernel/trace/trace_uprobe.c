@@ -17,14 +17,12 @@
  * Copyright (C) IBM Corporation, 2010-2012
  * Author:	Srikar Dronamraju <srikar@linux.vnet.ibm.com>
  */
-#define pr_fmt(fmt)	"trace_uprobe: " fmt
 
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/uprobes.h>
 #include <linux/namei.h>
 #include <linux/string.h>
-#include <linux/rculist.h>
 
 #include "trace_probe.h"
 
@@ -55,7 +53,6 @@ struct trace_uprobe {
 	struct list_head		list;
 	struct trace_uprobe_filter	filter;
 	struct uprobe_consumer		consumer;
-	struct path			path;
 	struct inode			*inode;
 	char				*filename;
 	unsigned long			offset;
@@ -152,15 +149,6 @@ static void FETCH_FUNC_NAME(memory, string)(struct pt_regs *regs,
 		return;
 
 	ret = strncpy_from_user(dst, src, maxlen);
-	if (ret == maxlen)
-		dst[ret - 1] = '\0';
-	else if (ret >= 0)
-		/*
-		 * Include the terminating null byte. In this case it
-		 * was copied by strncpy_from_user but not accounted
-		 * for in ret.
-		 */
-		ret++;
 
 	if (ret < 0) {	/* Failed to fetch string */
 		((u8 *)get_rloc_data(dest))[0] = '\0';
@@ -297,7 +285,7 @@ static void free_trace_uprobe(struct trace_uprobe *tu)
 	for (i = 0; i < tu->tp.nr_args; i++)
 		traceprobe_free_probe_arg(&tu->tp.args[i]);
 
-	path_put(&tu->path);
+	iput(tu->inode);
 	kfree(tu->tp.call.class->system);
 	kfree(tu->tp.call.name);
 	kfree(tu->filename);
@@ -371,6 +359,7 @@ end:
 static int create_trace_uprobe(int argc, char **argv)
 {
 	struct trace_uprobe *tu;
+	struct inode *inode;
 	char *arg, *event, *group, *filename;
 	char buf[MAX_EVENT_NAME_LEN];
 	struct path path;
@@ -378,6 +367,7 @@ static int create_trace_uprobe(int argc, char **argv)
 	bool is_delete, is_return;
 	int i, ret;
 
+	inode = NULL;
 	ret = 0;
 	is_delete = false;
 	is_return = false;
@@ -441,18 +431,22 @@ static int create_trace_uprobe(int argc, char **argv)
 		pr_info("Probe point is not specified.\n");
 		return -EINVAL;
 	}
-	/* Find the last occurrence, in case the path contains ':' too. */
-	arg = strrchr(argv[1], ':');
-	if (!arg)
-		return -EINVAL;
+	arg = strchr(argv[1], ':');
+	if (!arg) {
+		ret = -EINVAL;
+		goto fail_address_parse;
+	}
 
 	*arg++ = '\0';
 	filename = argv[1];
 	ret = kern_path(filename, LOOKUP_FOLLOW, &path);
 	if (ret)
-		return ret;
+		goto fail_address_parse;
 
-	if (!d_is_reg(path.dentry)) {
+	inode = igrab(d_inode(path.dentry));
+	path_put(&path);
+
+	if (!inode || !S_ISREG(inode->i_mode)) {
 		ret = -EINVAL;
 		goto fail_address_parse;
 	}
@@ -491,7 +485,7 @@ static int create_trace_uprobe(int argc, char **argv)
 		goto fail_address_parse;
 	}
 	tu->offset = offset;
-	tu->path = path;
+	tu->inode = inode;
 	tu->filename = kstrdup(filename, GFP_KERNEL);
 
 	if (!tu->filename) {
@@ -559,7 +553,7 @@ error:
 	return ret;
 
 fail_address_parse:
-	path_put(&path);
+	iput(inode);
 
 	pr_info("Failed to parse address or file.\n");
 
@@ -938,7 +932,6 @@ probe_event_enable(struct trace_uprobe *tu, struct trace_event_file *file,
 		goto err_flags;
 
 	tu->consumer.filter = filter;
-	tu->inode = d_real_inode(tu->path.dentry);
 	ret = uprobe_register(tu->inode, tu->offset, &tu->consumer);
 	if (ret)
 		goto err_buffer;
@@ -974,7 +967,7 @@ probe_event_disable(struct trace_uprobe *tu, struct trace_event_file *file)
 
 		list_del_rcu(&link->list);
 		/* synchronize with u{,ret}probe_trace_func */
-		synchronize_rcu();
+		synchronize_sched();
 		kfree(link);
 
 		if (!list_empty(&tu->tp.files))
@@ -984,7 +977,6 @@ probe_event_disable(struct trace_uprobe *tu, struct trace_event_file *file)
 	WARN_ON(!uprobe_filter_is_empty(&tu->filter));
 
 	uprobe_unregister(tu->inode, tu->offset, &tu->consumer);
-	tu->inode = NULL;
 	tu->tp.flags &= file ? ~TP_FLAG_TRACE : ~TP_FLAG_PROFILE;
 
 	uprobe_buffer_disable();
@@ -1161,7 +1153,7 @@ static void __uprobe_perf_func(struct trace_uprobe *tu,
 	}
 
 	perf_trace_buf_submit(entry, size, rctx, call->event.type, 1, regs,
-			      head, NULL, NULL);
+			      head, NULL);
  out:
 	preempt_enable();
 }

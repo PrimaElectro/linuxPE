@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ADDRCONF_H
 #define _ADDRCONF_H
 
@@ -49,14 +48,10 @@ struct prefix_info {
 	struct in6_addr		prefix;
 };
 
+
 #include <linux/netdevice.h>
 #include <net/if_inet6.h>
 #include <net/ipv6.h>
-
-struct in6_validator_info {
-	struct in6_addr		i6vi_addr;
-	struct inet6_dev	*i6vi_dev;
-};
 
 #define IN6_ADDR_HSIZE_SHIFT	4
 #define IN6_ADDR_HSIZE		(1 << IN6_ADDR_HSIZE_SHIFT)
@@ -95,7 +90,9 @@ int __ipv6_get_lladdr(struct inet6_dev *idev, struct in6_addr *addr,
 		      u32 banned_flags);
 int ipv6_get_lladdr(struct net_device *dev, struct in6_addr *addr,
 		    u32 banned_flags);
-int inet_rcv_saddr_equal(const struct sock *sk, const struct sock *sk2,
+int ipv4_rcv_saddr_equal(const struct sock *sk, const struct sock *sk2,
+			 bool match_wildcard);
+int ipv6_rcv_saddr_equal(const struct sock *sk, const struct sock *sk2,
 			 bool match_wildcard);
 void addrconf_join_solict(struct net_device *dev, const struct in6_addr *addr);
 void addrconf_leave_solict(struct inet6_dev *idev, const struct in6_addr *addr);
@@ -110,24 +107,12 @@ int addrconf_prefix_rcv_add_addr(struct net *net, struct net_device *dev,
 				 u32 addr_flags, bool sllao, bool tokenized,
 				 __u32 valid_lft, u32 prefered_lft);
 
-static inline void addrconf_addr_eui48_base(u8 *eui, const char *const addr)
-{
-	memcpy(eui, addr, 3);
-	eui[3] = 0xFF;
-	eui[4] = 0xFE;
-	memcpy(eui + 5, addr + 3, 3);
-}
-
-static inline void addrconf_addr_eui48(u8 *eui, const char *const addr)
-{
-	addrconf_addr_eui48_base(eui, addr);
-	eui[0] ^= 2;
-}
-
 static inline int addrconf_ifid_eui48(u8 *eui, struct net_device *dev)
 {
 	if (dev->addr_len != ETH_ALEN)
 		return -1;
+	memcpy(eui, dev->dev_addr, 3);
+	memcpy(eui + 5, dev->dev_addr + 3, 3);
 
 	/*
 	 * The zSeries OSA network cards can be shared among various
@@ -142,16 +127,14 @@ static inline int addrconf_ifid_eui48(u8 *eui, struct net_device *dev)
 	 * case.  Hence the resulting interface identifier has local
 	 * scope according to RFC2373.
 	 */
-
-	addrconf_addr_eui48_base(eui, dev->dev_addr);
-
 	if (dev->dev_id) {
 		eui[3] = (dev->dev_id >> 8) & 0xFF;
 		eui[4] = dev->dev_id & 0xFF;
 	} else {
+		eui[3] = 0xFF;
+		eui[4] = 0xFE;
 		eui[0] ^= 2;
 	}
-
 	return 0;
 }
 
@@ -283,12 +266,8 @@ int register_inet6addr_notifier(struct notifier_block *nb);
 int unregister_inet6addr_notifier(struct notifier_block *nb);
 int inet6addr_notifier_call_chain(unsigned long val, void *v);
 
-int register_inet6addr_validator_notifier(struct notifier_block *nb);
-int unregister_inet6addr_validator_notifier(struct notifier_block *nb);
-int inet6addr_validator_notifier_call_chain(unsigned long val, void *v);
-
-void inet6_netconf_notify_devconf(struct net *net, int event, int type,
-				  int ifindex, struct ipv6_devconf *devconf);
+void inet6_netconf_notify_devconf(struct net *net, int type, int ifindex,
+				  struct ipv6_devconf *devconf);
 
 /**
  * __in6_dev_get - get inet6_dev pointer from netdevice
@@ -317,7 +296,7 @@ static inline struct inet6_dev *in6_dev_get(const struct net_device *dev)
 	rcu_read_lock();
 	idev = rcu_dereference(dev->ip6_ptr);
 	if (idev)
-		refcount_inc(&idev->refcnt);
+		atomic_inc(&idev->refcnt);
 	rcu_read_unlock();
 	return idev;
 }
@@ -333,46 +312,36 @@ void in6_dev_finish_destroy(struct inet6_dev *idev);
 
 static inline void in6_dev_put(struct inet6_dev *idev)
 {
-	if (refcount_dec_and_test(&idev->refcnt))
+	if (atomic_dec_and_test(&idev->refcnt))
 		in6_dev_finish_destroy(idev);
-}
-
-static inline void in6_dev_put_clear(struct inet6_dev **pidev)
-{
-	struct inet6_dev *idev = *pidev;
-
-	if (idev) {
-		in6_dev_put(idev);
-		*pidev = NULL;
-	}
 }
 
 static inline void __in6_dev_put(struct inet6_dev *idev)
 {
-	refcount_dec(&idev->refcnt);
+	atomic_dec(&idev->refcnt);
 }
 
 static inline void in6_dev_hold(struct inet6_dev *idev)
 {
-	refcount_inc(&idev->refcnt);
+	atomic_inc(&idev->refcnt);
 }
 
 void inet6_ifa_finish_destroy(struct inet6_ifaddr *ifp);
 
 static inline void in6_ifa_put(struct inet6_ifaddr *ifp)
 {
-	if (refcount_dec_and_test(&ifp->refcnt))
+	if (atomic_dec_and_test(&ifp->refcnt))
 		inet6_ifa_finish_destroy(ifp);
 }
 
 static inline void __in6_ifa_put(struct inet6_ifaddr *ifp)
 {
-	refcount_dec(&ifp->refcnt);
+	atomic_dec(&ifp->refcnt);
 }
 
 static inline void in6_ifa_hold(struct inet6_ifaddr *ifp)
 {
-	refcount_inc(&ifp->refcnt);
+	atomic_inc(&ifp->refcnt);
 }
 
 

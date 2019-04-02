@@ -11,6 +11,8 @@
  * published by the Free Software Foundation.
  */
 
+#include "skeleton.dtsi"
+
 / {
 	interrupt-parent = <&gic>;
 	#address-cells = <1>;

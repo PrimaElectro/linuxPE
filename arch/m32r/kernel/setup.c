@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/m32r/kernel/setup.c
  *
@@ -12,7 +11,7 @@
 #include <linux/kernel.h>
 #include <linux/stddef.h>
 #include <linux/fs.h>
-#include <linux/sched/mm.h>
+#include <linux/sched.h>
 #include <linux/ioport.h>
 #include <linux/mm.h>
 #include <linux/bootmem.h>
@@ -404,7 +403,7 @@ void __init cpu_init (void)
 	printk(KERN_INFO "Initializing CPU#%d\n", cpu_id);
 
 	/* Set up and load the per-CPU TSS and LDT */
-	mmgrab(&init_mm);
+	atomic_inc(&init_mm.mm_count);
 	current->active_mm = &init_mm;
 	if (current->mm)
 		BUG();

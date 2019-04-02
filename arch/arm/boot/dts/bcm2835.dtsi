@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include "bcm283x.dtsi"
 
 / {
@@ -23,14 +22,4 @@
 			compatible = "arm,arm1176-pmu";
 		};
 	};
-};
-
-&cpu_thermal {
-	coefficients = <(-538)	407000>;
-};
-
-/* enable thermal sensor with the correct compatible property set */
-&thermal {
-	compatible = "brcm,bcm2835-thermal";
-	status = "okay";
 };

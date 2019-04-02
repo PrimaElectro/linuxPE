@@ -161,9 +161,12 @@ static int gdm_lte_emulate_arp(struct sk_buff *skb_in, u32 nic_type)
 		return -ENOMEM;
 	skb_reserve(skb_out, NET_IP_ALIGN);
 
-	skb_put_data(skb_out, mac_header_data, mac_header_len);
-	skb_put_data(skb_out, arp_out, sizeof(struct arphdr));
-	skb_put_data(skb_out, arp_data_out, sizeof(struct arpdata));
+	memcpy(skb_put(skb_out, mac_header_len), mac_header_data,
+	       mac_header_len);
+	memcpy(skb_put(skb_out, sizeof(struct arphdr)), arp_out,
+	       sizeof(struct arphdr));
+	memcpy(skb_put(skb_out, sizeof(struct arpdata)), arp_data_out,
+	       sizeof(struct arpdata));
 
 	skb_out->protocol = ((struct ethhdr *)mac_header_data)->h_proto;
 	skb_out->dev = skb_in->dev;
@@ -175,10 +178,10 @@ static int gdm_lte_emulate_arp(struct sk_buff *skb_in, u32 nic_type)
 	return 0;
 }
 
-static __sum16 icmp6_checksum(struct ipv6hdr *ipv6, u16 *ptr, int len)
+static int icmp6_checksum(struct ipv6hdr *ipv6, u16 *ptr, int len)
 {
 	unsigned short *w = ptr;
-	__wsum sum = 0;
+	int sum = 0;
 	int i;
 
 	union {
@@ -195,21 +198,24 @@ static __sum16 icmp6_checksum(struct ipv6hdr *ipv6, u16 *ptr, int len)
 	memset(&pseudo_header, 0, sizeof(pseudo_header));
 	memcpy(&pseudo_header.ph.ph_src, &ipv6->saddr.in6_u.u6_addr8, 16);
 	memcpy(&pseudo_header.ph.ph_dst, &ipv6->daddr.in6_u.u6_addr8, 16);
-	pseudo_header.ph.ph_len = be16_to_cpu(ipv6->payload_len);
+	pseudo_header.ph.ph_len = ipv6->payload_len;
 	pseudo_header.ph.ph_nxt = ipv6->nexthdr;
 
 	w = (u16 *)&pseudo_header;
 	for (i = 0; i < ARRAY_SIZE(pseudo_header.pa); i++)
-		sum = csum_add(sum, csum_unfold(
-					(__force __sum16)pseudo_header.pa[i]));
+		sum += pseudo_header.pa[i];
 
 	w = ptr;
 	while (len > 1) {
-		sum = csum_add(sum, csum_unfold((__force __sum16)*w++));
+		sum += *w++;
 		len -= 2;
 	}
 
-	return csum_fold(sum);
+	sum = (sum >> 16) + (sum & 0xFFFF);
+	sum += (sum >> 16);
+	sum = ~sum & 0xffff;
+
+	return sum;
 }
 
 static int gdm_lte_emulate_ndp(struct sk_buff *skb_in, u32 nic_type)
@@ -319,10 +325,14 @@ static int gdm_lte_emulate_ndp(struct sk_buff *skb_in, u32 nic_type)
 		return -ENOMEM;
 	skb_reserve(skb_out, NET_IP_ALIGN);
 
-	skb_put_data(skb_out, mac_header_data, mac_header_len);
-	skb_put_data(skb_out, &ipv6_out, sizeof(struct ipv6hdr));
-	skb_put_data(skb_out, &icmp6_out, sizeof(struct icmp6hdr));
-	skb_put_data(skb_out, &na, sizeof(struct neighbour_advertisement));
+	memcpy(skb_put(skb_out, mac_header_len), mac_header_data,
+	       mac_header_len);
+	memcpy(skb_put(skb_out, sizeof(struct ipv6hdr)), &ipv6_out,
+	       sizeof(struct ipv6hdr));
+	memcpy(skb_put(skb_out, sizeof(struct icmp6hdr)), &icmp6_out,
+	       sizeof(struct icmp6hdr));
+	memcpy(skb_put(skb_out, sizeof(struct neighbour_advertisement)), &na,
+	       sizeof(struct neighbour_advertisement));
 
 	skb_out->protocol = ((struct ethhdr *)mac_header_data)->h_proto;
 	skb_out->dev = skb_in->dev;
@@ -343,7 +353,7 @@ static s32 gdm_lte_tx_nic_type(struct net_device *dev, struct sk_buff *skb)
 	struct ipv6hdr *ipv6;
 	int mac_proto;
 	void *network_data;
-	u32 nic_type;
+	u32 nic_type = 0;
 
 	/* NIC TYPE is based on the nic_id of this net_device */
 	nic_type = 0x00000010 | nic->nic_id;
@@ -550,13 +560,13 @@ void gdm_lte_event_exit(void)
 	}
 }
 
-static int find_dev_index(u32 nic_type)
+static u8 find_dev_index(u32 nic_type)
 {
 	u8 index;
 
 	index = (u8)(nic_type & 0x0000000f);
-	if (index >= MAX_NIC_TYPE)
-		return -EINVAL;
+	if (index > MAX_NIC_TYPE)
+		index = 0;
 
 	return index;
 }
@@ -662,8 +672,8 @@ static void gdm_lte_netif_rx(struct net_device *dev, char *buf,
 		return;
 	skb_reserve(skb, NET_IP_ALIGN);
 
-	skb_put_data(skb, mac_header_data, mac_header_len);
-	skb_put_data(skb, buf, len);
+	memcpy(skb_put(skb, mac_header_len), mac_header_data, mac_header_len);
+	memcpy(skb_put(skb, len), buf, len);
 
 	skb->protocol = ((struct ethhdr *)mac_header_data)->h_proto;
 	skb->dev = dev;
@@ -678,24 +688,28 @@ static void gdm_lte_multi_sdu_pkt(struct phy_dev *phy_dev, char *buf, int len)
 	struct net_device *dev;
 	struct multi_sdu *multi_sdu = (struct multi_sdu *)buf;
 	struct sdu *sdu = NULL;
-	struct gdm_endian *endian = phy_dev->get_endian(phy_dev->priv_dev);
 	u8 *data = (u8 *)multi_sdu->data;
 	u16 i = 0;
 	u16 num_packet;
 	u16 hci_len;
 	u16 cmd_evt;
 	u32 nic_type;
-	int index;
+	u8 index;
 
-	hci_len = gdm_dev16_to_cpu(endian, multi_sdu->len);
-	num_packet = gdm_dev16_to_cpu(endian, multi_sdu->num_packet);
+	hci_len = gdm_dev16_to_cpu(phy_dev->get_endian(phy_dev->priv_dev),
+				   multi_sdu->len);
+	num_packet = gdm_dev16_to_cpu(phy_dev->get_endian(phy_dev->priv_dev),
+				      multi_sdu->num_packet);
 
 	for (i = 0; i < num_packet; i++) {
 		sdu = (struct sdu *)data;
 
-		cmd_evt  = gdm_dev16_to_cpu(endian, sdu->cmd_evt);
-		hci_len  = gdm_dev16_to_cpu(endian, sdu->len);
-		nic_type = gdm_dev32_to_cpu(endian, sdu->nic_type);
+		cmd_evt = gdm_dev16_to_cpu(phy_dev->
+				get_endian(phy_dev->priv_dev), sdu->cmd_evt);
+		hci_len = gdm_dev16_to_cpu(phy_dev->
+				get_endian(phy_dev->priv_dev), sdu->len);
+		nic_type = gdm_dev32_to_cpu(phy_dev->
+				get_endian(phy_dev->priv_dev), sdu->nic_type);
 
 		if (cmd_evt != LTE_RX_SDU) {
 			pr_err("rx sdu wrong hci %04x\n", cmd_evt);
@@ -707,13 +721,13 @@ static void gdm_lte_multi_sdu_pkt(struct phy_dev *phy_dev, char *buf, int len)
 		}
 
 		index = find_dev_index(nic_type);
-		if (index < 0) {
+		if (index < MAX_NIC_TYPE) {
+			dev = phy_dev->dev[index];
+			gdm_lte_netif_rx(dev, (char *)sdu->data,
+					 (int)(hci_len - 12), nic_type);
+		} else {
 			pr_err("rx sdu invalid nic_type :%x\n", nic_type);
-			return;
 		}
-		dev = phy_dev->dev[index];
-		gdm_lte_netif_rx(dev, (char *)sdu->data,
-				 (int)(hci_len - 12), nic_type);
 
 		data += ((hci_len + 3) & 0xfffc) + HCI_HEADER_SIZE;
 	}
@@ -747,18 +761,18 @@ static int gdm_lte_receive_pkt(struct phy_dev *phy_dev, char *buf, int len)
 {
 	struct hci_packet *hci = (struct hci_packet *)buf;
 	struct hci_pdn_table_ind *pdn_table = (struct hci_pdn_table_ind *)buf;
-	struct gdm_endian *endian = phy_dev->get_endian(phy_dev->priv_dev);
 	struct sdu *sdu;
 	struct net_device *dev;
 	int ret = 0;
 	u16 cmd_evt;
 	u32 nic_type;
-	int index;
+	u8 index;
 
 	if (!len)
 		return ret;
 
-	cmd_evt = gdm_dev16_to_cpu(endian, hci->cmd_evt);
+	cmd_evt = gdm_dev16_to_cpu(phy_dev->get_endian(phy_dev->priv_dev),
+				   hci->cmd_evt);
 
 	dev = phy_dev->dev[0];
 	if (!dev)
@@ -767,10 +781,9 @@ static int gdm_lte_receive_pkt(struct phy_dev *phy_dev, char *buf, int len)
 	switch (cmd_evt) {
 	case LTE_RX_SDU:
 		sdu = (struct sdu *)hci->data;
-		nic_type = gdm_dev32_to_cpu(endian, sdu->nic_type);
+		nic_type = gdm_dev32_to_cpu(phy_dev->
+				get_endian(phy_dev->priv_dev), sdu->nic_type);
 		index = find_dev_index(nic_type);
-		if (index < 0)
-			return index;
 		dev = phy_dev->dev[index];
 		gdm_lte_netif_rx(dev, hci->data, len, nic_type);
 		break;
@@ -784,10 +797,10 @@ static int gdm_lte_receive_pkt(struct phy_dev *phy_dev, char *buf, int len)
 		break;
 	case LTE_PDN_TABLE_IND:
 		pdn_table = (struct hci_pdn_table_ind *)buf;
-		nic_type = gdm_dev32_to_cpu(endian, pdn_table->nic_type);
+		nic_type = gdm_dev32_to_cpu(phy_dev->
+				get_endian(phy_dev->priv_dev),
+				pdn_table->nic_type);
 		index = find_dev_index(nic_type);
-		if (index < 0)
-			return index;
 		dev = phy_dev->dev[index];
 		gdm_lte_pdn_table(dev, buf, len);
 		/* Fall through */

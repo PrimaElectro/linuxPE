@@ -1678,9 +1678,4 @@ static struct platform_driver stm32f746_pinctrl_driver = {
 		.of_match_table = stm32f746_pctrl_match,
 	},
 };
-
-static int __init stm32f746_pinctrl_init(void)
-{
-	return platform_driver_register(&stm32f746_pinctrl_driver);
-}
-arch_initcall(stm32f746_pinctrl_init);
+builtin_platform_driver(stm32f746_pinctrl_driver);

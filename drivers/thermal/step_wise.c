@@ -187,7 +187,8 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 /**
  * step_wise_throttle - throttles devices associated with the given zone
  * @tz - thermal_zone_device
- * @trip - trip point index
+ * @trip - the trip point
+ * @trip_type - type of the trip point
  *
  * Throttling Logic: This uses the trend of the thermal zone to throttle.
  * If the thermal zone is 'heating up' this throttles all the cooling

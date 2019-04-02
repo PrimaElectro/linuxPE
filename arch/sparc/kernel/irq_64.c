@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /* irq.c: UltraSparc IRQ handling/init/registry.
  *
  * Copyright (C) 1997, 2007, 2008 David S. Miller (davem@davemloft.net)
@@ -36,7 +35,7 @@
 #include <asm/timer.h>
 #include <asm/smp.h>
 #include <asm/starfire.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/cache.h>
 #include <asm/cpudata.h>
 #include <asm/auxio.h>
@@ -855,6 +854,7 @@ void __irq_entry handler_irq(int pil, struct pt_regs *regs)
 	set_irq_regs(old_regs);
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 void do_softirq_own_stack(void)
 {
 	void *orig_sp, *sp = softirq_stack[smp_processor_id()];
@@ -869,6 +869,7 @@ void do_softirq_own_stack(void)
 	__asm__ __volatile__("mov %0, %%sp"
 			     : : "r" (orig_sp));
 }
+#endif
 
 #ifdef CONFIG_HOTPLUG_CPU
 void fixup_irqs(void)

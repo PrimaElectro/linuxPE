@@ -407,14 +407,13 @@ static int socfpga_fpga_reset(struct fpga_manager *mgr)
 /*
  * Prepare the FPGA to receive the configuration data.
  */
-static int socfpga_fpga_ops_configure_init(struct fpga_manager *mgr,
-					   struct fpga_image_info *info,
+static int socfpga_fpga_ops_configure_init(struct fpga_manager *mgr, u32 flags,
 					   const char *buf, size_t count)
 {
 	struct socfpga_fpga_priv *priv = mgr->priv;
 	int ret;
 
-	if (info->flags & FPGA_MGR_PARTIAL_RECONFIG) {
+	if (flags & FPGA_MGR_PARTIAL_RECONFIG) {
 		dev_err(&mgr->dev, "Partial reconfiguration not supported.\n");
 		return -EINVAL;
 	}
@@ -479,7 +478,7 @@ static int socfpga_fpga_ops_configure_write(struct fpga_manager *mgr,
 }
 
 static int socfpga_fpga_ops_configure_complete(struct fpga_manager *mgr,
-					       struct fpga_image_info *info)
+					       u32 flags)
 {
 	struct socfpga_fpga_priv *priv = mgr->priv;
 	u32 status;

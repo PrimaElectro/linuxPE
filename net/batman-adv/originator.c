@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2017  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2009-2016  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner, Simon Wunderlich
  *
@@ -364,7 +364,7 @@ struct batadv_orig_ifinfo *
 batadv_orig_ifinfo_new(struct batadv_orig_node *orig_node,
 		       struct batadv_hard_iface *if_outgoing)
 {
-	struct batadv_orig_ifinfo *orig_ifinfo;
+	struct batadv_orig_ifinfo *orig_ifinfo = NULL;
 	unsigned long reset_time;
 
 	spin_lock_bh(&orig_node->neigh_list_lock);
@@ -512,17 +512,15 @@ batadv_neigh_node_get(const struct batadv_orig_node *orig_node,
  * batadv_hardif_neigh_create - create a hardif neighbour node
  * @hard_iface: the interface this neighbour is connected to
  * @neigh_addr: the interface address of the neighbour to retrieve
- * @orig_node: originator object representing the neighbour
  *
  * Return: the hardif neighbour node if found or created or NULL otherwise.
  */
 static struct batadv_hardif_neigh_node *
 batadv_hardif_neigh_create(struct batadv_hard_iface *hard_iface,
-			   const u8 *neigh_addr,
-			   struct batadv_orig_node *orig_node)
+			   const u8 *neigh_addr)
 {
 	struct batadv_priv *bat_priv = netdev_priv(hard_iface->soft_iface);
-	struct batadv_hardif_neigh_node *hardif_neigh;
+	struct batadv_hardif_neigh_node *hardif_neigh = NULL;
 
 	spin_lock_bh(&hard_iface->neigh_list_lock);
 
@@ -538,7 +536,6 @@ batadv_hardif_neigh_create(struct batadv_hard_iface *hard_iface,
 	kref_get(&hard_iface->refcount);
 	INIT_HLIST_NODE(&hardif_neigh->list);
 	ether_addr_copy(hardif_neigh->addr, neigh_addr);
-	ether_addr_copy(hardif_neigh->orig, orig_node->orig);
 	hardif_neigh->if_incoming = hard_iface;
 	hardif_neigh->last_seen = jiffies;
 
@@ -559,23 +556,21 @@ out:
  *  node
  * @hard_iface: the interface this neighbour is connected to
  * @neigh_addr: the interface address of the neighbour to retrieve
- * @orig_node: originator object representing the neighbour
  *
  * Return: the hardif neighbour node if found or created or NULL otherwise.
  */
 static struct batadv_hardif_neigh_node *
 batadv_hardif_neigh_get_or_create(struct batadv_hard_iface *hard_iface,
-				  const u8 *neigh_addr,
-				  struct batadv_orig_node *orig_node)
+				  const u8 *neigh_addr)
 {
-	struct batadv_hardif_neigh_node *hardif_neigh;
+	struct batadv_hardif_neigh_node *hardif_neigh = NULL;
 
 	/* first check without locking to avoid the overhead */
 	hardif_neigh = batadv_hardif_neigh_get(hard_iface, neigh_addr);
 	if (hardif_neigh)
 		return hardif_neigh;
 
-	return batadv_hardif_neigh_create(hard_iface, neigh_addr, orig_node);
+	return batadv_hardif_neigh_create(hard_iface, neigh_addr);
 }
 
 /**
@@ -635,7 +630,7 @@ batadv_neigh_node_create(struct batadv_orig_node *orig_node,
 		goto out;
 
 	hardif_neigh = batadv_hardif_neigh_get_or_create(hard_iface,
-							 neigh_addr, orig_node);
+							 neigh_addr);
 	if (!hardif_neigh)
 		goto out;
 
@@ -688,7 +683,7 @@ batadv_neigh_node_get_or_create(struct batadv_orig_node *orig_node,
 				struct batadv_hard_iface *hard_iface,
 				const u8 *neigh_addr)
 {
-	struct batadv_neigh_node *neigh_node;
+	struct batadv_neigh_node *neigh_node = NULL;
 
 	/* first check without locking to avoid the overhead */
 	neigh_node = batadv_neigh_node_get(orig_node, hard_iface, neigh_addr);
@@ -1026,7 +1021,7 @@ struct batadv_orig_node *batadv_orig_node_new(struct batadv_priv *bat_priv,
 	batadv_orig_node_vlan_put(vlan);
 
 	for (i = 0; i < BATADV_FRAG_BUFFER_COUNT; i++) {
-		INIT_HLIST_HEAD(&orig_node->fragments[i].fragment_list);
+		INIT_HLIST_HEAD(&orig_node->fragments[i].head);
 		spin_lock_init(&orig_node->fragments[i].lock);
 		orig_node->fragments[i].size = 0;
 	}

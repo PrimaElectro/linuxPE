@@ -55,6 +55,7 @@ struct crc_info {
 
 #include <linux/types.h>
 #include <linux/spinlock.h>
+#include <linux/miscdevice.h>
 
 struct crc_register {
 	u32 control;

@@ -64,9 +64,13 @@ static int axp20x_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
 	struct axp20x_gpio *gpio = gpiochip_get_data(chip);
 	unsigned int val;
-	int ret;
+	int reg, ret;
 
-	ret = regmap_read(gpio->regmap, AXP20X_GPIO20_SS, &val);
+	reg = axp20x_gpio_get_reg(offset);
+	if (reg < 0)
+		return reg;
+
+	ret = regmap_read(gpio->regmap, reg, &val);
 	if (ret)
 		return ret;
 

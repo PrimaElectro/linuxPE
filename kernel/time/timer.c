@@ -38,14 +38,12 @@
 #include <linux/tick.h>
 #include <linux/kallsyms.h>
 #include <linux/irq_work.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/sched/sysctl.h>
-#include <linux/sched/nohz.h>
-#include <linux/sched/debug.h>
 #include <linux/slab.h>
 #include <linux/compat.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/div64.h>
 #include <asm/timex.h>
@@ -197,6 +195,9 @@ EXPORT_SYMBOL(jiffies_64);
 struct timer_base {
 	raw_spinlock_t		lock;
 	struct timer_list	*running_timer;
+#ifdef CONFIG_PREEMPT_RT_FULL
+	struct swait_queue_head	wait_for_running_timer;
+#endif
 	unsigned long		clk;
 	unsigned long		next_expiry;
 	unsigned int		cpu;
@@ -574,6 +575,38 @@ internal_add_timer(struct timer_base *base, struct timer_list *timer)
 	trigger_dyntick_cpu(base, timer);
 }
 
+#ifdef CONFIG_TIMER_STATS
+void __timer_stats_timer_set_start_info(struct timer_list *timer, void *addr)
+{
+	if (timer->start_site)
+		return;
+
+	timer->start_site = addr;
+	memcpy(timer->start_comm, current->comm, TASK_COMM_LEN);
+	timer->start_pid = current->pid;
+}
+
+static void timer_stats_account_timer(struct timer_list *timer)
+{
+	void *site;
+
+	/*
+	 * start_site can be concurrently reset by
+	 * timer_stats_timer_clear_start_info()
+	 */
+	site = READ_ONCE(timer->start_site);
+	if (likely(!site))
+		return;
+
+	timer_stats_update_stats(timer, timer->start_pid, site,
+				 timer->function, timer->start_comm,
+				 timer->flags);
+}
+
+#else
+static void timer_stats_account_timer(struct timer_list *timer) {}
+#endif
+
 #ifdef CONFIG_DEBUG_OBJECTS_TIMERS
 
 static struct debug_obj_descr timer_debug_descr;
@@ -760,6 +793,11 @@ static void do_init_timer(struct timer_list *timer, unsigned int flags,
 {
 	timer->entry.pprev = NULL;
 	timer->flags = flags | raw_smp_processor_id();
+#ifdef CONFIG_TIMER_STATS
+	timer->start_site = NULL;
+	timer->start_pid = -1;
+	memset(timer->start_comm, 0, TASK_COMM_LEN);
+#endif
 	lockdep_init_map(&timer->lockdep_map, name, key, 0);
 }
 
@@ -978,6 +1016,8 @@ __mod_timer(struct timer_list *timer, unsigned long expires, bool pending_only)
 		forward_timer_base(base);
 	}
 
+	timer_stats_timer_set_start_info(timer);
+
 	ret = detach_if_pending(timer, base, false);
 	if (!ret && pending_only)
 		goto out_unlock;
@@ -1103,6 +1143,7 @@ void add_timer_on(struct timer_list *timer, int cpu)
 	struct timer_base *new_base, *base;
 	unsigned long flags;
 
+	timer_stats_timer_set_start_info(timer);
 	BUG_ON(timer_pending(timer) || !timer->function);
 
 	new_base = get_timer_cpu_base(timer->flags, cpu);
@@ -1130,8 +1171,35 @@ void add_timer_on(struct timer_list *timer, int cpu)
 }
 EXPORT_SYMBOL_GPL(add_timer_on);
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+/*
+ * Wait for a running timer
+ */
+static void wait_for_running_timer(struct timer_list *timer)
+{
+	struct timer_base *base;
+	u32 tf = timer->flags;
+
+	if (tf & TIMER_MIGRATING)
+		return;
+
+	base = get_timer_base(tf);
+	swait_event(base->wait_for_running_timer,
+		   base->running_timer != timer);
+}
+
+# define wakeup_timer_waiters(b)	swake_up_all(&(b)->wait_for_running_timer)
+#else
+static inline void wait_for_running_timer(struct timer_list *timer)
+{
+	cpu_relax();
+}
+
+# define wakeup_timer_waiters(b)	do { } while (0)
+#endif
+
 /**
- * del_timer - deactivate a timer.
+ * del_timer - deactive a timer.
  * @timer: the timer to be deactivated
  *
  * del_timer() deactivates a timer - this works on both active and inactive
@@ -1149,6 +1217,7 @@ int del_timer(struct timer_list *timer)
 
 	debug_assert_init(timer);
 
+	timer_stats_timer_clear_start_info(timer);
 	if (timer_pending(timer)) {
 		base = lock_timer_base(timer, &flags);
 		ret = detach_if_pending(timer, base, true);
@@ -1161,7 +1230,7 @@ EXPORT_SYMBOL(del_timer);
 
 /**
  * try_to_del_timer_sync - Try to deactivate a timer
- * @timer: timer to delete
+ * @timer: timer do del
  *
  * This function tries to deactivate a timer. Upon successful (ret >= 0)
  * exit the timer is not queued and the handler is not running on any CPU.
@@ -1176,16 +1245,17 @@ int try_to_del_timer_sync(struct timer_list *timer)
 
 	base = lock_timer_base(timer, &flags);
 
-	if (base->running_timer != timer)
+	if (base->running_timer != timer) {
+		timer_stats_timer_clear_start_info(timer);
 		ret = detach_if_pending(timer, base, true);
-
+	}
 	raw_spin_unlock_irqrestore(&base->lock, flags);
 
 	return ret;
 }
 EXPORT_SYMBOL(try_to_del_timer_sync);
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) || defined(CONFIG_PREEMPT_RT_FULL)
 /**
  * del_timer_sync - deactivate a timer and wait for the handler to finish.
  * @timer: the timer to be deactivated
@@ -1245,7 +1315,7 @@ int del_timer_sync(struct timer_list *timer)
 		int ret = try_to_del_timer_sync(timer);
 		if (ret >= 0)
 			return ret;
-		cpu_relax();
+		wait_for_running_timer(timer);
 	}
 }
 EXPORT_SYMBOL(del_timer_sync);
@@ -1302,6 +1372,7 @@ static void expire_timers(struct timer_base *base, struct hlist_head *head)
 		unsigned long data;
 
 		timer = hlist_entry(head->first, struct timer_list, entry);
+		timer_stats_account_timer(timer);
 
 		base->running_timer = timer;
 		detach_timer(timer, true);
@@ -1309,13 +1380,16 @@ static void expire_timers(struct timer_base *base, struct hlist_head *head)
 		fn = timer->function;
 		data = timer->data;
 
-		if (timer->flags & TIMER_IRQSAFE) {
+		if (!IS_ENABLED(CONFIG_PREEMPT_RT_FULL) &&
+		    timer->flags & TIMER_IRQSAFE) {
 			raw_spin_unlock(&base->lock);
 			call_timer_fn(timer, fn, data);
+			base->running_timer = NULL;
 			raw_spin_lock(&base->lock);
 		} else {
 			raw_spin_unlock_irq(&base->lock);
 			call_timer_fn(timer, fn, data);
+			base->running_timer = NULL;
 			raw_spin_lock_irq(&base->lock);
 		}
 	}
@@ -1584,15 +1658,14 @@ void update_process_times(int user_tick)
 
 	/* Note: this timer irq context must be accounted for as well. */
 	account_process_tick(p, user_tick);
+	scheduler_tick();
 	run_local_timers();
 	rcu_check_callbacks(user_tick);
-#ifdef CONFIG_IRQ_WORK
+#if defined(CONFIG_IRQ_WORK)
 	if (in_irq())
 		irq_work_tick();
 #endif
-	scheduler_tick();
-	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
-		run_posix_cpu_timers(p);
+	run_posix_cpu_timers(p);
 }
 
 /**
@@ -1609,22 +1682,6 @@ static inline void __run_timers(struct timer_base *base)
 
 	raw_spin_lock_irq(&base->lock);
 
-	/*
-	 * timer_base::must_forward_clk must be cleared before running
-	 * timers so that any timer functions that call mod_timer() will
-	 * not try to forward the base. Idle tracking / clock forwarding
-	 * logic is only used with BASE_STD timers.
-	 *
-	 * The must_forward_clk flag is cleared unconditionally also for
-	 * the deferrable base. The deferrable base is not affected by idle
-	 * tracking and never forwarded, so clearing the flag is a NOOP.
-	 *
-	 * The fact that the deferrable base is never forwarded can cause
-	 * large variations in granularity for deferrable timers, but they
-	 * can be deferred for long periods due to idle anyway.
-	 */
-	base->must_forward_clk = false;
-
 	while (time_after_eq(jiffies, base->clk)) {
 
 		levels = collect_expired_timers(base, heads);
@@ -1633,8 +1690,8 @@ static inline void __run_timers(struct timer_base *base)
 		while (levels--)
 			expire_timers(base, heads + levels);
 	}
-	base->running_timer = NULL;
 	raw_spin_unlock_irq(&base->lock);
+	wakeup_timer_waiters(base);
 }
 
 /*
@@ -1643,6 +1700,21 @@ static inline void __run_timers(struct timer_base *base)
 static __latent_entropy void run_timer_softirq(struct softirq_action *h)
 {
 	struct timer_base *base = this_cpu_ptr(&timer_bases[BASE_STD]);
+
+	/*
+	 * must_forward_clk must be cleared before running timers so that any
+	 * timer functions that call mod_timer will not try to forward the
+	 * base. idle trcking / clock forwarding logic is only used with
+	 * BASE_STD timers.
+	 *
+	 * The deferrable base does not do idle tracking at all, so we do
+	 * not forward it. This can result in very large variations in
+	 * granularity for deferrable timers, but they can be deferred for
+	 * long periods due to idle.
+	 */
+	base->must_forward_clk = false;
+
+	irq_work_tick_soft();
 
 	__run_timers(base);
 	if (IS_ENABLED(CONFIG_NO_HZ_COMMON))
@@ -1669,6 +1741,19 @@ void run_local_timers(void)
 	raise_softirq(TIMER_SOFTIRQ);
 }
 
+#ifdef __ARCH_WANT_SYS_ALARM
+
+/*
+ * For backwards compatibility?  This can be done in libc so Alpha
+ * and all newer ports shouldn't need it.
+ */
+SYSCALL_DEFINE1(alarm, unsigned int, seconds)
+{
+	return alarm_setitimer(seconds);
+}
+
+#endif
+
 static void process_timeout(unsigned long __data)
 {
 	wake_up_process((struct task_struct *)__data);
@@ -1685,12 +1770,11 @@ static void process_timeout(unsigned long __data)
  * You can set the task state as follows -
  *
  * %TASK_UNINTERRUPTIBLE - at least @timeout jiffies are guaranteed to
- * pass before the routine returns unless the current task is explicitly
- * woken up, (e.g. by wake_up_process())".
+ * pass before the routine returns. The routine will return 0
  *
  * %TASK_INTERRUPTIBLE - the routine may return early if a signal is
- * delivered to the current task or the current task is explicitly woken
- * up.
+ * delivered to the current task. In this case the remaining time
+ * in jiffies will be returned, or 0 if the timer expired in time
  *
  * The current task state is guaranteed to be TASK_RUNNING when this
  * routine returns.
@@ -1699,9 +1783,7 @@ static void process_timeout(unsigned long __data)
  * the CPU away without a bound on the timeout. In this case the return
  * value will be %MAX_SCHEDULE_TIMEOUT.
  *
- * Returns 0 when the timer has expired otherwise the remaining time in
- * jiffies will be returned.  In all cases the return value is guaranteed
- * to be non-negative.
+ * In all cases the return value is guaranteed to be non-negative.
  */
 signed long __sched schedule_timeout(signed long timeout)
 {
@@ -1837,12 +1919,6 @@ int timers_dead_cpu(unsigned int cpu)
 		raw_spin_lock_irq(&new_base->lock);
 		raw_spin_lock_nested(&old_base->lock, SINGLE_DEPTH_NESTING);
 
-		/*
-		 * The current CPUs base clock might be stale. Update it
-		 * before moving the timers over.
-		 */
-		forward_timer_base(new_base);
-
 		BUG_ON(old_base->running_timer);
 
 		for (i = 0; i < WHEEL_SIZE; i++)
@@ -1867,6 +1943,9 @@ static void __init init_timer_cpu(int cpu)
 		base->cpu = cpu;
 		raw_spin_lock_init(&base->lock);
 		base->clk = jiffies;
+#ifdef CONFIG_PREEMPT_RT_FULL
+		init_swait_queue_head(&base->wait_for_running_timer);
+#endif
 	}
 }
 
@@ -1881,6 +1960,7 @@ static void __init init_timer_cpus(void)
 void __init init_timers(void)
 {
 	init_timer_cpus();
+	init_timer_stats();
 	open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
 }
 
@@ -1913,6 +1993,16 @@ unsigned long msleep_interruptible(unsigned int msecs)
 
 EXPORT_SYMBOL(msleep_interruptible);
 
+static void __sched do_usleep_range(unsigned long min, unsigned long max)
+{
+	ktime_t kmin;
+	u64 delta;
+
+	kmin = ktime_set(0, min * NSEC_PER_USEC);
+	delta = (u64)(max - min) * NSEC_PER_USEC;
+	schedule_hrtimeout_range(&kmin, delta, HRTIMER_MODE_REL);
+}
+
 /**
  * usleep_range - Sleep for an approximate time
  * @min: Minimum time in usecs to sleep
@@ -1926,14 +2016,7 @@ EXPORT_SYMBOL(msleep_interruptible);
  */
 void __sched usleep_range(unsigned long min, unsigned long max)
 {
-	ktime_t exp = ktime_add_us(ktime_get(), min);
-	u64 delta = (u64)(max - min) * NSEC_PER_USEC;
-
-	for (;;) {
-		__set_current_state(TASK_UNINTERRUPTIBLE);
-		/* Do not return before the requested sleep time has elapsed */
-		if (!schedule_hrtimeout_range(&exp, delta, HRTIMER_MODE_ABS))
-			break;
-	}
+	__set_current_state(TASK_UNINTERRUPTIBLE);
+	do_usleep_range(min, max);
 }
 EXPORT_SYMBOL(usleep_range);

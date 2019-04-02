@@ -234,8 +234,7 @@ unlock:
 	return err ?: len;
 }
 
-static int hash_accept(struct socket *sock, struct socket *newsock, int flags,
-		       bool kern)
+static int hash_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	struct sock *sk = sock->sk;
 	struct alg_sock *ask = alg_sk(sk);
@@ -256,7 +255,7 @@ static int hash_accept(struct socket *sock, struct socket *newsock, int flags,
 	if (err)
 		return err;
 
-	err = af_alg_accept(ask->parent, newsock, kern);
+	err = af_alg_accept(ask->parent, newsock);
 	if (err)
 		return err;
 
@@ -374,7 +373,7 @@ static int hash_recvmsg_nokey(struct socket *sock, struct msghdr *msg,
 }
 
 static int hash_accept_nokey(struct socket *sock, struct socket *newsock,
-			     int flags, bool kern)
+			     int flags)
 {
 	int err;
 
@@ -382,7 +381,7 @@ static int hash_accept_nokey(struct socket *sock, struct socket *newsock,
 	if (err)
 		return err;
 
-	return hash_accept(sock, newsock, flags, kern);
+	return hash_accept(sock, newsock, flags);
 }
 
 static struct proto_ops algif_hash_ops_nokey = {

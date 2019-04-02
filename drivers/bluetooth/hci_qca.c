@@ -215,7 +215,7 @@ static int send_hci_ibs_cmd(u8 cmd, struct hci_uart *hu)
 	}
 
 	/* Assign HCI_IBS type */
-	skb_put_u8(skb, cmd);
+	*skb_put(skb, 1) = cmd;
 
 	skb_queue_tail(&qca->txq, skb);
 
@@ -335,7 +335,7 @@ static void hci_ibs_tx_idle_timeout(unsigned long arg)
 		/* Fall through */
 
 	default:
-		BT_ERR("Spurious timeout tx state %d", qca->tx_ibs_state);
+		BT_ERR("Spurrious timeout tx state %d", qca->tx_ibs_state);
 		break;
 	}
 
@@ -373,7 +373,7 @@ static void hci_ibs_wake_retrans_timeout(unsigned long arg)
 		/* Fall through */
 
 	default:
-		BT_ERR("Spurious timeout tx state %d", qca->tx_ibs_state);
+		BT_ERR("Spurrious timeout tx state %d", qca->tx_ibs_state);
 		break;
 	}
 
@@ -438,11 +438,14 @@ static int qca_open(struct hci_uart *hu)
 
 	hu->priv = qca;
 
-	setup_timer(&qca->wake_retrans_timer, hci_ibs_wake_retrans_timeout,
-		    (u_long)hu);
+	init_timer(&qca->wake_retrans_timer);
+	qca->wake_retrans_timer.function = hci_ibs_wake_retrans_timeout;
+	qca->wake_retrans_timer.data = (u_long)hu;
 	qca->wake_retrans = IBS_WAKE_RETRANS_TIMEOUT_MS;
 
-	setup_timer(&qca->tx_idle_timer, hci_ibs_tx_idle_timeout, (u_long)hu);
+	init_timer(&qca->tx_idle_timer);
+	qca->tx_idle_timer.function = hci_ibs_tx_idle_timeout;
+	qca->tx_idle_timer.data = (u_long)hu;
 	qca->tx_idle_delay = IBS_TX_IDLE_TIMEOUT_MS;
 
 	BT_DBG("HCI_UART_QCA open, tx_idle_delay=%u, wake_retrans=%u",
@@ -869,7 +872,7 @@ static int qca_set_baudrate(struct hci_dev *hdev, uint8_t baudrate)
 	}
 
 	/* Assign commands to change baudrate and packet type. */
-	skb_put_data(skb, cmd, sizeof(cmd));
+	memcpy(skb_put(skb, sizeof(cmd)), cmd, sizeof(cmd));
 	hci_skb_pkt_type(skb) = HCI_COMMAND_PKT;
 
 	skb_queue_tail(&qca->txq, skb);
@@ -881,7 +884,7 @@ static int qca_set_baudrate(struct hci_dev *hdev, uint8_t baudrate)
 	 */
 	set_current_state(TASK_UNINTERRUPTIBLE);
 	schedule_timeout(msecs_to_jiffies(BAUDRATE_SETTLE_TIMEOUT_MS));
-	set_current_state(TASK_RUNNING);
+	set_current_state(TASK_INTERRUPTIBLE);
 
 	return 0;
 }
@@ -933,15 +936,6 @@ static int qca_setup(struct hci_uart *hu)
 	if (!ret) {
 		set_bit(STATE_IN_BAND_SLEEP_ENABLED, &qca->flags);
 		qca_debugfs_init(hdev);
-	} else if (ret == -ENOENT) {
-		/* No patch/nvm-config found, run with original fw/config */
-		ret = 0;
-	} else if (ret == -EAGAIN) {
-		/*
-		 * Userspace firmware loader will return -EAGAIN in case no
-		 * patch/nvm-config is found, so run with original fw/config.
-		 */
-		ret = 0;
 	}
 
 	/* Setup bdaddr */

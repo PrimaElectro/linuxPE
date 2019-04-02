@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/pagemap.h>
 #include <linux/slab.h>
 
@@ -25,10 +24,10 @@ nouveau_sgdma_destroy(struct ttm_tt *ttm)
 }
 
 static int
-nv04_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *reg)
+nv04_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *mem)
 {
 	struct nouveau_sgdma_be *nvbe = (struct nouveau_sgdma_be *)ttm;
-	struct nvkm_mem *node = reg->mm_node;
+	struct nvkm_mem *node = mem->mm_node;
 
 	if (ttm->sg) {
 		node->sg    = ttm->sg;
@@ -37,7 +36,7 @@ nv04_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *reg)
 		node->sg    = NULL;
 		node->pages = nvbe->ttm.dma_address;
 	}
-	node->size = (reg->num_pages << PAGE_SHIFT) >> 12;
+	node->size = (mem->num_pages << PAGE_SHIFT) >> 12;
 
 	nvkm_vm_map(&node->vma[0], node);
 	nvbe->node = node;
@@ -59,10 +58,10 @@ static struct ttm_backend_func nv04_sgdma_backend = {
 };
 
 static int
-nv50_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *reg)
+nv50_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *mem)
 {
 	struct nouveau_sgdma_be *nvbe = (struct nouveau_sgdma_be *)ttm;
-	struct nvkm_mem *node = reg->mm_node;
+	struct nvkm_mem *node = mem->mm_node;
 
 	/* noop: bound in move_notify() */
 	if (ttm->sg) {
@@ -72,7 +71,7 @@ nv50_sgdma_bind(struct ttm_tt *ttm, struct ttm_mem_reg *reg)
 		node->sg    = NULL;
 		node->pages = nvbe->ttm.dma_address;
 	}
-	node->size = (reg->num_pages << PAGE_SHIFT) >> 12;
+	node->size = (mem->num_pages << PAGE_SHIFT) >> 12;
 	return 0;
 }
 
@@ -101,7 +100,7 @@ nouveau_sgdma_create_ttm(struct ttm_bo_device *bdev,
 	if (!nvbe)
 		return NULL;
 
-	if (drm->client.device.info.family < NV_DEVICE_INFO_V0_TESLA)
+	if (drm->device.info.family < NV_DEVICE_INFO_V0_TESLA)
 		nvbe->ttm.ttm.func = &nv04_sgdma_backend;
 	else
 		nvbe->ttm.ttm.func = &nv50_sgdma_backend;

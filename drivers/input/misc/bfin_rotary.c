@@ -147,18 +147,19 @@ static int bfin_rotary_probe(struct platform_device *pdev)
 
 	if (pdata->pin_list) {
 		error = peripheral_request_list(pdata->pin_list,
-						dev_name(dev));
+						dev_name(&pdev->dev));
 		if (error) {
 			dev_err(dev, "requesting peripherals failed: %d\n",
 				error);
 			return error;
 		}
 
-		error = devm_add_action_or_reset(dev, bfin_rotary_free_action,
-						 pdata->pin_list);
+		error = devm_add_action(dev, bfin_rotary_free_action,
+					pdata->pin_list);
 		if (error) {
 			dev_err(dev, "setting cleanup action failed: %d\n",
 				error);
+			peripheral_free_list(pdata->pin_list);
 			return error;
 		}
 	}
@@ -188,7 +189,7 @@ static int bfin_rotary_probe(struct platform_device *pdev)
 
 	input->name = pdev->name;
 	input->phys = "bfin-rotary/input0";
-	input->dev.parent = dev;
+	input->dev.parent = &pdev->dev;
 
 	input_set_drvdata(input, rotary);
 
@@ -238,7 +239,7 @@ static int bfin_rotary_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, rotary);
-	device_init_wakeup(dev, 1);
+	device_init_wakeup(&pdev->dev, 1);
 
 	return 0;
 }

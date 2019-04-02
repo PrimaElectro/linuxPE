@@ -17,7 +17,7 @@
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/proc_fs.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <platform/simcall.h>
 
 #define SIMDISK_MAJOR 240
@@ -317,7 +317,8 @@ static int __init simdisk_init(void)
 	if (simdisk_count > MAX_SIMDISK_COUNT)
 		simdisk_count = MAX_SIMDISK_COUNT;
 
-	sddev = kmalloc_array(simdisk_count, sizeof(*sddev), GFP_KERNEL);
+	sddev = kmalloc(simdisk_count * sizeof(struct simdisk),
+			GFP_KERNEL);
 	if (sddev == NULL)
 		goto out_unregister;
 

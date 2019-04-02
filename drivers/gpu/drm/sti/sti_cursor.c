@@ -33,7 +33,7 @@
 #define STI_CURS_MAX_SIZE   128
 
 /*
- * pixmap dma buffer structure
+ * pixmap dma buffer stucture
  *
  * @paddr:  physical address
  * @size:   buffer size
@@ -121,7 +121,8 @@ static int cursor_dbg_show(struct seq_file *s, void *data)
 	cursor_dbg_cml(s, cursor, readl(cursor->regs + CUR_CML));
 	DBGFS_DUMP(CUR_AWS);
 	DBGFS_DUMP(CUR_AWE);
-	seq_putc(s, '\n');
+	seq_puts(s, "\n");
+
 	return 0;
 }
 
@@ -348,6 +349,7 @@ static const struct drm_plane_funcs sti_cursor_plane_helpers_funcs = {
 	.update_plane = drm_atomic_helper_update_plane,
 	.disable_plane = drm_atomic_helper_disable_plane,
 	.destroy = sti_cursor_destroy,
+	.set_property = drm_atomic_helper_plane_set_property,
 	.reset = sti_plane_reset,
 	.atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_plane_destroy_state,
@@ -391,7 +393,7 @@ struct drm_plane *sti_cursor_create(struct drm_device *drm_dev,
 				       &sti_cursor_plane_helpers_funcs,
 				       cursor_supported_formats,
 				       ARRAY_SIZE(cursor_supported_formats),
-				       NULL, DRM_PLANE_TYPE_CURSOR, NULL);
+				       DRM_PLANE_TYPE_CURSOR, NULL);
 	if (res) {
 		DRM_ERROR("Failed to initialize universal plane\n");
 		goto err_plane;

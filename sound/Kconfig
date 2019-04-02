@@ -56,7 +56,7 @@ config SOUND_OSS_CORE_PRECLAIM
 
 source "sound/oss/dmasound/Kconfig"
 
-if !UML
+if !M68K && !UML
 
 menuconfig SND
 	tristate "Advanced Linux Sound Architecture"
@@ -108,16 +108,11 @@ source "sound/parisc/Kconfig"
 
 source "sound/soc/Kconfig"
 
-source "sound/x86/Kconfig"
-
-source "sound/synth/Kconfig"
-
 endif # SND
 
 menuconfig SOUND_PRIME
 	tristate "Open Sound System (DEPRECATED)"
 	select SOUND_OSS_CORE
-	depends on BROKEN
 	help
 	  Say 'Y' or 'M' to enable Open Sound System drivers.
 
@@ -127,7 +122,7 @@ source "sound/oss/Kconfig"
 
 endif # SOUND_PRIME
 
-endif # !UML
+endif # !M68K
 
 endif # SOUND
 

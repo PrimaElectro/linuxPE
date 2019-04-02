@@ -75,7 +75,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/usb/input.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/unaligned.h>
 
 /*
@@ -1676,7 +1676,7 @@ static struct attribute *aiptek_attributes[] = {
 	NULL
 };
 
-static const struct attribute_group aiptek_attribute_group = {
+static struct attribute_group aiptek_attribute_group = {
 	.attrs	= aiptek_attributes,
 };
 

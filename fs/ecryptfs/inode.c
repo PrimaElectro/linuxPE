@@ -284,7 +284,8 @@ ecryptfs_create(struct inode *directory_inode, struct dentry *ecryptfs_dentry,
 		iget_failed(ecryptfs_inode);
 		goto out;
 	}
-	d_instantiate_new(ecryptfs_dentry, ecryptfs_inode);
+	unlock_new_inode(ecryptfs_inode);
+	d_instantiate(ecryptfs_dentry, ecryptfs_inode);
 out:
 	return rc;
 }
@@ -630,23 +631,28 @@ out_lock:
 
 static char *ecryptfs_readlink_lower(struct dentry *dentry, size_t *bufsiz)
 {
-	DEFINE_DELAYED_CALL(done);
 	struct dentry *lower_dentry = ecryptfs_dentry_to_lower(dentry);
-	const char *link;
+	char *lower_buf;
 	char *buf;
+	mm_segment_t old_fs;
 	int rc;
 
-	link = vfs_get_link(lower_dentry, &done);
-	if (IS_ERR(link))
-		return ERR_CAST(link);
-
+	lower_buf = kmalloc(PATH_MAX, GFP_KERNEL);
+	if (!lower_buf)
+		return ERR_PTR(-ENOMEM);
+	old_fs = get_fs();
+	set_fs(get_ds());
+	rc = d_inode(lower_dentry)->i_op->readlink(lower_dentry,
+						   (char __user *)lower_buf,
+						   PATH_MAX);
+	set_fs(old_fs);
+	if (rc < 0)
+		goto out;
 	rc = ecryptfs_decode_and_decrypt_filename(&buf, bufsiz, dentry->d_sb,
-						  link, strlen(link));
-	do_delayed_call(&done);
-	if (rc)
-		return ERR_PTR(rc);
-
-	return buf;
+						  lower_buf, rc);
+out:
+	kfree(lower_buf);
+	return rc ? ERR_PTR(rc) : buf;
 }
 
 static const char *ecryptfs_get_link(struct dentry *dentry,
@@ -958,10 +964,9 @@ out:
 	return rc;
 }
 
-static int ecryptfs_getattr_link(const struct path *path, struct kstat *stat,
-				 u32 request_mask, unsigned int flags)
+static int ecryptfs_getattr_link(struct vfsmount *mnt, struct dentry *dentry,
+				 struct kstat *stat)
 {
-	struct dentry *dentry = path->dentry;
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat;
 	int rc = 0;
 
@@ -983,15 +988,13 @@ static int ecryptfs_getattr_link(const struct path *path, struct kstat *stat,
 	return rc;
 }
 
-static int ecryptfs_getattr(const struct path *path, struct kstat *stat,
-			    u32 request_mask, unsigned int flags)
+static int ecryptfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
+			    struct kstat *stat)
 {
-	struct dentry *dentry = path->dentry;
 	struct kstat lower_stat;
 	int rc;
 
-	rc = vfs_getattr(ecryptfs_dentry_to_lower_path(dentry), &lower_stat,
-			 request_mask, flags);
+	rc = vfs_getattr(ecryptfs_dentry_to_lower_path(dentry), &lower_stat);
 	if (!rc) {
 		fsstack_copy_attr_all(d_inode(dentry),
 				      ecryptfs_inode_to_lower(d_inode(dentry)));
@@ -1086,6 +1089,7 @@ out:
 }
 
 const struct inode_operations ecryptfs_symlink_iops = {
+	.readlink = generic_readlink,
 	.get_link = ecryptfs_get_link,
 	.permission = ecryptfs_permission,
 	.setattr = ecryptfs_setattr,

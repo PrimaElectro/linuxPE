@@ -138,7 +138,7 @@ struct nvec_chip {
 	struct device *dev;
 	int gpio;
 	int irq;
-	u32 i2c_addr;
+	int i2c_addr;
 	void __iomem *base;
 	struct clk *i2c_clk;
 	struct reset_control *rst;

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Generic wait-for-completion handler;
  *
@@ -12,8 +11,7 @@
  * Waiting for completion is a typically sync point, but not an exclusion point.
  */
 
-#include <linux/sched/signal.h>
-#include <linux/sched/debug.h>
+#include <linux/sched.h>
 #include <linux/completion.h>
 
 /**
@@ -32,17 +30,10 @@ void complete(struct completion *x)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&x->wait.lock, flags);
-
-	/*
-	 * Perform commit of crossrelease here.
-	 */
-	complete_release_commit(x);
-
-	if (x->done != UINT_MAX)
-		x->done++;
-	__wake_up_locked(&x->wait, TASK_NORMAL, 1);
-	spin_unlock_irqrestore(&x->wait.lock, flags);
+	raw_spin_lock_irqsave(&x->wait.lock, flags);
+	x->done++;
+	swake_up_locked(&x->wait);
+	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 }
 EXPORT_SYMBOL(complete);
 
@@ -54,22 +45,15 @@ EXPORT_SYMBOL(complete);
  *
  * It may be assumed that this function implies a write memory barrier before
  * changing the task state if and only if any tasks are woken up.
- *
- * Since complete_all() sets the completion of @x permanently to done
- * to allow multiple waiters to finish, a call to reinit_completion()
- * must be used on @x if @x is to be used again. The code must make
- * sure that all waiters have woken and finished before reinitializing
- * @x. Also note that the function completion_done() can not be used
- * to know if there are still waiters after complete_all() has been called.
  */
 void complete_all(struct completion *x)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&x->wait.lock, flags);
-	x->done = UINT_MAX;
-	__wake_up_locked(&x->wait, TASK_NORMAL, 0);
-	spin_unlock_irqrestore(&x->wait.lock, flags);
+	raw_spin_lock_irqsave(&x->wait.lock, flags);
+	x->done += UINT_MAX/2;
+	swake_up_all_locked(&x->wait);
+	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 }
 EXPORT_SYMBOL(complete_all);
 
@@ -78,25 +62,24 @@ do_wait_for_common(struct completion *x,
 		   long (*action)(long), long timeout, int state)
 {
 	if (!x->done) {
-		DECLARE_WAITQUEUE(wait, current);
+		DECLARE_SWAITQUEUE(wait);
 
-		__add_wait_queue_entry_tail_exclusive(&x->wait, &wait);
+		__prepare_to_swait(&x->wait, &wait);
 		do {
 			if (signal_pending_state(state, current)) {
 				timeout = -ERESTARTSYS;
 				break;
 			}
 			__set_current_state(state);
-			spin_unlock_irq(&x->wait.lock);
+			raw_spin_unlock_irq(&x->wait.lock);
 			timeout = action(timeout);
-			spin_lock_irq(&x->wait.lock);
+			raw_spin_lock_irq(&x->wait.lock);
 		} while (!x->done && timeout);
-		__remove_wait_queue(&x->wait, &wait);
+		__finish_swait(&x->wait, &wait);
 		if (!x->done)
 			return timeout;
 	}
-	if (x->done != UINT_MAX)
-		x->done--;
+	x->done--;
 	return timeout ?: 1;
 }
 
@@ -106,14 +89,9 @@ __wait_for_common(struct completion *x,
 {
 	might_sleep();
 
-	complete_acquire(x);
-
-	spin_lock_irq(&x->wait.lock);
+	raw_spin_lock_irq(&x->wait.lock);
 	timeout = do_wait_for_common(x, action, timeout, state);
-	spin_unlock_irq(&x->wait.lock);
-
-	complete_release(x);
-
+	raw_spin_unlock_irq(&x->wait.lock);
 	return timeout;
 }
 
@@ -299,12 +277,12 @@ bool try_wait_for_completion(struct completion *x)
 	if (!READ_ONCE(x->done))
 		return 0;
 
-	spin_lock_irqsave(&x->wait.lock, flags);
+	raw_spin_lock_irqsave(&x->wait.lock, flags);
 	if (!x->done)
 		ret = 0;
-	else if (x->done != UINT_MAX)
+	else
 		x->done--;
-	spin_unlock_irqrestore(&x->wait.lock, flags);
+	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL(try_wait_for_completion);
@@ -316,12 +294,9 @@ EXPORT_SYMBOL(try_wait_for_completion);
  *	Return: 0 if there are waiters (wait_for_completion() in progress)
  *		 1 if there are no waiters.
  *
- *	Note, this will always return true if complete_all() was called on @X.
  */
 bool completion_done(struct completion *x)
 {
-	unsigned long flags;
-
 	if (!READ_ONCE(x->done))
 		return false;
 
@@ -329,9 +304,14 @@ bool completion_done(struct completion *x)
 	 * If ->done, we need to wait for complete() to release ->wait.lock
 	 * otherwise we can end up freeing the completion before complete()
 	 * is done referencing it.
+	 *
+	 * The RMB pairs with complete()'s RELEASE of ->wait.lock and orders
+	 * the loads of ->done and ->wait.lock such that we cannot observe
+	 * the lock before complete() acquires it while observing the ->done
+	 * after it's acquired the lock.
 	 */
-	spin_lock_irqsave(&x->wait.lock, flags);
-	spin_unlock_irqrestore(&x->wait.lock, flags);
+	smp_rmb();
+	raw_spin_unlock_wait(&x->wait.lock);
 	return true;
 }
 EXPORT_SYMBOL(completion_done);

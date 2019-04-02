@@ -40,13 +40,13 @@
 #define D_MOUNT (D_SUPER | D_CONFIG/*|D_WARNING */)
 #define PRINT_CMD CDEBUG
 
-#include <obd.h>
-#include <lustre_compat.h>
-#include <obd_class.h>
-#include <uapi/linux/lustre/lustre_idl.h>
-#include <lustre_log.h>
-#include <lustre_disk.h>
-#include <uapi/linux/lustre/lustre_param.h>
+#include "../include/obd.h"
+#include "../include/lustre_compat.h"
+#include "../include/obd_class.h"
+#include "../include/lustre/lustre_user.h"
+#include "../include/lustre_log.h"
+#include "../include/lustre_disk.h"
+#include "../include/lustre_param.h"
 
 static int (*client_fill_super)(struct super_block *sb,
 				struct vfsmount *mnt);
@@ -88,17 +88,10 @@ int lustre_process_log(struct super_block *sb, char *logname,
 	lustre_cfg_bufs_set_string(bufs, 1, logname);
 	lustre_cfg_bufs_set(bufs, 2, cfg, sizeof(*cfg));
 	lustre_cfg_bufs_set(bufs, 3, &sb, sizeof(sb));
-	lcfg = kzalloc(lustre_cfg_len(bufs->lcfg_bufcount, bufs->lcfg_buflen),
-		       GFP_NOFS);
-	if (!lcfg) {
-		rc = -ENOMEM;
-		goto out;
-	}
-	lustre_cfg_init(lcfg, LCFG_LOG_START, bufs);
-
+	lcfg = lustre_cfg_new(LCFG_LOG_START, bufs);
 	rc = obd_process_config(mgc, sizeof(*lcfg), lcfg);
-	kfree(lcfg);
-out:
+	lustre_cfg_free(lcfg);
+
 	kfree(bufs);
 
 	if (rc == -EINVAL)
@@ -133,14 +126,9 @@ int lustre_end_log(struct super_block *sb, char *logname,
 	lustre_cfg_bufs_set_string(&bufs, 1, logname);
 	if (cfg)
 		lustre_cfg_bufs_set(&bufs, 2, cfg, sizeof(*cfg));
-	lcfg = kzalloc(lustre_cfg_len(bufs.lcfg_bufcount, bufs.lcfg_buflen),
-		       GFP_NOFS);
-	if (!lcfg)
-		return -ENOMEM;
-	lustre_cfg_init(lcfg, LCFG_LOG_END, &bufs);
-
+	lcfg = lustre_cfg_new(LCFG_LOG_END, &bufs);
 	rc = obd_process_config(mgc, sizeof(*lcfg), lcfg);
-	kfree(lcfg);
+	lustre_cfg_free(lcfg);
 	return rc;
 }
 EXPORT_SYMBOL(lustre_end_log);
@@ -170,14 +158,10 @@ static int do_lcfg(char *cfgname, lnet_nid_t nid, int cmd,
 	if (s4)
 		lustre_cfg_bufs_set_string(&bufs, 4, s4);
 
-	lcfg = kzalloc(lustre_cfg_len(bufs.lcfg_bufcount, bufs.lcfg_buflen),
-		       GFP_NOFS);
-	if (!lcfg)
-		return -ENOMEM;
-	lustre_cfg_init(lcfg, cmd, &bufs);
+	lcfg = lustre_cfg_new(cmd, &bufs);
 	lcfg->lcfg_nid = nid;
 	rc = class_process_config(lcfg);
-	kfree(lcfg);
+	lustre_cfg_free(lcfg);
 	return rc;
 }
 
@@ -277,7 +261,7 @@ int lustre_start_mgc(struct super_block *sb)
 
 			rc = obd_get_info(NULL, obd->obd_self_export,
 					  strlen(KEY_CONN_DATA), KEY_CONN_DATA,
-					  &vallen, data);
+					  &vallen, data, NULL);
 			LASSERT(rc == 0);
 			has_ir = OCD_HAS_FLAG(data, IMP_RECOV);
 			if (has_ir ^ !(*flags & LMD_FLG_NOIR)) {
@@ -398,7 +382,7 @@ int lustre_start_mgc(struct super_block *sb)
 	/* We connect to the MGS at setup, and don't disconnect until cleanup */
 	data->ocd_connect_flags = OBD_CONNECT_VERSION | OBD_CONNECT_AT |
 				  OBD_CONNECT_FULL20 | OBD_CONNECT_IMP_RECOV |
-				  OBD_CONNECT_LVB_TYPE | OBD_CONNECT_BULK_MBITS;
+				  OBD_CONNECT_LVB_TYPE;
 
 #if OBD_OCD_VERSION(3, 0, 53, 0) > LUSTRE_VERSION_CODE
 	data->ocd_connect_flags |= OBD_CONNECT_MNE_SWAB;
@@ -893,7 +877,7 @@ static int lmd_parse_mgs(struct lustre_mount_data *lmd, char **ptr)
  */
 static int lmd_parse(char *options, struct lustre_mount_data *lmd)
 {
-	char *s1, *s2, *devname = NULL;
+	char *s1, *s2, *s3, *devname = NULL;
 	struct lustre_mount_data *raw = (struct lustre_mount_data *)options;
 	int rc = 0;
 
@@ -922,7 +906,6 @@ static int lmd_parse(char *options, struct lustre_mount_data *lmd)
 	while (*s1) {
 		int clear = 0;
 		int time_min = OBD_RECOVERY_TIME_MIN;
-		char *s3;
 
 		/* Skip whitespace and extra commas */
 		while (*s1 == ' ' || *s1 == ',')
@@ -1233,7 +1216,8 @@ static struct file_system_type lustre_fs_type = {
 	.name	 = "lustre",
 	.mount	= lustre_mount,
 	.kill_sb      = lustre_kill_super,
-	.fs_flags	= FS_REQUIRES_DEV | FS_RENAME_DOES_D_MOVE,
+	.fs_flags     = FS_BINARY_MOUNTDATA | FS_REQUIRES_DEV |
+			FS_RENAME_DOES_D_MOVE,
 };
 MODULE_ALIAS_FS("lustre");
 

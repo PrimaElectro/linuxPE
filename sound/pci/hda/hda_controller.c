@@ -748,10 +748,8 @@ int snd_hda_attach_pcm_stream(struct hda_bus *_bus, struct hda_codec *codec,
 		return err;
 	strlcpy(pcm->name, cpcm->name, sizeof(pcm->name));
 	apcm = kzalloc(sizeof(*apcm), GFP_KERNEL);
-	if (apcm == NULL) {
-		snd_device_free(chip->card, pcm);
+	if (apcm == NULL)
 		return -ENOMEM;
-	}
 	apcm->chip = chip;
 	apcm->pcm = pcm;
 	apcm->codec = codec;
@@ -862,10 +860,6 @@ static int azx_rirb_get_response(struct hdac_bus *bus, unsigned int addr,
 		 */
 		return -EIO;
 	}
-
-	/* no fallback mechanism? */
-	if (!chip->fallback_to_single_cmd)
-		return -EIO;
 
 	/* a fatal communication error; need either to reset or to fallback
 	 * to the single_cmd mode
@@ -1347,9 +1341,6 @@ int azx_codec_configure(struct azx *chip)
 	list_for_each_codec_safe(codec, next, &chip->bus) {
 		snd_hda_codec_configure(codec);
 	}
-
-	if (!azx_bus(chip)->num_codecs)
-		return -ENODEV;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(azx_codec_configure);

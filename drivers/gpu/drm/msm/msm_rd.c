@@ -84,6 +84,9 @@ struct msm_rd_state {
 
 	bool open;
 
+	struct dentry *ent;
+	struct drm_info_node *node;
+
 	/* current submit to read out: */
 	struct msm_gem_submit *submit;
 
@@ -109,18 +112,12 @@ static void rd_write(struct msm_rd_state *rd, const void *buf, int sz)
 		char *fptr = &fifo->buf[fifo->head];
 		int n;
 
-		wait_event(rd->fifo_event, circ_space(&rd->fifo) > 0 || !rd->open);
-		if (!rd->open)
-			return;
+		wait_event(rd->fifo_event, circ_space(&rd->fifo) > 0);
 
-		/* Note that smp_load_acquire() is not strictly required
-		 * as CIRC_SPACE_TO_END() does not access the tail more
-		 * than once.
-		 */
 		n = min(sz, circ_space_to_end(&rd->fifo));
 		memcpy(fptr, ptr, n);
 
-		smp_store_release(&fifo->head, (fifo->head + n) & (BUF_SZ - 1));
+		fifo->head = (fifo->head + n) & (BUF_SZ - 1);
 		sz  -= n;
 		ptr += n;
 
@@ -151,17 +148,13 @@ static ssize_t rd_read(struct file *file, char __user *buf,
 	if (ret)
 		goto out;
 
-	/* Note that smp_load_acquire() is not strictly required
-	 * as CIRC_CNT_TO_END() does not access the head more than
-	 * once.
-	 */
 	n = min_t(int, sz, circ_count_to_end(&rd->fifo));
 	if (copy_to_user(buf, fptr, n)) {
 		ret = -EFAULT;
 		goto out;
 	}
 
-	smp_store_release(&fifo->tail, (fifo->tail + n) & (BUF_SZ - 1));
+	fifo->tail = (fifo->tail + n) & (BUF_SZ - 1);
 	*ppos += n;
 
 	wake_up_all(&rd->fifo_event);
@@ -209,10 +202,7 @@ out:
 static int rd_release(struct inode *inode, struct file *file)
 {
 	struct msm_rd_state *rd = inode->i_private;
-
 	rd->open = false;
-	wake_up_all(&rd->fifo_event);
-
 	return 0;
 }
 
@@ -229,7 +219,6 @@ int msm_rd_debugfs_init(struct drm_minor *minor)
 {
 	struct msm_drm_private *priv = minor->dev->dev_private;
 	struct msm_rd_state *rd;
-	struct dentry *ent;
 
 	/* only create on first minor: */
 	if (priv->rd)
@@ -247,41 +236,65 @@ int msm_rd_debugfs_init(struct drm_minor *minor)
 
 	init_waitqueue_head(&rd->fifo_event);
 
-	ent = debugfs_create_file("rd", S_IFREG | S_IRUGO,
+	rd->node = kzalloc(sizeof(*rd->node), GFP_KERNEL);
+	if (!rd->node)
+		goto fail;
+
+	rd->ent = debugfs_create_file("rd", S_IFREG | S_IRUGO,
 			minor->debugfs_root, rd, &rd_debugfs_fops);
-	if (!ent) {
+	if (!rd->ent) {
 		DRM_ERROR("Cannot create /sys/kernel/debug/dri/%pd/rd\n",
 				minor->debugfs_root);
 		goto fail;
 	}
 
+	rd->node->minor = minor;
+	rd->node->dent  = rd->ent;
+	rd->node->info_ent = NULL;
+
+	mutex_lock(&minor->debugfs_lock);
+	list_add(&rd->node->list, &minor->debugfs_list);
+	mutex_unlock(&minor->debugfs_lock);
+
 	return 0;
 
 fail:
-	msm_rd_debugfs_cleanup(priv);
+	msm_rd_debugfs_cleanup(minor);
 	return -1;
 }
 
-void msm_rd_debugfs_cleanup(struct msm_drm_private *priv)
+void msm_rd_debugfs_cleanup(struct drm_minor *minor)
 {
+	struct msm_drm_private *priv = minor->dev->dev_private;
 	struct msm_rd_state *rd = priv->rd;
 
 	if (!rd)
 		return;
 
 	priv->rd = NULL;
+
+	debugfs_remove(rd->ent);
+
+	if (rd->node) {
+		mutex_lock(&minor->debugfs_lock);
+		list_del(&rd->node->list);
+		mutex_unlock(&minor->debugfs_lock);
+		kfree(rd->node);
+	}
+
 	mutex_destroy(&rd->read_lock);
+
 	kfree(rd);
 }
 
 static void snapshot_buf(struct msm_rd_state *rd,
 		struct msm_gem_submit *submit, int idx,
-		uint64_t iova, uint32_t size)
+		uint32_t iova, uint32_t size)
 {
 	struct msm_gem_object *obj = submit->bos[idx].obj;
 	const char *buf;
 
-	buf = msm_gem_get_vaddr(&obj->base);
+	buf = msm_gem_get_vaddr_locked(&obj->base);
 	if (IS_ERR(buf))
 		return;
 
@@ -293,10 +306,10 @@ static void snapshot_buf(struct msm_rd_state *rd,
 	}
 
 	rd_write_section(rd, RD_GPUADDR,
-			(uint32_t[3]){ iova, size, iova >> 32 }, 12);
+			(uint32_t[2]){ iova, size }, 8);
 	rd_write_section(rd, RD_BUFFER_CONTENTS, buf, size);
 
-	msm_gem_put_vaddr(&obj->base);
+	msm_gem_put_vaddr_locked(&obj->base);
 }
 
 /* called under struct_mutex */
@@ -335,7 +348,7 @@ void msm_rd_dump_submit(struct msm_gem_submit *submit)
 	}
 
 	for (i = 0; i < submit->nr_cmds; i++) {
-		uint64_t iova = submit->cmd[i].iova;
+		uint32_t iova = submit->cmd[i].iova;
 		uint32_t szd  = submit->cmd[i].size; /* in dwords */
 
 		/* snapshot cmdstream bo's (if we haven't already): */
@@ -354,7 +367,7 @@ void msm_rd_dump_submit(struct msm_gem_submit *submit)
 		case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
 		case MSM_SUBMIT_CMD_BUF:
 			rd_write_section(rd, RD_CMDSTREAM_ADDR,
-				(uint32_t[3]){ iova, szd, iova >> 32 }, 12);
+					(uint32_t[2]){ iova, szd }, 8);
 			break;
 		}
 	}

@@ -7,7 +7,6 @@
 #include <linux/export.h>
 #include <linux/pagemap.h>
 #include <linux/slab.h>
-#include <linux/cred.h>
 #include <linux/mount.h>
 #include <linux/vfs.h>
 #include <linux/quotaops.h>
@@ -17,14 +16,14 @@
 #include <linux/writeback.h>
 #include <linux/buffer_head.h> /* sync_mapping_buffers */
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "internal.h"
 
-int simple_getattr(const struct path *path, struct kstat *stat,
-		   u32 request_mask, unsigned int query_flags)
+int simple_getattr(struct vfsmount *mnt, struct dentry *dentry,
+		   struct kstat *stat)
 {
-	struct inode *inode = d_inode(path->dentry);
+	struct inode *inode = d_inode(dentry);
 	generic_fillattr(inode, stat);
 	stat->blocks = inode->i_mapping->nrpages << (PAGE_SHIFT - 9);
 	return 0;
@@ -90,7 +89,7 @@ static struct dentry *next_positive(struct dentry *parent,
 				    struct list_head *from,
 				    int count)
 {
-	unsigned *seq = &parent->d_inode->i_dir_seq, n;
+	unsigned *seq = &parent->d_inode->__i_dir_seq, n;
 	struct dentry *res;
 	struct list_head *p;
 	bool skipped;
@@ -123,8 +122,9 @@ retry:
 static void move_cursor(struct dentry *cursor, struct list_head *after)
 {
 	struct dentry *parent = cursor->d_parent;
-	unsigned n, *seq = &parent->d_inode->i_dir_seq;
+	unsigned n, *seq = &parent->d_inode->__i_dir_seq;
 	spin_lock(&parent->d_lock);
+	preempt_disable_rt();
 	for (;;) {
 		n = *seq;
 		if (!(n & 1) && cmpxchg(seq, n, n + 1) == n)
@@ -137,6 +137,7 @@ static void move_cursor(struct dentry *cursor, struct list_head *after)
 	else
 		list_add_tail(&cursor->d_child, &parent->d_subdirs);
 	smp_store_release(seq, n + 2);
+	preempt_enable_rt();
 	spin_unlock(&parent->d_lock);
 }
 
@@ -467,8 +468,6 @@ EXPORT_SYMBOL(simple_write_begin);
  * is not called, so a filesystem that actually does store data in .write_inode
  * should extend on what's done here with a call to mark_inode_dirty() in the
  * case that i_size has changed.
- *
- * Use *ONLY* with simple_readpage()
  */
 int simple_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
@@ -478,14 +477,14 @@ int simple_write_end(struct file *file, struct address_space *mapping,
 	loff_t last_pos = pos + copied;
 
 	/* zero the stale part of the page if we did a short copy */
-	if (!PageUptodate(page)) {
-		if (copied < len) {
-			unsigned from = pos & (PAGE_SIZE - 1);
+	if (copied < len) {
+		unsigned from = pos & (PAGE_SIZE - 1);
 
-			zero_user(page, from + copied, len - copied);
-		}
-		SetPageUptodate(page);
+		zero_user(page, from + copied, len - copied);
 	}
+
+	if (!PageUptodate(page))
+		SetPageUptodate(page);
 	/*
 	 * No need to use i_size_read() here, the i_size
 	 * cannot change under us because we hold the i_mutex.
@@ -507,7 +506,7 @@ EXPORT_SYMBOL(simple_write_end);
  * to pass it an appropriate max_reserved value to avoid collisions.
  */
 int simple_fill_super(struct super_block *s, unsigned long magic,
-		      const struct tree_descr *files)
+		      struct tree_descr *files)
 {
 	struct inode *inode;
 	struct dentry *root;
@@ -974,7 +973,7 @@ int __generic_file_fsync(struct file *file, loff_t start, loff_t end,
 	int err;
 	int ret;
 
-	err = file_write_and_wait_range(file, start, end);
+	err = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (err)
 		return err;
 
@@ -991,10 +990,6 @@ int __generic_file_fsync(struct file *file, loff_t start, loff_t end,
 
 out:
 	inode_unlock(inode);
-	/* check and advance again to catch errors after syncing out buffers */
-	err = file_check_and_advance_wb_err(file);
-	if (ret == 0)
-		ret = err;
 	return ret;
 }
 EXPORT_SYMBOL(__generic_file_fsync);
@@ -1137,6 +1132,7 @@ EXPORT_SYMBOL(simple_get_link);
 
 const struct inode_operations simple_symlink_inode_operations = {
 	.get_link = simple_get_link,
+	.readlink = generic_readlink
 };
 EXPORT_SYMBOL(simple_symlink_inode_operations);
 
@@ -1148,10 +1144,10 @@ static struct dentry *empty_dir_lookup(struct inode *dir, struct dentry *dentry,
 	return ERR_PTR(-ENOENT);
 }
 
-static int empty_dir_getattr(const struct path *path, struct kstat *stat,
-			     u32 request_mask, unsigned int query_flags)
+static int empty_dir_getattr(struct vfsmount *mnt, struct dentry *dentry,
+				 struct kstat *stat)
 {
-	struct inode *inode = d_inode(path->dentry);
+	struct inode *inode = d_inode(dentry);
 	generic_fillattr(inode, stat);
 	return 0;
 }

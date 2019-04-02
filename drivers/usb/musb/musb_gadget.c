@@ -442,6 +442,7 @@ void musb_g_tx(struct musb *musb, u8 epnum)
 	req = next_request(musb_ep);
 	request = &req->request;
 
+	trace_musb_req_tx(req);
 	csr = musb_readw(epio, MUSB_TXCSR);
 	musb_dbg(musb, "<== %s, txcsr %04x", musb_ep->end_point.name, csr);
 
@@ -477,10 +478,11 @@ void musb_g_tx(struct musb *musb, u8 epnum)
 	}
 
 	if (request) {
-
-		trace_musb_req_tx(req);
+		u8	is_dma = 0;
+		bool	short_packet = false;
 
 		if (dma && (csr & MUSB_TXCSR_DMAENAB)) {
+			is_dma = 1;
 			csr |= MUSB_TXCSR_P_WZC_BITS;
 			csr &= ~(MUSB_TXCSR_DMAENAB | MUSB_TXCSR_P_UNDERRUN |
 				 MUSB_TXCSR_TXPKTRDY | MUSB_TXCSR_AUTOSET);
@@ -498,8 +500,16 @@ void musb_g_tx(struct musb *musb, u8 epnum)
 		 */
 		if ((request->zero && request->length)
 			&& (request->length % musb_ep->packet_sz == 0)
-			&& (request->actual == request->length)) {
+			&& (request->actual == request->length))
+				short_packet = true;
 
+		if ((musb_dma_inventra(musb) || musb_dma_ux500(musb)) &&
+			(is_dma && (!dma->desired_mode ||
+				(request->actual &
+					(musb_ep->packet_sz - 1)))))
+				short_packet = true;
+
+		if (short_packet) {
 			/*
 			 * On DMA completion, FIFO may not be
 			 * available yet...
@@ -964,8 +974,8 @@ static int musb_gadget_enable(struct usb_ep *ep,
 		goto fail;
 
 	/* REVISIT this rules out high bandwidth periodic transfers */
-	tmp = usb_endpoint_maxp_mult(desc) - 1;
-	if (tmp) {
+	tmp = usb_endpoint_maxp(desc);
+	if (tmp & ~0x07ff) {
 		int ok;
 
 		if (usb_endpoint_dir_in(desc))
@@ -977,12 +987,12 @@ static int musb_gadget_enable(struct usb_ep *ep,
 			musb_dbg(musb, "no support for high bandwidth ISO");
 			goto fail;
 		}
-		musb_ep->hb_mult = tmp;
+		musb_ep->hb_mult = (tmp >> 11) & 3;
 	} else {
 		musb_ep->hb_mult = 0;
 	}
 
-	musb_ep->packet_sz = usb_endpoint_maxp(desc);
+	musb_ep->packet_sz = tmp & 0x7ff;
 	tmp = musb_ep->packet_sz * (musb_ep->hb_mult + 1);
 
 	/* enable the interrupts for the endpoint, set the endpoint
@@ -1095,7 +1105,11 @@ static int musb_gadget_enable(struct usb_ep *ep,
 
 	pr_debug("%s periph: enabled %s for %s %s, %smaxpacket %d\n",
 			musb_driver_name, musb_ep->end_point.name,
-			musb_ep_xfertype_string(musb_ep->type),
+			({ char *s; switch (musb_ep->type) {
+			case USB_ENDPOINT_XFER_BULK:	s = "bulk"; break;
+			case USB_ENDPOINT_XFER_INT:	s = "int"; break;
+			default:			s = "iso"; break;
+			} s; }),
 			musb_ep->is_in ? "IN" : "OUT",
 			musb_ep->dma ? "dma, " : "",
 			musb_ep->packet_sz);

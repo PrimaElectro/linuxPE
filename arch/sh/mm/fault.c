@@ -13,7 +13,6 @@
  */
 #include <linux/kernel.h>
 #include <linux/mm.h>
-#include <linux/sched/signal.h>
 #include <linux/hardirq.h>
 #include <linux/kprobes.h>
 #include <linux/perf_event.h>

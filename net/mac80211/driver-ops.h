@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
 * Portions of this file
 * Copyright(c) 2016 Intel Deutschland GmbH
@@ -165,8 +164,7 @@ static inline void drv_bss_info_changed(struct ieee80211_local *local,
 	if (WARN_ON_ONCE(sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE ||
 			 sdata->vif.type == NL80211_IFTYPE_NAN ||
 			 (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
-			  !sdata->vif.mu_mimo_owner &&
-			  !(changed & BSS_CHANGED_TXPOWER))))
+			  !sdata->vif.mu_mimo_owner)))
 		return;
 
 	if (!check_sdata_in_driver(sdata))

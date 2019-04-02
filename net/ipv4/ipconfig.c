@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  Automatic Configuration of IP -- use DHCP, BOOTP, RARP, or
  *  user-supplied information to configure own IP address and routes.
@@ -58,12 +57,11 @@
 #include <linux/export.h>
 #include <net/net_namespace.h>
 #include <net/arp.h>
-#include <net/dsa.h>
 #include <net/ip.h>
 #include <net/ipconfig.h>
 #include <net/route.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <net/checksum.h>
 #include <asm/processor.h>
 
@@ -781,11 +779,6 @@ static void __init ic_bootp_init_ext(u8 *e)
  */
 static inline void __init ic_bootp_init(void)
 {
-	/* Re-initialise all name servers to NONE, in case any were set via the
-	 * "ip=" or "nfsaddrs=" kernel command line parameters: any IP addresses
-	 * specified there will already have been decoded but are no longer
-	 * needed
-	 */
 	ic_nameservers_predef();
 
 	dev_add_pack(&bootp_packet_type);
@@ -819,7 +812,8 @@ static void __init ic_bootp_send_if(struct ic_device *d, unsigned long jiffies_d
 	if (!skb)
 		return;
 	skb_reserve(skb, hlen);
-	b = skb_put_zero(skb, sizeof(struct bootp_pkt));
+	b = (struct bootp_pkt *) skb_put(skb, sizeof(struct bootp_pkt));
+	memset(b, 0, sizeof(struct bootp_pkt));
 
 	/* Construct IP header */
 	skb_reset_network_header(skb);
@@ -1407,13 +1401,6 @@ static int __init ip_auto_config(void)
 	int err;
 	unsigned int i;
 
-	/* Initialise all name servers to NONE (but only if the "ip=" or
-	 * "nfsaddrs=" kernel command line parameters weren't decoded, otherwise
-	 * we'll overwrite the IP addresses specified there)
-	 */
-	if (ic_set_manually == 0)
-		ic_nameservers_predef();
-
 #ifdef CONFIG_PROC_FS
 	proc_create("pnp", S_IRUGO, init_net.proc_net, &pnp_seq_fops);
 #endif /* CONFIG_PROC_FS */
@@ -1634,7 +1621,6 @@ static int __init ip_auto_config_setup(char *addrs)
 		return 1;
 	}
 
-	/* Initialise all name servers to NONE */
 	ic_nameservers_predef();
 
 	/* Parse string for static IP assignment.  */

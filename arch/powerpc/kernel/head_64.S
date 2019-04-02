@@ -92,13 +92,13 @@ END_FTR_SECTION(0, 1)
 	.balign 8
 	.globl  __secondary_hold_spinloop
 __secondary_hold_spinloop:
-	.8byte	0x0
+	.llong	0x0
 
 	/* Secondary processors write this value with their cpu # */
 	/* after they enter the spin loop immediately below.	  */
 	.globl	__secondary_hold_acknowledge
 __secondary_hold_acknowledge:
-	.8byte	0x0
+	.llong	0x0
 
 #ifdef CONFIG_RELOCATABLE
 	/* This flag is set to 1 by a loader if the kernel should run
@@ -107,19 +107,12 @@ __secondary_hold_acknowledge:
 	 * crash_kernel region.  The loader is responsible for
 	 * observing the alignment requirement.
 	 */
-
-#ifdef CONFIG_RELOCATABLE_TEST
-#define RUN_AT_LOAD_DEFAULT 1		/* Test relocation, do not copy to 0 */
-#else
-#define RUN_AT_LOAD_DEFAULT 0x72756e30  /* "run0" -- relocate to 0 by default */
-#endif
-
 	/* Do not move this variable as kexec-tools knows about it. */
 	. = 0x5c
 	.globl	__run_at_load
 __run_at_load:
 DEFINE_FIXED_SYMBOL(__run_at_load)
-	.long	RUN_AT_LOAD_DEFAULT
+	.long	0x72756e30	/* "run0" -- relocate to 0 by default */
 #endif
 
 	. = 0x60
@@ -160,7 +153,7 @@ __secondary_hold:
 	cmpdi	0,r12,0
 	beq	100b
 
-#if defined(CONFIG_SMP) || defined(CONFIG_KEXEC_CORE)
+#if defined(CONFIG_SMP) || defined(CONFIG_KEXEC)
 #ifdef CONFIG_PPC_BOOK3E
 	tovirt(r12,r12)
 #endif
@@ -650,7 +643,7 @@ __after_prom_start:
 	bctr
 
 .balign 8
-p_end: .8byte _end - copy_to_here
+p_end: .llong _end - copy_to_here
 
 4:
 	/*
@@ -892,7 +885,7 @@ _GLOBAL(relative_toc)
 	blr
 
 .balign 8
-p_toc:	.8byte	__toc_start + 0x8000 - 0b
+p_toc:	.llong	__toc_start + 0x8000 - 0b
 
 /*
  * This is where the main kernel code starts.
@@ -949,8 +942,7 @@ start_here_multiplatform:
 	LOAD_REG_ADDR(r3,init_thread_union)
 
 	/* set up a stack pointer */
-	LOAD_REG_IMMEDIATE(r1,THREAD_SIZE)
-	add	r1,r3,r1
+	addi	r1,r3,THREAD_SIZE
 	li	r0,0
 	stdu	r0,-STACK_FRAME_OVERHEAD(r1)
 

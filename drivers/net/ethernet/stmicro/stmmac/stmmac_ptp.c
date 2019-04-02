@@ -12,6 +12,10 @@
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
 
+  You should have received a copy of the GNU General Public License along with
+  this program; if not, write to the Free Software Foundation, Inc.,
+  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
 
@@ -152,7 +156,7 @@ static int stmmac_enable(struct ptp_clock_info *ptp,
 }
 
 /* structure describing a PTP hardware clock */
-static const struct ptp_clock_info stmmac_ptp_clock_ops = {
+static struct ptp_clock_info stmmac_ptp_clock_ops = {
 	.owner = THIS_MODULE,
 	.name = "stmmac_ptp_clock",
 	.max_adj = 62500000,

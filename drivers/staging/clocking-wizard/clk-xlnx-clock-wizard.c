@@ -68,7 +68,7 @@ struct clk_wzrd {
 	struct clk *axi_clk;
 	struct clk *clks_internal[wzrd_clk_int_max];
 	struct clk *clkout[WZRD_NUM_OUTPUTS];
-	unsigned int speed_grade;
+	int speed_grade;
 	bool suspended;
 };
 

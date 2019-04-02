@@ -136,9 +136,10 @@ static void process_recv(struct ishtp_cl *hid_ishtp_cl, void *recv_buf,
 				if (1 + sizeof(struct device_info) * i >=
 						payload_len) {
 					dev_err(&client_data->cl_device->dev,
-						"[hid-ish]: [ENUM_DEVICES]: content size %zu is bigger than payload_len %zu\n",
+						"[hid-ish]: [ENUM_DEVICES]: content size %lu is bigger than payload_len %u\n",
 						1 + sizeof(struct device_info)
-						* i, payload_len);
+						* i,
+						(unsigned int)payload_len);
 				}
 
 				if (1 + sizeof(struct device_info) * i >=

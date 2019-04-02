@@ -122,6 +122,25 @@ static inline int calc_divisor(int bps)
 	return (12000000 + 2*bps) / (4*bps);
 }
 
+static int ark3116_attach(struct usb_serial *serial)
+{
+	/* make sure we have our end-points */
+	if ((serial->num_bulk_in == 0) ||
+	    (serial->num_bulk_out == 0) ||
+	    (serial->num_interrupt_in == 0)) {
+		dev_err(&serial->dev->dev,
+			"%s - missing endpoint - "
+			"bulk in: %d, bulk out: %d, int in %d\n",
+			KBUILD_MODNAME,
+			serial->num_bulk_in,
+			serial->num_bulk_out,
+			serial->num_interrupt_in);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ark3116_port_probe(struct usb_serial_port *port)
 {
 	struct usb_serial *serial = port->serial;
@@ -174,8 +193,10 @@ static int ark3116_port_probe(struct usb_serial_port *port)
 	if (priv->irda)
 		ark3116_write_reg(serial, 0x9, 0);
 
-	dev_info(&port->dev, "using %s mode\n", priv->irda ? "IrDA" : "RS232");
-
+	dev_info(&serial->dev->dev,
+		"%s using %s mode\n",
+		KBUILD_MODNAME,
+		priv->irda ? "IrDA" : "RS232");
 	return 0;
 }
 
@@ -311,8 +332,9 @@ static void ark3116_set_termios(struct tty_struct *tty,
 
 	/* check for software flow control */
 	if (I_IXOFF(tty) || I_IXON(tty)) {
-		dev_warn(&port->dev,
-				"software flow control not implemented\n");
+		dev_warn(&serial->dev->dev,
+			 "%s: don't know how to do software flow control\n",
+			 KBUILD_MODNAME);
 	}
 
 	/* Don't rewrite B0 */
@@ -331,8 +353,8 @@ static void ark3116_close(struct usb_serial_port *port)
 	ark3116_write_reg(serial, UART_IER, 0);
 
 	usb_serial_generic_close(port);
-
-	usb_kill_urb(port->interrupt_in_urb);
+	if (serial->num_interrupt_in)
+		usb_kill_urb(port->interrupt_in_urb);
 }
 
 static int ark3116_open(struct tty_struct *tty, struct usb_serial_port *port)
@@ -600,8 +622,9 @@ static void ark3116_read_int_callback(struct urb *urb)
 
 	result = usb_submit_urb(urb, GFP_ATOMIC);
 	if (result)
-		dev_err(&port->dev, "failed to resubmit interrupt urb: %d\n",
-			result);
+		dev_err(&urb->dev->dev,
+			"%s - Error %d submitting interrupt urb\n",
+			__func__, result);
 }
 
 
@@ -658,9 +681,7 @@ static struct usb_serial_driver ark3116_device = {
 	},
 	.id_table =		id_table,
 	.num_ports =		1,
-	.num_bulk_in =		1,
-	.num_bulk_out =		1,
-	.num_interrupt_in =	1,
+	.attach =		ark3116_attach,
 	.port_probe =		ark3116_port_probe,
 	.port_remove =		ark3116_port_remove,
 	.set_termios =		ark3116_set_termios,

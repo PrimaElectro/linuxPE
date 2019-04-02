@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *    SCLP line mode terminal driver.
  *
@@ -8,6 +7,7 @@
  *		 Martin Schwidefsky <schwidefsky@de.ibm.com>
  */
 
+#include <linux/module.h>
 #include <linux/kmod.h>
 #include <linux/tty.h>
 #include <linux/tty_driver.h>
@@ -16,7 +16,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/gfp.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "ctrlchar.h"
 #include "sclp.h"
@@ -573,4 +573,4 @@ sclp_tty_init(void)
 	sclp_tty_driver = driver;
 	return 0;
 }
-device_initcall(sclp_tty_init);
+module_init(sclp_tty_init);

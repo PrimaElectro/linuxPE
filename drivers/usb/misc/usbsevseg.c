@@ -33,7 +33,7 @@ static const struct usb_device_id id_table[] = {
 MODULE_DEVICE_TABLE(usb, id_table);
 
 /* the different text display modes the device is capable of */
-static const char *display_textmodes[] = {"raw", "hex", "ascii"};
+static char *display_textmodes[] = {"raw", "hex", "ascii", NULL};
 
 struct usb_sevsegdev {
 	struct usb_device *udev;
@@ -280,7 +280,7 @@ static ssize_t show_attr_textmode(struct device *dev,
 
 	buf[0] = 0;
 
-	for (i = 0; i < ARRAY_SIZE(display_textmodes); i++) {
+	for (i = 0; display_textmodes[i]; i++) {
 		if (mydev->textmode == i) {
 			strcat(buf, " [");
 			strcat(buf, display_textmodes[i]);
@@ -304,13 +304,15 @@ static ssize_t set_attr_textmode(struct device *dev,
 	struct usb_sevsegdev *mydev = usb_get_intfdata(intf);
 	int i;
 
-	i = sysfs_match_string(display_textmodes, buf);
-	if (i < 0)
-		return i;
+	for (i = 0; display_textmodes[i]; i++) {
+		if (sysfs_streq(display_textmodes[i], buf)) {
+			mydev->textmode = i;
+			update_display_visual(mydev, GFP_KERNEL);
+			return count;
+		}
+	}
 
-	mydev->textmode = i;
-	update_display_visual(mydev, GFP_KERNEL);
-	return count;
+	return -EINVAL;
 }
 
 static DEVICE_ATTR(textmode, S_IRUGO | S_IWUSR, show_attr_textmode, set_attr_textmode);
@@ -330,7 +332,7 @@ static struct attribute *dev_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group dev_attr_grp = {
+static struct attribute_group dev_attr_grp = {
 	.attrs = dev_attrs,
 };
 

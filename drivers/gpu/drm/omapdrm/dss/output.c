@@ -22,6 +22,7 @@
 #include <linux/of.h>
 
 #include "omapdss.h"
+#include "dss.h"
 
 static LIST_HEAD(output_list);
 static DEFINE_MUTEX(output_lock);
@@ -34,15 +35,14 @@ int omapdss_output_set_device(struct omap_dss_device *out,
 	mutex_lock(&output_lock);
 
 	if (out->dst) {
-		dev_err(out->dev,
-			"output already has device %s connected to it\n",
+		DSSERR("output already has device %s connected to it\n",
 			out->dst->name);
 		r = -EINVAL;
 		goto err;
 	}
 
 	if (out->output_type != dssdev->type) {
-		dev_err(out->dev, "output type and display type don't match\n");
+		DSSERR("output type and display type don't match\n");
 		r = -EINVAL;
 		goto err;
 	}
@@ -67,16 +67,14 @@ int omapdss_output_unset_device(struct omap_dss_device *out)
 	mutex_lock(&output_lock);
 
 	if (!out->dst) {
-		dev_err(out->dev,
-			"output doesn't have a device connected to it\n");
+		DSSERR("output doesn't have a device connected to it\n");
 		r = -EINVAL;
 		goto err;
 	}
 
 	if (out->dst->state != OMAP_DSS_DISPLAY_DISABLED) {
-		dev_err(out->dev,
-			"device %s is not disabled, cannot unset device\n",
-			out->dst->name);
+		DSSERR("device %s is not disabled, cannot unset device\n",
+				out->dst->name);
 		r = -EINVAL;
 		goto err;
 	}
@@ -107,19 +105,6 @@ void omapdss_unregister_output(struct omap_dss_device *out)
 }
 EXPORT_SYMBOL(omapdss_unregister_output);
 
-bool omapdss_component_is_output(struct device_node *node)
-{
-	struct omap_dss_device *out;
-
-	list_for_each_entry(out, &output_list, list) {
-		if (out->dev->of_node == node)
-			return true;
-	}
-
-	return false;
-}
-EXPORT_SYMBOL(omapdss_component_is_output);
-
 struct omap_dss_device *omap_dss_get_output(enum omap_dss_output_id id)
 {
 	struct omap_dss_device *out;
@@ -132,6 +117,19 @@ struct omap_dss_device *omap_dss_get_output(enum omap_dss_output_id id)
 	return NULL;
 }
 EXPORT_SYMBOL(omap_dss_get_output);
+
+struct omap_dss_device *omap_dss_find_output(const char *name)
+{
+	struct omap_dss_device *out;
+
+	list_for_each_entry(out, &output_list, list) {
+		if (strcmp(out->name, name) == 0)
+			return omap_dss_get_device(out);
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(omap_dss_find_output);
 
 struct omap_dss_device *omap_dss_find_output_by_port_node(struct device_node *port)
 {
@@ -203,9 +201,10 @@ void dss_mgr_disconnect(enum omap_channel channel,
 }
 EXPORT_SYMBOL(dss_mgr_disconnect);
 
-void dss_mgr_set_timings(enum omap_channel channel, const struct videomode *vm)
+void dss_mgr_set_timings(enum omap_channel channel,
+		const struct omap_video_timings *timings)
 {
-	dss_mgr_ops->set_timings(channel, vm);
+	dss_mgr_ops->set_timings(channel, timings);
 }
 EXPORT_SYMBOL(dss_mgr_set_timings);
 

@@ -23,6 +23,7 @@
 #include <linux/threads.h>
 #include <linux/mm.h>
 #include <linux/memblock.h>
+#include <linux/bootmem.h>
 
 extern int mem_init_done;
 

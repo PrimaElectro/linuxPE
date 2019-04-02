@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/drivers/char/mem.c
  *
@@ -107,8 +106,6 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 	phys_addr_t p = *ppos;
 	ssize_t read, sz;
 	void *ptr;
-	char *bounce;
-	int err;
 
 	if (p != *ppos)
 		return 0;
@@ -131,22 +128,15 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 	}
 #endif
 
-	bounce = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!bounce)
-		return -ENOMEM;
-
 	while (count > 0) {
 		unsigned long remaining;
-		int allowed, probe;
+		int allowed;
 
 		sz = size_inside_page(p, count);
 
-		err = -EPERM;
 		allowed = page_is_allowed(p >> PAGE_SHIFT);
 		if (!allowed)
-			goto failed;
-
-		err = -EFAULT;
+			return -EPERM;
 		if (allowed == 2) {
 			/* Show zeros for restricted memory. */
 			remaining = clear_user(buf, sz);
@@ -158,32 +148,24 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 			 */
 			ptr = xlate_dev_mem_ptr(p);
 			if (!ptr)
-				goto failed;
+				return -EFAULT;
 
-			probe = probe_kernel_read(bounce, ptr, sz);
+			remaining = copy_to_user(buf, ptr, sz);
+
 			unxlate_dev_mem_ptr(p, ptr);
-			if (probe)
-				goto failed;
-
-			remaining = copy_to_user(buf, bounce, sz);
 		}
 
 		if (remaining)
-			goto failed;
+			return -EFAULT;
 
 		buf += sz;
 		p += sz;
 		count -= sz;
 		read += sz;
 	}
-	kfree(bounce);
 
 	*ppos += read;
 	return read;
-
-failed:
-	kfree(bounce);
-	return err;
 }
 
 static ssize_t write_mem(struct file *file, const char __user *buf,

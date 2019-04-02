@@ -72,7 +72,8 @@ static const struct nf_chain_type filter_arp = {
 	.family		= NFPROTO_ARP,
 	.owner		= THIS_MODULE,
 	.hook_mask	= (1 << NF_ARP_IN) |
-			  (1 << NF_ARP_OUT),
+			  (1 << NF_ARP_OUT) |
+			  (1 << NF_ARP_FORWARD),
 };
 
 static int __init nf_tables_arp_init(void)

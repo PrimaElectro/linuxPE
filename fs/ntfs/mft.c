@@ -23,7 +23,6 @@
 #include <linux/buffer_head.h>
 #include <linux/slab.h>
 #include <linux/swap.h>
-#include <linux/bio.h>
 
 #include "attrib.h"
 #include "aops.h"

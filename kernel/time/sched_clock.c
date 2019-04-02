@@ -13,7 +13,6 @@
 #include <linux/kernel.h>
 #include <linux/moduleparam.h>
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
 #include <linux/syscore_ops.h>
 #include <linux/hrtimer.h>
 #include <linux/sched_clock.h>
@@ -205,11 +204,6 @@ sched_clock_register(u64 (*read)(void), int bits, unsigned long rate)
 	rd.epoch_ns		= ns;
 
 	update_clock_read_data(&rd);
-
-	if (sched_clock_timer.function != NULL) {
-		/* update timeout for clock wrap */
-		hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
-	}
 
 	r = rate;
 	if (r >= 4000000) {

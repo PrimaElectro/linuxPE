@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-2-Clause) */
 /*
  * Copyright (c) 2005-2006 Intel Corporation.  All rights reserved.
  *
@@ -111,7 +110,7 @@ struct rdma_ucm_bind {
 	__u32 id;
 	__u16 addr_size;
 	__u16 reserved;
-	struct __kernel_sockaddr_storage addr;
+	struct sockaddr_storage addr;
 };
 
 struct rdma_ucm_resolve_ip {
@@ -127,8 +126,8 @@ struct rdma_ucm_resolve_addr {
 	__u16 src_size;
 	__u16 dst_size;
 	__u32 reserved;
-	struct __kernel_sockaddr_storage src_addr;
-	struct __kernel_sockaddr_storage dst_addr;
+	struct sockaddr_storage src_addr;
+	struct sockaddr_storage dst_addr;
 };
 
 struct rdma_ucm_resolve_route {
@@ -165,8 +164,8 @@ struct rdma_ucm_query_addr_resp {
 	__u16 pkey;
 	__u16 src_size;
 	__u16 dst_size;
-	struct __kernel_sockaddr_storage src_addr;
-	struct __kernel_sockaddr_storage dst_addr;
+	struct sockaddr_storage src_addr;
+	struct sockaddr_storage dst_addr;
 };
 
 struct rdma_ucm_query_path_resp {
@@ -258,7 +257,7 @@ struct rdma_ucm_join_mcast {
 	__u32 id;
 	__u16 addr_size;
 	__u16 join_flags;
-	struct __kernel_sockaddr_storage addr;
+	struct sockaddr_storage addr;
 };
 
 struct rdma_ucm_get_event {

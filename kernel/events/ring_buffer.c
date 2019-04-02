@@ -14,7 +14,6 @@
 #include <linux/slab.h>
 #include <linux/circ_buf.h>
 #include <linux/poll.h>
-#include <linux/nospec.h>
 
 #include "internal.h"
 
@@ -298,19 +297,6 @@ ring_buffer_init(struct ring_buffer *rb, long watermark, int flags)
 		rb->paused = 1;
 }
 
-void perf_aux_output_flag(struct perf_output_handle *handle, u64 flags)
-{
-	/*
-	 * OVERWRITE is determined by perf_aux_output_end() and can't
-	 * be passed in directly.
-	 */
-	if (WARN_ON_ONCE(flags & PERF_AUX_FLAG_OVERWRITE))
-		return;
-
-	handle->aux_flags |= flags;
-}
-EXPORT_SYMBOL_GPL(perf_aux_output_flag);
-
 /*
  * This is called before hardware starts writing to the AUX area to
  * obtain an output handle and make sure there's room in the buffer.
@@ -368,13 +354,12 @@ void *perf_aux_output_begin(struct perf_output_handle *handle,
 	if (WARN_ON_ONCE(local_xchg(&rb->aux_nest, 1)))
 		goto err_put;
 
-	aux_head = rb->aux_head;
+	aux_head = local_read(&rb->aux_head);
 
 	handle->rb = rb;
 	handle->event = event;
 	handle->head = aux_head;
 	handle->size = 0;
-	handle->aux_flags = 0;
 
 	/*
 	 * In overwrite mode, AUX data stores do not depend on aux_tail,
@@ -383,7 +368,7 @@ void *perf_aux_output_begin(struct perf_output_handle *handle,
 	 */
 	if (!rb->aux_overwrite) {
 		aux_tail = ACCESS_ONCE(rb->user_page->aux_tail);
-		handle->wakeup = rb->aux_wakeup + rb->aux_watermark;
+		handle->wakeup = local_read(&rb->aux_wakeup) + rb->aux_watermark;
 		if (aux_head - aux_tail < perf_aux_size(rb))
 			handle->size = CIRC_SPACE(aux_head, aux_tail, perf_aux_size(rb));
 
@@ -413,19 +398,6 @@ err:
 	return NULL;
 }
 
-static bool __always_inline rb_need_aux_wakeup(struct ring_buffer *rb)
-{
-	if (rb->aux_overwrite)
-		return false;
-
-	if (rb->aux_head - rb->aux_wakeup >= rb->aux_watermark) {
-		rb->aux_wakeup = rounddown(rb->aux_head, rb->aux_watermark);
-		return true;
-	}
-
-	return false;
-}
-
 /*
  * Commit the data written by hardware into the ring buffer by adjusting
  * aux_head and posting a PERF_RECORD_AUX into the perf buffer. It is the
@@ -436,40 +408,45 @@ static bool __always_inline rb_need_aux_wakeup(struct ring_buffer *rb)
  * of the AUX buffer management code is that after pmu::stop(), the AUX
  * transaction must be stopped and therefore drop the AUX reference count.
  */
-void perf_aux_output_end(struct perf_output_handle *handle, unsigned long size)
+void perf_aux_output_end(struct perf_output_handle *handle, unsigned long size,
+			 bool truncated)
 {
-	bool wakeup = !!(handle->aux_flags & PERF_AUX_FLAG_TRUNCATED);
 	struct ring_buffer *rb = handle->rb;
+	bool wakeup = truncated;
 	unsigned long aux_head;
+	u64 flags = 0;
+
+	if (truncated)
+		flags |= PERF_AUX_FLAG_TRUNCATED;
 
 	/* in overwrite mode, driver provides aux_head via handle */
 	if (rb->aux_overwrite) {
-		handle->aux_flags |= PERF_AUX_FLAG_OVERWRITE;
+		flags |= PERF_AUX_FLAG_OVERWRITE;
 
 		aux_head = handle->head;
-		rb->aux_head = aux_head;
+		local_set(&rb->aux_head, aux_head);
 	} else {
-		handle->aux_flags &= ~PERF_AUX_FLAG_OVERWRITE;
-
-		aux_head = rb->aux_head;
-		rb->aux_head += size;
+		aux_head = local_read(&rb->aux_head);
+		local_add(size, &rb->aux_head);
 	}
 
-	if (size || handle->aux_flags) {
+	if (size || flags) {
 		/*
 		 * Only send RECORD_AUX if we have something useful to communicate
 		 */
 
-		perf_event_aux_event(handle->event, aux_head, size,
-		                     handle->aux_flags);
+		perf_event_aux_event(handle->event, aux_head, size, flags);
 	}
 
-	rb->user_page->aux_head = rb->aux_head;
-	if (rb_need_aux_wakeup(rb))
+	aux_head = rb->user_page->aux_head = local_read(&rb->aux_head);
+
+	if (aux_head - local_read(&rb->aux_wakeup) >= rb->aux_watermark) {
 		wakeup = true;
+		local_add(rb->aux_watermark, &rb->aux_wakeup);
+	}
 
 	if (wakeup) {
-		if (handle->aux_flags & PERF_AUX_FLAG_TRUNCATED)
+		if (truncated)
 			handle->event->pending_disable = 1;
 		perf_output_wakeup(handle);
 	}
@@ -489,19 +466,22 @@ void perf_aux_output_end(struct perf_output_handle *handle, unsigned long size)
 int perf_aux_output_skip(struct perf_output_handle *handle, unsigned long size)
 {
 	struct ring_buffer *rb = handle->rb;
+	unsigned long aux_head;
 
 	if (size > handle->size)
 		return -ENOSPC;
 
-	rb->aux_head += size;
+	local_add(size, &rb->aux_head);
 
-	rb->user_page->aux_head = rb->aux_head;
-	if (rb_need_aux_wakeup(rb)) {
+	aux_head = rb->user_page->aux_head = local_read(&rb->aux_head);
+	if (aux_head - local_read(&rb->aux_wakeup) >= rb->aux_watermark) {
 		perf_output_wakeup(handle);
-		handle->wakeup = rb->aux_wakeup + rb->aux_watermark;
+		local_add(rb->aux_watermark, &rb->aux_wakeup);
+		handle->wakeup = local_read(&rb->aux_wakeup) +
+				 rb->aux_watermark;
 	}
 
-	handle->head = rb->aux_head;
+	handle->head = aux_head;
 	handle->size -= size;
 
 	return 0;
@@ -588,7 +568,7 @@ int rb_alloc_aux(struct ring_buffer *rb, struct perf_event *event,
 	int ret = -ENOMEM, max_order = 0;
 
 	if (!has_aux(event))
-		return -EOPNOTSUPP;
+		return -ENOTSUPP;
 
 	if (event->pmu->capabilities & PERF_PMU_CAP_AUX_NO_SG) {
 		/*
@@ -718,9 +698,6 @@ struct ring_buffer *rb_alloc(int nr_pages, long watermark, int cpu, int flags)
 
 	size = sizeof(struct ring_buffer);
 	size += nr_pages * sizeof(void *);
-
-	if (order_base_2(size) >= PAGE_SHIFT+MAX_ORDER)
-		goto fail;
 
 	rb = kzalloc(size, GFP_KERNEL);
 	if (!rb)
@@ -867,10 +844,8 @@ perf_mmap_to_page(struct ring_buffer *rb, unsigned long pgoff)
 			return NULL;
 
 		/* AUX space */
-		if (pgoff >= rb->aux_pgoff) {
-			int aux_pgoff = array_index_nospec(pgoff - rb->aux_pgoff, rb->aux_nr_pages);
-			return virt_to_page(rb->aux_pages[aux_pgoff]);
-		}
+		if (pgoff >= rb->aux_pgoff)
+			return virt_to_page(rb->aux_pages[pgoff - rb->aux_pgoff]);
 	}
 
 	return __perf_mmap_to_page(rb, pgoff);

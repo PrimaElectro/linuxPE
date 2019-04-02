@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/gpio/driver.h>
@@ -55,7 +54,7 @@
 struct etraxfs_gpio_info;
 
 struct etraxfs_gpio_block {
-	raw_spinlock_t lock;
+	spinlock_t lock;
 	u32 mask;
 	u32 cfg;
 	u32 pins;
@@ -234,10 +233,10 @@ static void etraxfs_gpio_irq_mask(struct irq_data *d)
 	struct etraxfs_gpio_block *block = chip->block;
 	unsigned int grpirq = etraxfs_gpio_to_group_irq(d->hwirq);
 
-	raw_spin_lock(&block->lock);
+	spin_lock(&block->lock);
 	block->mask &= ~BIT(grpirq);
 	writel(block->mask, block->regs + block->info->rw_intr_mask);
-	raw_spin_unlock(&block->lock);
+	spin_unlock(&block->lock);
 }
 
 static void etraxfs_gpio_irq_unmask(struct irq_data *d)
@@ -247,10 +246,10 @@ static void etraxfs_gpio_irq_unmask(struct irq_data *d)
 	struct etraxfs_gpio_block *block = chip->block;
 	unsigned int grpirq = etraxfs_gpio_to_group_irq(d->hwirq);
 
-	raw_spin_lock(&block->lock);
+	spin_lock(&block->lock);
 	block->mask |= BIT(grpirq);
 	writel(block->mask, block->regs + block->info->rw_intr_mask);
-	raw_spin_unlock(&block->lock);
+	spin_unlock(&block->lock);
 }
 
 static int etraxfs_gpio_irq_set_type(struct irq_data *d, u32 type)
@@ -281,11 +280,11 @@ static int etraxfs_gpio_irq_set_type(struct irq_data *d, u32 type)
 		return -EINVAL;
 	}
 
-	raw_spin_lock(&block->lock);
+	spin_lock(&block->lock);
 	block->cfg &= ~(0x7 << (grpirq * 3));
 	block->cfg |= (cfg << (grpirq * 3));
 	writel(block->cfg, block->regs + block->info->rw_intr_cfg);
-	raw_spin_unlock(&block->lock);
+	spin_unlock(&block->lock);
 
 	return 0;
 }
@@ -298,7 +297,7 @@ static int etraxfs_gpio_irq_request_resources(struct irq_data *d)
 	unsigned int grpirq = etraxfs_gpio_to_group_irq(d->hwirq);
 	int ret = -EBUSY;
 
-	raw_spin_lock(&block->lock);
+	spin_lock(&block->lock);
 	if (block->group[grpirq])
 		goto out;
 
@@ -317,7 +316,7 @@ static int etraxfs_gpio_irq_request_resources(struct irq_data *d)
 	}
 
 out:
-	raw_spin_unlock(&block->lock);
+	spin_unlock(&block->lock);
 	return ret;
 }
 
@@ -328,10 +327,10 @@ static void etraxfs_gpio_irq_release_resources(struct irq_data *d)
 	struct etraxfs_gpio_block *block = chip->block;
 	unsigned int grpirq = etraxfs_gpio_to_group_irq(d->hwirq);
 
-	raw_spin_lock(&block->lock);
+	spin_lock(&block->lock);
 	block->group[grpirq] = 0;
 	gpiochip_unlock_as_irq(&chip->gc, d->hwirq);
-	raw_spin_unlock(&block->lock);
+	spin_unlock(&block->lock);
 }
 
 static struct irq_chip etraxfs_gpio_irq_chip = {
@@ -392,7 +391,7 @@ static int etraxfs_gpio_probe(struct platform_device *pdev)
 	if (!block)
 		return -ENOMEM;
 
-	raw_spin_lock_init(&block->lock);
+	spin_lock_init(&block->lock);
 
 	block->regs = regs;
 	block->info = info;
@@ -472,4 +471,9 @@ static struct platform_driver etraxfs_gpio_driver = {
 	.probe	= etraxfs_gpio_probe,
 };
 
-builtin_platform_driver(etraxfs_gpio_driver);
+static int __init etraxfs_gpio_init(void)
+{
+	return platform_driver_register(&etraxfs_gpio_driver);
+}
+
+device_initcall(etraxfs_gpio_init);

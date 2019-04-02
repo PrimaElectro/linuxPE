@@ -30,8 +30,7 @@ Arguments
 Description
 ===========
 
-Retrieves the code length in bits (only for
-:ref:`LIRC_MODE_LIRCCODE <lirc-mode-lirccode>`).
+Retrieves the code length in bits (only for ``LIRC-MODE-LIRCCODE``).
 Reads on the device must be done in blocks matching the bit count.
 The bit could should be rounded up so that it matches full bytes.
 

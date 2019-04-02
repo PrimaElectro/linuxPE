@@ -1354,6 +1354,8 @@ static void evdev_cleanup(struct evdev *evdev)
 	evdev_mark_dead(evdev);
 	evdev_hangup(evdev);
 
+	cdev_del(&evdev->cdev);
+
 	/* evdev is marked dead so no one else accesses evdev->open */
 	if (evdev->open) {
 		input_flush_device(handle, NULL);
@@ -1414,8 +1416,12 @@ static int evdev_connect(struct input_handler *handler, struct input_dev *dev,
 		goto err_free_evdev;
 
 	cdev_init(&evdev->cdev, &evdev_fops);
+	evdev->cdev.kobj.parent = &evdev->dev.kobj;
+	error = cdev_add(&evdev->cdev, evdev->dev.devt, 1);
+	if (error)
+		goto err_unregister_handle;
 
-	error = cdev_device_add(&evdev->cdev, &evdev->dev);
+	error = device_add(&evdev->dev);
 	if (error)
 		goto err_cleanup_evdev;
 
@@ -1423,6 +1429,7 @@ static int evdev_connect(struct input_handler *handler, struct input_dev *dev,
 
  err_cleanup_evdev:
 	evdev_cleanup(evdev);
+ err_unregister_handle:
 	input_unregister_handle(&evdev->handle);
  err_free_evdev:
 	put_device(&evdev->dev);
@@ -1435,7 +1442,7 @@ static void evdev_disconnect(struct input_handle *handle)
 {
 	struct evdev *evdev = handle->private;
 
-	cdev_device_del(&evdev->cdev, &evdev->dev);
+	device_del(&evdev->dev);
 	evdev_cleanup(evdev);
 	input_free_minor(MINOR(evdev->dev.devt));
 	input_unregister_handle(handle);

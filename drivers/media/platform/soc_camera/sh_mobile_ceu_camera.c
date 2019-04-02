@@ -1708,10 +1708,11 @@ static int sh_mobile_ceu_probe(struct platform_device *pdev)
 		err = dma_declare_coherent_memory(&pdev->dev, res->start,
 						  res->start,
 						  resource_size(res),
+						  DMA_MEMORY_MAP |
 						  DMA_MEMORY_EXCLUSIVE);
-		if (err) {
+		if (!err) {
 			dev_err(&pdev->dev, "Unable to declare CEU memory.\n");
-			return err;
+			return -ENXIO;
 		}
 
 		pcdev->video_limit = resource_size(res);
@@ -1800,7 +1801,18 @@ static struct platform_driver sh_mobile_ceu_driver = {
 	.remove		= sh_mobile_ceu_remove,
 };
 
-module_platform_driver(sh_mobile_ceu_driver);
+static int __init sh_mobile_ceu_init(void)
+{
+	return platform_driver_register(&sh_mobile_ceu_driver);
+}
+
+static void __exit sh_mobile_ceu_exit(void)
+{
+	platform_driver_unregister(&sh_mobile_ceu_driver);
+}
+
+module_init(sh_mobile_ceu_init);
+module_exit(sh_mobile_ceu_exit);
 
 MODULE_DESCRIPTION("SuperH Mobile CEU driver");
 MODULE_AUTHOR("Magnus Damm");

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/stat.h>
 #include <linux/sysctl.h>
 #include "../fs/xfs/xfs_sysctl.h"
@@ -987,9 +986,8 @@ static ssize_t bin_intvec(struct file *file,
 		size_t length = oldlen / sizeof(*vec);
 		char *str, *end;
 		int i;
-		loff_t pos = 0;
 
-		result = kernel_read(file, buffer, BUFSZ - 1, &pos);
+		result = kernel_read(file, 0, buffer, BUFSZ - 1);
 		if (result < 0)
 			goto out_kfree;
 
@@ -1018,7 +1016,6 @@ static ssize_t bin_intvec(struct file *file,
 		size_t length = newlen / sizeof(*vec);
 		char *str, *end;
 		int i;
-		loff_t pos = 0;
 
 		str = buffer;
 		end = str + BUFSZ;
@@ -1032,7 +1029,7 @@ static ssize_t bin_intvec(struct file *file,
 			str += scnprintf(str, end - str, "%lu\t", value);
 		}
 
-		result = kernel_write(file, buffer, str - buffer, &pos);
+		result = kernel_write(file, buffer, str - buffer, 0);
 		if (result < 0)
 			goto out_kfree;
 	}
@@ -1060,9 +1057,8 @@ static ssize_t bin_ulongvec(struct file *file,
 		size_t length = oldlen / sizeof(*vec);
 		char *str, *end;
 		int i;
-		loff_t pos = 0;
 
-		result = kernel_read(file, buffer, BUFSZ - 1, &pos);
+		result = kernel_read(file, 0, buffer, BUFSZ - 1);
 		if (result < 0)
 			goto out_kfree;
 
@@ -1091,7 +1087,6 @@ static ssize_t bin_ulongvec(struct file *file,
 		size_t length = newlen / sizeof(*vec);
 		char *str, *end;
 		int i;
-		loff_t pos = 0;
 
 		str = buffer;
 		end = str + BUFSZ;
@@ -1105,7 +1100,7 @@ static ssize_t bin_ulongvec(struct file *file,
 			str += scnprintf(str, end - str, "%lu\t", value);
 		}
 
-		result = kernel_write(file, buffer, str - buffer, &pos);
+		result = kernel_write(file, buffer, str - buffer, 0);
 		if (result < 0)
 			goto out_kfree;
 	}
@@ -1124,17 +1119,16 @@ static ssize_t bin_uuid(struct file *file,
 	/* Only supports reads */
 	if (oldval && oldlen) {
 		char buf[UUID_STRING_LEN + 1];
-		uuid_t uuid;
-		loff_t pos = 0;
+		uuid_be uuid;
 
-		result = kernel_read(file, buf, sizeof(buf) - 1, &pos);
+		result = kernel_read(file, 0, buf, sizeof(buf) - 1);
 		if (result < 0)
 			goto out;
 
 		buf[result] = '\0';
 
 		result = -EIO;
-		if (uuid_parse(buf, &uuid))
+		if (uuid_be_to_bin(buf, &uuid))
 			goto out;
 
 		if (oldlen > 16)
@@ -1160,9 +1154,8 @@ static ssize_t bin_dn_node_address(struct file *file,
 		char buf[15], *nodep;
 		unsigned long area, node;
 		__le16 dnaddr;
-		loff_t pos = 0;
 
-		result = kernel_read(file, buf, sizeof(buf) - 1, &pos);
+		result = kernel_read(file, 0, buf, sizeof(buf) - 1);
 		if (result < 0)
 			goto out;
 
@@ -1195,7 +1188,6 @@ static ssize_t bin_dn_node_address(struct file *file,
 		__le16 dnaddr;
 		char buf[15];
 		int len;
-		loff_t pos = 0;
 
 		result = -EINVAL;
 		if (newlen != sizeof(dnaddr))
@@ -1209,7 +1201,7 @@ static ssize_t bin_dn_node_address(struct file *file,
 				le16_to_cpu(dnaddr) >> 10,
 				le16_to_cpu(dnaddr) & 0x3ff);
 
-		result = kernel_write(file, buf, len, &pos);
+		result = kernel_write(file, buf, len, 0);
 		if (result < 0)
 			goto out;
 	}
@@ -1354,7 +1346,7 @@ static void deprecated_sysctl_warning(const int *name, int nlen)
 	 * CTL_KERN/KERN_VERSION is used by older glibc and cannot
 	 * ever go away.
 	 */
-	if (nlen >= 2 && name[0] == CTL_KERN && name[1] == KERN_VERSION)
+	if (name[0] == CTL_KERN && name[1] == KERN_VERSION)
 		return;
 
 	if (printk_ratelimit()) {
@@ -1362,8 +1354,8 @@ static void deprecated_sysctl_warning(const int *name, int nlen)
 			"warning: process `%s' used the deprecated sysctl "
 			"system call with ", current->comm);
 		for (i = 0; i < nlen; i++)
-			printk(KERN_CONT "%d.", name[i]);
-		printk(KERN_CONT "\n");
+			printk("%d.", name[i]);
+		printk("\n");
 	}
 	return;
 }

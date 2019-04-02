@@ -661,7 +661,6 @@ void clear_page(void *page)
 		;
 	__raw_readq(IOADDR(A_DM_REGISTER(cpu, R_DM_DSCR_BASE)));
 }
-EXPORT_SYMBOL(clear_page);
 
 void copy_page(void *to, void *from)
 {
@@ -688,6 +687,5 @@ void copy_page(void *to, void *from)
 		;
 	__raw_readq(IOADDR(A_DM_REGISTER(cpu, R_DM_DSCR_BASE)));
 }
-EXPORT_SYMBOL(copy_page);
 
 #endif /* CONFIG_SIBYTE_DMA_PAGEOPS */

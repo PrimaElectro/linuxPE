@@ -1,5 +1,5 @@
 /* Intel(R) Ethernet Switch Host Interface Driver
- * Copyright(c) 2013 - 2017 Intel Corporation.
+ * Copyright(c) 2013 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -706,6 +706,16 @@ static netdev_tx_t fm10k_xmit_frame(struct sk_buff *skb, struct net_device *dev)
 	return err;
 }
 
+static int fm10k_change_mtu(struct net_device *dev, int new_mtu)
+{
+	if (new_mtu < 68 || new_mtu > FM10K_MAX_JUMBO_FRAME_SIZE)
+		return -EINVAL;
+
+	dev->mtu = new_mtu;
+
+	return 0;
+}
+
 /**
  * fm10k_tx_timeout - Respond to a Tx Hang
  * @netdev: network interface device structure
@@ -737,23 +747,6 @@ static void fm10k_tx_timeout(struct net_device *netdev)
 	}
 }
 
-/**
- * fm10k_host_mbx_ready - Check PF interface's mailbox readiness
- * @interface: board private structure
- *
- * This function checks if the PF interface's mailbox is ready before queueing
- * mailbox messages for transmission. This will prevent filling the TX mailbox
- * queue when the receiver is not ready. VF interfaces are exempt from this
- * check since it will block all PF-VF mailbox messages from being sent from
- * the VF to the PF at initialization.
- **/
-static bool fm10k_host_mbx_ready(struct fm10k_intfc *interface)
-{
-	struct fm10k_hw *hw = &interface->hw;
-
-	return (hw->mac.type == fm10k_mac_vf || interface->host_ready);
-}
-
 static int fm10k_uc_vlan_unsync(struct net_device *netdev,
 				const unsigned char *uc_addr)
 {
@@ -762,15 +755,12 @@ static int fm10k_uc_vlan_unsync(struct net_device *netdev,
 	u16 glort = interface->glort;
 	u16 vid = interface->vid;
 	bool set = !!(vid / VLAN_N_VID);
-	int err = -EHOSTDOWN;
+	int err;
 
 	/* drop any leading bits on the VLAN ID */
 	vid &= VLAN_N_VID - 1;
 
-	if (fm10k_host_mbx_ready(interface))
-		err = hw->mac.ops.update_uc_addr(hw, glort, uc_addr,
-						 vid, set, 0);
-
+	err = hw->mac.ops.update_uc_addr(hw, glort, uc_addr, vid, set, 0);
 	if (err)
 		return err;
 
@@ -786,14 +776,12 @@ static int fm10k_mc_vlan_unsync(struct net_device *netdev,
 	u16 glort = interface->glort;
 	u16 vid = interface->vid;
 	bool set = !!(vid / VLAN_N_VID);
-	int err = -EHOSTDOWN;
+	int err;
 
 	/* drop any leading bits on the VLAN ID */
 	vid &= VLAN_N_VID - 1;
 
-	if (fm10k_host_mbx_ready(interface))
-		err = hw->mac.ops.update_mc_addr(hw, glort, mc_addr, vid, set);
-
+	err = hw->mac.ops.update_mc_addr(hw, glort, mc_addr, vid, set);
 	if (err)
 		return err;
 
@@ -815,12 +803,8 @@ static int fm10k_update_vid(struct net_device *netdev, u16 vid, bool set)
 	if (vid >= VLAN_N_VID)
 		return -EINVAL;
 
-	/* Verify that we have permission to add VLANs. If this is a request
-	 * to remove a VLAN, we still want to allow the user to remove the
-	 * VLAN device. In that case, we need to clear the bit in the
-	 * active_vlans bitmask.
-	 */
-	if (set && hw->mac.vlan_override)
+	/* Verify we have permission to add VLANs */
+	if (hw->mac.vlan_override)
 		return -EACCES;
 
 	/* update active_vlans bitmask */
@@ -839,12 +823,6 @@ static int fm10k_update_vid(struct net_device *netdev, u16 vid, bool set)
 			rx_ring->vid &= ~FM10K_VLAN_CLEAR;
 	}
 
-	/* If our VLAN has been overridden, there is no reason to send VLAN
-	 * removal requests as they will be silently ignored.
-	 */
-	if (hw->mac.vlan_override)
-		return 0;
-
 	/* Do not remove default VLAN ID related entries from VLAN and MAC
 	 * tables
 	 */
@@ -854,7 +832,7 @@ static int fm10k_update_vid(struct net_device *netdev, u16 vid, bool set)
 	/* Do not throw an error if the interface is down. We will sync once
 	 * we come up
 	 */
-	if (test_bit(__FM10K_DOWN, interface->state))
+	if (test_bit(__FM10K_DOWN, &interface->state))
 		return 0;
 
 	fm10k_mbx_lock(interface);
@@ -866,13 +844,9 @@ static int fm10k_update_vid(struct net_device *netdev, u16 vid, bool set)
 			goto err_out;
 	}
 
-	/* update our base MAC address if host's mailbox is ready */
-	if (fm10k_host_mbx_ready(interface))
-		err = hw->mac.ops.update_uc_addr(hw, interface->glort,
-						 hw->mac.addr, vid, set, 0);
-	else
-		err = -EHOSTDOWN;
-
+	/* update our base MAC address */
+	err = hw->mac.ops.update_uc_addr(hw, interface->glort, hw->mac.addr,
+					 vid, set, 0);
 	if (err)
 		goto err_out;
 
@@ -943,15 +917,12 @@ static int __fm10k_uc_sync(struct net_device *dev,
 	if (!is_valid_ether_addr(addr))
 		return -EADDRNOTAVAIL;
 
-	/* update table with current entries if host's mailbox is ready */
-	if (!fm10k_host_mbx_ready(interface))
-		return -EHOSTDOWN;
-
+	/* update table with current entries */
 	for (vid = hw->mac.default_vid ? fm10k_find_next_vlan(interface, 0) : 1;
 	     vid < VLAN_N_VID;
 	     vid = fm10k_find_next_vlan(interface, vid)) {
 		err = hw->mac.ops.update_uc_addr(hw, glort, addr,
-						 vid, sync, 0);
+						  vid, sync, 0);
 		if (err)
 			return err;
 	}
@@ -1009,10 +980,7 @@ static int __fm10k_mc_sync(struct net_device *dev,
 	struct fm10k_hw *hw = &interface->hw;
 	u16 vid, glort = interface->glort;
 
-	/* update table with current entries if host's mailbox is ready */
-	if (!fm10k_host_mbx_ready(interface))
-		return 0;
-
+	/* update table with current entries */
 	for (vid = hw->mac.default_vid ? fm10k_find_next_vlan(interface, 0) : 1;
 	     vid < VLAN_N_VID;
 	     vid = fm10k_find_next_vlan(interface, vid)) {
@@ -1060,10 +1028,8 @@ static void fm10k_set_rx_mode(struct net_device *dev)
 		if (interface->xcast_mode == FM10K_XCAST_MODE_PROMISC)
 			fm10k_clear_unused_vlans(interface);
 
-		/* update xcast mode if host's mailbox is ready */
-		if (fm10k_host_mbx_ready(interface))
-			hw->mac.ops.update_xcast_mode(hw, interface->glort,
-						      xcast_mode);
+		/* update xcast mode */
+		hw->mac.ops.update_xcast_mode(hw, interface->glort, xcast_mode);
 
 		/* record updated xcast mode state */
 		interface->xcast_mode = xcast_mode;
@@ -1098,10 +1064,8 @@ void fm10k_restore_rx_state(struct fm10k_intfc *interface)
 
 	fm10k_mbx_lock(interface);
 
-	/* Enable logical port if host's mailbox is ready */
-	if (fm10k_host_mbx_ready(interface))
-		hw->mac.ops.update_lport_state(hw, glort,
-					       interface->glort_count, true);
+	/* Enable logical port */
+	hw->mac.ops.update_lport_state(hw, glort, interface->glort_count, true);
 
 	/* update VLAN table */
 	hw->mac.ops.update_vlan(hw, FM10K_VLAN_ALL, 0,
@@ -1115,18 +1079,12 @@ void fm10k_restore_rx_state(struct fm10k_intfc *interface)
 	     vid < VLAN_N_VID;
 	     vid = fm10k_find_next_vlan(interface, vid)) {
 		hw->mac.ops.update_vlan(hw, vid, 0, true);
-
-		/* Update unicast entries if host's mailbox is ready */
-		if (fm10k_host_mbx_ready(interface))
-			hw->mac.ops.update_uc_addr(hw, glort, hw->mac.addr,
-						   vid, true, 0);
+		hw->mac.ops.update_uc_addr(hw, glort, hw->mac.addr,
+					   vid, true, 0);
 	}
 
-	/* update xcast mode before synchronizing addresses if host's mailbox
-	 * is ready
-	 */
-	if (fm10k_host_mbx_ready(interface))
-		hw->mac.ops.update_xcast_mode(hw, glort, xcast_mode);
+	/* update xcast mode before synchronizing addresses */
+	hw->mac.ops.update_xcast_mode(hw, glort, xcast_mode);
 
 	/* synchronize all of the addresses */
 	__dev_uc_sync(netdev, fm10k_uc_sync, fm10k_uc_unsync);
@@ -1148,12 +1106,9 @@ void fm10k_reset_rx_state(struct fm10k_intfc *interface)
 
 	fm10k_mbx_lock(interface);
 
-	/* clear the logical port state on lower device if host's mailbox is
-	 * ready
-	 */
-	if (fm10k_host_mbx_ready(interface))
-		hw->mac.ops.update_lport_state(hw, interface->glort,
-					       interface->glort_count, false);
+	/* clear the logical port state on lower device */
+	hw->mac.ops.update_lport_state(hw, interface->glort,
+				       interface->glort_count, false);
 
 	fm10k_mbx_unlock(interface);
 
@@ -1170,11 +1125,11 @@ void fm10k_reset_rx_state(struct fm10k_intfc *interface)
  * @netdev: network interface device structure
  * @stats: storage space for 64bit statistics
  *
- * Obtain 64bit statistics in a way that is safe for both 32bit and 64bit
- * architectures.
+ * Returns 64bit statistics, for use in the ndo_get_stats64 callback. This
+ * function replaces fm10k_get_stats for kernels which support it.
  */
-static void fm10k_get_stats64(struct net_device *netdev,
-			      struct rtnl_link_stats64 *stats)
+static struct rtnl_link_stats64 *fm10k_get_stats64(struct net_device *netdev,
+						   struct rtnl_link_stats64 *stats)
 {
 	struct fm10k_intfc *interface = netdev_priv(netdev);
 	struct fm10k_ring *ring;
@@ -1219,6 +1174,8 @@ static void fm10k_get_stats64(struct net_device *netdev,
 
 	/* following stats updated by fm10k_service_task() */
 	stats->rx_missed_errors	= netdev->stats.rx_missed_errors;
+
+	return stats;
 }
 
 int fm10k_setup_tc(struct net_device *dev, u8 tc)
@@ -1262,7 +1219,7 @@ int fm10k_setup_tc(struct net_device *dev, u8 tc)
 		goto err_open;
 
 	/* flag to indicate SWPRI has yet to be updated */
-	set_bit(FM10K_FLAG_SWPRI_CONFIG, interface->flags);
+	interface->flags |= FM10K_FLAG_SWPRI_CONFIG;
 
 	return 0;
 err_open:
@@ -1275,17 +1232,13 @@ err_queueing_scheme:
 	return err;
 }
 
-static int __fm10k_setup_tc(struct net_device *dev, enum tc_setup_type type,
-			    void *type_data)
+static int __fm10k_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+			    struct tc_to_netdev *tc)
 {
-	struct tc_mqprio_qopt *mqprio = type_data;
+	if (tc->type != TC_SETUP_MQPRIO)
+		return -EINVAL;
 
-	if (type != TC_SETUP_MQPRIO)
-		return -EOPNOTSUPP;
-
-	mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
-
-	return fm10k_setup_tc(dev, mqprio->num_tc);
+	return fm10k_setup_tc(dev, tc->tc);
 }
 
 static void fm10k_assign_l2_accel(struct fm10k_intfc *interface,
@@ -1376,13 +1329,8 @@ static void *fm10k_dfwd_add_station(struct net_device *dev,
 	fm10k_mbx_lock(interface);
 
 	glort = l2_accel->dglort + 1 + i;
-
-	if (fm10k_host_mbx_ready(interface)) {
-		hw->mac.ops.update_xcast_mode(hw, glort,
-					      FM10K_XCAST_MODE_MULTI);
-		hw->mac.ops.update_uc_addr(hw, glort, sdev->dev_addr,
-					   0, true, 0);
-	}
+	hw->mac.ops.update_xcast_mode(hw, glort, FM10K_XCAST_MODE_MULTI);
+	hw->mac.ops.update_uc_addr(hw, glort, sdev->dev_addr, 0, true, 0);
 
 	fm10k_mbx_unlock(interface);
 
@@ -1416,13 +1364,8 @@ static void fm10k_dfwd_del_station(struct net_device *dev, void *priv)
 	fm10k_mbx_lock(interface);
 
 	glort = l2_accel->dglort + 1 + i;
-
-	if (fm10k_host_mbx_ready(interface)) {
-		hw->mac.ops.update_xcast_mode(hw, glort,
-					      FM10K_XCAST_MODE_NONE);
-		hw->mac.ops.update_uc_addr(hw, glort, sdev->dev_addr,
-					   0, false, 0);
-	}
+	hw->mac.ops.update_xcast_mode(hw, glort, FM10K_XCAST_MODE_NONE);
+	hw->mac.ops.update_uc_addr(hw, glort, sdev->dev_addr, 0, false, 0);
 
 	fm10k_mbx_unlock(interface);
 
@@ -1462,6 +1405,7 @@ static const struct net_device_ops fm10k_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_start_xmit		= fm10k_xmit_frame,
 	.ndo_set_mac_address	= fm10k_set_mac,
+	.ndo_change_mtu		= fm10k_change_mtu,
 	.ndo_tx_timeout		= fm10k_tx_timeout,
 	.ndo_vlan_rx_add_vid	= fm10k_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= fm10k_vlan_rx_kill_vid,
@@ -1545,10 +1489,6 @@ struct net_device *fm10k_alloc_netdev(const struct fm10k_info *info)
 	dev->priv_flags |= IFF_UNICAST_FLT;
 
 	dev->hw_features |= hw_features;
-
-	/* MTU range: 68 - 15342 */
-	dev->min_mtu = ETH_MIN_MTU;
-	dev->max_mtu = FM10K_MAX_JUMBO_FRAME_SIZE;
 
 	return dev;
 }

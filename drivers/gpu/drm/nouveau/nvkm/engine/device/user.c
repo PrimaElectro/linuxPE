@@ -326,7 +326,7 @@ nvkm_udevice = {
 	.sclass = nvkm_udevice_child_get,
 };
 
-static int
+int
 nvkm_udevice_new(const struct nvkm_oclass *oclass, void *data, u32 size,
 		 struct nvkm_object **pobject)
 {

@@ -17,6 +17,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
  */
 
 #include <linux/i2c.h>
@@ -573,12 +577,12 @@ static int pluto_read_serial(struct pluto *pluto)
 		for (j = 0; j < 32; j += 8) {
 			if ((val & 0xff) == 0xff)
 				goto out;
-			printk(KERN_CONT "%c", val & 0xff);
+			printk("%c", val & 0xff);
 			val >>= 8;
 		}
 	}
 out:
-	printk(KERN_CONT "\n");
+	printk("\n");
 	pci_iounmap(pdev, cis);
 
 	return 0;
@@ -770,7 +774,7 @@ static void pluto2_remove(struct pci_dev *pdev)
 #define PCI_DEVICE_ID_PLUTO2	0x0001
 #endif
 
-static const struct pci_device_id pluto2_id_table[] = {
+static struct pci_device_id pluto2_id_table[] = {
 	{
 		.vendor = PCI_VENDOR_ID_SCM,
 		.device = PCI_DEVICE_ID_PLUTO2,

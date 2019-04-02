@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0
 #
 # Makefile for the V4L2 core
 #
@@ -11,7 +10,9 @@ videodev-objs	:=	v4l2-dev.o v4l2-ioctl.o v4l2-device.o v4l2-fh.o \
 ifeq ($(CONFIG_COMPAT),y)
   videodev-objs += v4l2-compat-ioctl32.o
 endif
-obj-$(CONFIG_V4L2_FWNODE) += v4l2-fwnode.o
+ifeq ($(CONFIG_OF),y)
+  videodev-objs += v4l2-of.o
+endif
 ifeq ($(CONFIG_TRACEPOINTS),y)
   videodev-objs += vb2-trace.o v4l2-trace.o
 endif

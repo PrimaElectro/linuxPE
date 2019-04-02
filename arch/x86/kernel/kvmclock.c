@@ -25,16 +25,14 @@
 #include <linux/hardirq.h>
 #include <linux/memblock.h>
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
 
 #include <asm/x86_init.h>
 #include <asm/reboot.h>
-#include <asm/kvmclock.h>
 
 static int kvmclock __ro_after_init = 1;
 static int msr_kvm_system_time = MSR_KVM_SYSTEM_TIME;
 static int msr_kvm_wall_clock = MSR_KVM_WALL_CLOCK;
-static u64 kvm_sched_clock_offset;
+static cycle_t kvm_sched_clock_offset;
 
 static int parse_no_kvmclock(char *arg)
 {
@@ -46,6 +44,11 @@ early_param("no-kvmclock", parse_no_kvmclock);
 /* The hypervisor will put information about time periodically here */
 static struct pvclock_vsyscall_time_info *hv_clock;
 static struct pvclock_wall_clock wall_clock;
+
+struct pvclock_vsyscall_time_info *pvclock_pvti_cpu0_va(void)
+{
+	return hv_clock;
+}
 
 /*
  * The wallclock is the time of day when we booted. Since then, some time may
@@ -73,13 +76,13 @@ static void kvm_get_wallclock(struct timespec *now)
 
 static int kvm_set_wallclock(const struct timespec *now)
 {
-	return -ENODEV;
+	return -1;
 }
 
-static u64 kvm_clock_read(void)
+static cycle_t kvm_clock_read(void)
 {
 	struct pvclock_vcpu_time_info *src;
-	u64 ret;
+	cycle_t ret;
 	int cpu;
 
 	preempt_disable_notrace();
@@ -90,12 +93,12 @@ static u64 kvm_clock_read(void)
 	return ret;
 }
 
-static u64 kvm_clock_get_cycles(struct clocksource *cs)
+static cycle_t kvm_clock_get_cycles(struct clocksource *cs)
 {
 	return kvm_clock_read();
 }
 
-static u64 kvm_sched_clock_read(void)
+static cycle_t kvm_sched_clock_read(void)
 {
 	return kvm_clock_read() - kvm_sched_clock_offset;
 }
@@ -104,12 +107,12 @@ static inline void kvm_sched_clock_init(bool stable)
 {
 	if (!stable) {
 		pv_time_ops.sched_clock = kvm_clock_read;
-		clear_sched_clock_stable();
 		return;
 	}
 
 	kvm_sched_clock_offset = kvm_clock_read();
 	pv_time_ops.sched_clock = kvm_sched_clock_read;
+	set_sched_clock_stable();
 
 	printk(KERN_INFO "kvm-clock: using sched offset of %llu cycles\n",
 			kvm_sched_clock_offset);
@@ -137,7 +140,6 @@ static unsigned long kvm_get_tsc_khz(void)
 	src = &hv_clock[cpu].pvti;
 	tsc_khz = pvclock_tsc_khz(src);
 	put_cpu();
-	setup_force_cpu_cap(X86_FEATURE_TSC_KNOWN_FREQ);
 	return tsc_khz;
 }
 
@@ -172,14 +174,13 @@ bool kvm_check_and_clear_guest_paused(void)
 	return ret;
 }
 
-struct clocksource kvm_clock = {
+static struct clocksource kvm_clock = {
 	.name = "kvm-clock",
 	.read = kvm_clock_get_cycles,
 	.rating = 400,
 	.mask = CLOCKSOURCE_MASK(64),
 	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
 };
-EXPORT_SYMBOL_GPL(kvm_clock);
 
 int kvm_register_clock(char *txt)
 {
@@ -329,7 +330,6 @@ int __init kvm_setup_vsyscall_timeinfo(void)
 		return 1;
 	}
 
-	pvclock_set_pvti_cpu0_va(hv_clock);
 	put_cpu();
 
 	kvm_clock.archdata.vclock_mode = VCLOCK_PVCLOCK;

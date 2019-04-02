@@ -1,11 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
 #include "gtk.h"
 #include "util/debug.h"
 #include "util/annotate.h"
 #include "util/evsel.h"
 #include "ui/helpline.h"
-#include <inttypes.h>
-#include <signal.h>
+
 
 enum {
 	ANN_COL__PERCENT,
@@ -35,10 +33,10 @@ static int perf_gtk__get_percent(char *buf, size_t size, struct symbol *sym,
 		return 0;
 
 	symhist = annotation__histogram(symbol__annotation(sym), evidx);
-	if (!symbol_conf.event_group && !symhist->addr[dl->offset].nr_samples)
+	if (!symbol_conf.event_group && !symhist->addr[dl->offset])
 		return 0;
 
-	percent = 100.0 * symhist->addr[dl->offset].nr_samples / symhist->nr_samples;
+	percent = 100.0 * symhist->addr[dl->offset] / symhist->sum;
 
 	markup = perf_gtk__get_percent_color(percent);
 	if (markup)
@@ -169,8 +167,7 @@ static int symbol__gtk_annotate(struct symbol *sym, struct map *map,
 	if (map->dso->annotate_warned)
 		return -1;
 
-	err = symbol__disassemble(sym, map, perf_evsel__env_arch(evsel),
-				  0, NULL, NULL);
+	err = symbol__disassemble(sym, map, 0);
 	if (err) {
 		char msg[BUFSIZ];
 		symbol__strerror_disassemble(sym, map, err, msg, sizeof(msg));

@@ -2,4 +2,3 @@ gettimeofday
 context_switch
 mmap_bench
 futex_bench
-null_syscall

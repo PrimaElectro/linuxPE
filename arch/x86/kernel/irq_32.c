@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *	Copyright (C) 1992, 1998 Linus Torvalds, Ingo Molnar
  *
@@ -11,7 +10,6 @@
 
 #include <linux/seq_file.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
 #include <linux/kernel_stat.h>
 #include <linux/notifier.h>
 #include <linux/cpu.h>
@@ -130,6 +128,7 @@ void irq_ctx_init(int cpu)
 	       cpu, per_cpu(hardirq_stack, cpu),  per_cpu(softirq_stack, cpu));
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 void do_softirq_own_stack(void)
 {
 	struct irq_stack *irqstk;
@@ -146,6 +145,7 @@ void do_softirq_own_stack(void)
 
 	call_on_stack(__do_softirq, isp);
 }
+#endif
 
 bool handle_irq(struct irq_desc *desc, struct pt_regs *regs)
 {

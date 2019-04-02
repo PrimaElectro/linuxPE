@@ -36,6 +36,11 @@ struct smack_known smack_known_floor = {
 	.smk_secid	= 5,
 };
 
+struct smack_known smack_known_invalid = {
+	.smk_known	= "",
+	.smk_secid	= 6,
+};
+
 struct smack_known smack_known_web = {
 	.smk_known	= "@",
 	.smk_secid	= 7,
@@ -504,7 +509,7 @@ int smk_netlbl_mls(int level, char *catset, struct netlbl_lsm_secattr *sap,
 			if ((m & *cp) == 0)
 				continue;
 			rc = netlbl_catmap_setbit(&sap->attr.mls.cat,
-						  cat, GFP_KERNEL);
+						  cat, GFP_ATOMIC);
 			if (rc < 0) {
 				netlbl_catmap_free(sap->attr.mls.cat);
 				return rc;
@@ -610,7 +615,7 @@ struct smack_known *smack_from_secid(const u32 secid)
 	 * of a secid that is not on the list.
 	 */
 	rcu_read_unlock();
-	return &smack_known_huh;
+	return &smack_known_invalid;
 }
 
 /*
@@ -627,38 +632,35 @@ DEFINE_MUTEX(smack_onlycap_lock);
  * Is the task privileged and allowed to be privileged
  * by the onlycap rule.
  *
- * Returns true if the task is allowed to be privileged, false if it's not.
+ * Returns 1 if the task is allowed to be privileged, 0 if it's not.
  */
-bool smack_privileged(int cap)
+int smack_privileged(int cap)
 {
 	struct smack_known *skp = smk_of_current();
 	struct smack_known_list_elem *sklep;
-	int rc;
 
 	/*
 	 * All kernel tasks are privileged
 	 */
 	if (unlikely(current->flags & PF_KTHREAD))
-		return true;
+		return 1;
 
-	rc = cap_capable(current_cred(), &init_user_ns, cap,
-				SECURITY_CAP_AUDIT);
-	if (rc)
-		return false;
+	if (!capable(cap))
+		return 0;
 
 	rcu_read_lock();
 	if (list_empty(&smack_onlycap_list)) {
 		rcu_read_unlock();
-		return true;
+		return 1;
 	}
 
 	list_for_each_entry_rcu(sklep, &smack_onlycap_list, list) {
 		if (sklep->smk_label == skp) {
 			rcu_read_unlock();
-			return true;
+			return 1;
 		}
 	}
 	rcu_read_unlock();
 
-	return false;
+	return 0;
 }

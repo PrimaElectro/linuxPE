@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/dmi.h>
 #include <linux/efi.h>
 #include <linux/init.h>
 
@@ -61,8 +62,8 @@ struct screen_info screen_info __section(.data);
 int __init efi_create_mapping(struct mm_struct *mm, efi_memory_desc_t *md)
 {
 	pteval_t prot_val = create_mapping_protection(md);
-	bool page_mappings_only = (md->type == EFI_RUNTIME_SERVICES_CODE ||
-				   md->type == EFI_RUNTIME_SERVICES_DATA);
+	bool allow_block_mappings = (md->type != EFI_RUNTIME_SERVICES_CODE &&
+				     md->type != EFI_RUNTIME_SERVICES_DATA);
 
 	if (!PAGE_ALIGNED(md->phys_addr) ||
 	    !PAGE_ALIGNED(md->num_pages << EFI_PAGE_SHIFT)) {
@@ -75,12 +76,12 @@ int __init efi_create_mapping(struct mm_struct *mm, efi_memory_desc_t *md)
 		 * from the MMU routines. So avoid block mappings altogether in
 		 * that case.
 		 */
-		page_mappings_only = true;
+		allow_block_mappings = false;
 	}
 
 	create_pgd_mapping(mm, md->phys_addr, md->virt_addr,
 			   md->num_pages << EFI_PAGE_SHIFT,
-			   __pgprot(prot_val | PTE_NG), page_mappings_only);
+			   __pgprot(prot_val | PTE_NG), allow_block_mappings);
 	return 0;
 }
 
@@ -115,6 +116,20 @@ int __init efi_set_mapping_permissions(struct mm_struct *mm,
 				   md->num_pages << EFI_PAGE_SHIFT,
 				   set_permissions, md);
 }
+
+static int __init arm64_dmi_init(void)
+{
+	/*
+	 * On arm64, DMI depends on UEFI, and dmi_scan_machine() needs to
+	 * be called early because dmi_id_init(), which is an arch_initcall
+	 * itself, depends on dmi_scan_machine() having been called already.
+	 */
+	dmi_scan_machine();
+	if (dmi_available)
+		dmi_set_dump_stack_arch_desc();
+	return 0;
+}
+core_initcall(arm64_dmi_init);
 
 /*
  * UpdateCapsule() depends on the system being shutdown via

@@ -23,11 +23,10 @@
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/debug.h>
+#include <linux/sched.h>
 #include <linux/signal.h>
 #include <linux/ratelimit.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/hardirq.h>
 #include <asm/traps.h>
 

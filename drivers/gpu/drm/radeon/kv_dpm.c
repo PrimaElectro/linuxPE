@@ -21,7 +21,7 @@
  *
  */
 
-#include <drm/drmP.h>
+#include "drmP.h"
 #include "radeon.h"
 #include "cikd.h"
 #include "r600_dpm.h"

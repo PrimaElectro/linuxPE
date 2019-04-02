@@ -17,8 +17,6 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/livepatch.h>
@@ -71,21 +69,6 @@ static int livepatch_init(void)
 {
 	int ret;
 
-	if (!klp_have_reliable_stack() && !patch.immediate) {
-		/*
-		 * WARNING: Be very careful when using 'patch.immediate' in
-		 * your patches.  It's ok to use it for simple patches like
-		 * this, but for more complex patches which change function
-		 * semantics, locking semantics, or data structures, it may not
-		 * be safe.  Use of this option will also prevent removal of
-		 * the patch.
-		 *
-		 * See Documentation/livepatch/livepatch.txt for more details.
-		 */
-		patch.immediate = true;
-		pr_notice("The consistency model isn't supported for your architecture.  Bypassing safety mechanisms and applying the patch immediately.\n");
-	}
-
 	ret = klp_register_patch(&patch);
 	if (ret)
 		return ret;
@@ -99,6 +82,7 @@ static int livepatch_init(void)
 
 static void livepatch_exit(void)
 {
+	WARN_ON(klp_disable_patch(&patch));
 	WARN_ON(klp_unregister_patch(&patch));
 }
 

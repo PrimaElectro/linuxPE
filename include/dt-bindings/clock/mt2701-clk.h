@@ -176,8 +176,7 @@
 #define CLK_TOP_AUD_EXT1			156
 #define CLK_TOP_AUD_EXT2			157
 #define CLK_TOP_NFI1X_PAD			158
-#define CLK_TOP_AXISEL_D4			159
-#define CLK_TOP_NR				160
+#define CLK_TOP_NR				159
 
 /* APMIXEDSYS */
 
@@ -222,8 +221,7 @@
 #define CLK_INFRA_PMICWRAP			17
 #define CLK_INFRA_DDCCI				18
 #define CLK_INFRA_CLK_13M			19
-#define CLK_INFRA_CPUSEL                        20
-#define CLK_INFRA_NR				21
+#define CLK_INFRA_NR				20
 
 /* PERICFG */
 

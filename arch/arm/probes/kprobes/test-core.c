@@ -203,7 +203,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/sched/clock.h>
 #include <linux/kprobes.h>
 #include <linux/errno.h>
 #include <linux/stddef.h>
@@ -1517,6 +1516,7 @@ fail:
 	print_registers(&result_regs);
 
 	if (mem) {
+		pr_err("current_stack=%p\n", current_stack);
 		pr_err("expected_memory:\n");
 		print_memory(expected_memory, mem_size);
 		pr_err("result_memory:\n");

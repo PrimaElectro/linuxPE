@@ -25,11 +25,12 @@
 #include <linux/math64.h>
 #include <linux/mod_devicetable.h>
 #include <asm/cpu_device_id.h>
-#include <asm/intel-family.h>
 #include <asm/processor.h>
 #include <asm/mce.h>
 
-#include "edac_module.h"
+#include "edac_core.h"
+
+#define SKX_REVISION    " Ver: 1.0 "
 
 /*
  * Debug macros
@@ -261,8 +262,8 @@ fail:
 	return -ENODEV;
 }
 
-static const struct x86_cpu_id skx_cpuids[] = {
-	{ X86_VENDOR_INTEL, 6, INTEL_FAM6_SKYLAKE_X, 0, 0 },
+const struct x86_cpu_id skx_cpuids[] = {
+	{ X86_VENDOR_INTEL, 6, 0x55, 0, 0 },	/* Skylake */
 	{ }
 };
 MODULE_DEVICE_TABLE(x86cpu, skx_cpuids);
@@ -471,6 +472,7 @@ static int skx_register_mci(struct skx_imc *imc)
 	mci->edac_cap = EDAC_FLAG_NONE;
 	mci->mod_name = "skx_edac.c";
 	mci->dev_name = pci_name(imc->chan[0].cdev);
+	mci->mod_ver = SKX_REVISION;
 	mci->ctl_page_to_phys = NULL;
 
 	rc = skx_get_dimm_config(mci);
@@ -604,7 +606,7 @@ sad_found:
 			break;
 		case 2:
 			lchan = (addr >> shift) % 2;
-			lchan = (lchan << 1) | !lchan;
+			lchan = (lchan << 1) | ~lchan;
 			break;
 		case 3:
 			lchan = ((addr >> shift) % 2) << 1;
@@ -895,7 +897,6 @@ static void skx_mce_output_error(struct mem_ctl_info *mci,
 	recoverable = GET_BITFIELD(m->status, 56, 56);
 
 	if (uncorrected_error) {
-		core_err_cnt = 1;
 		if (ripv) {
 			type = "FATAL";
 			tp_event = HW_EVENT_ERR_FATAL;
@@ -969,7 +970,7 @@ static int skx_mce_check_error(struct notifier_block *nb, unsigned long val,
 	struct mem_ctl_info *mci;
 	char *type;
 
-	if (edac_get_report_status() == EDAC_REPORTING_DISABLED)
+	if (get_edac_report_status() == EDAC_REPORTING_DISABLED)
 		return NOTIFY_DONE;
 
 	/* ignore unless this is memory related with an address */
@@ -1005,8 +1006,7 @@ static int skx_mce_check_error(struct notifier_block *nb, unsigned long val,
 }
 
 static struct notifier_block skx_mce_dec = {
-	.notifier_call	= skx_mce_check_error,
-	.priority	= MCE_PRIO_EDAC,
+	.notifier_call = skx_mce_check_error,
 };
 
 static void skx_remove(void)
@@ -1036,7 +1036,7 @@ static void skx_remove(void)
  *	search for all the devices we need
  *	check which DIMMs are present.
  */
-static int __init skx_init(void)
+int __init skx_init(void)
 {
 	const struct x86_cpu_id *id;
 	const struct munit *m;

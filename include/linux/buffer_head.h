@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * include/linux/buffer_head.h
  *
@@ -76,7 +75,49 @@ struct buffer_head {
 	struct address_space *b_assoc_map;	/* mapping this buffer is
 						   associated with */
 	atomic_t b_count;		/* users using this buffer_head */
+#ifdef CONFIG_PREEMPT_RT_BASE
+	spinlock_t b_uptodate_lock;
+#if IS_ENABLED(CONFIG_JBD2)
+	spinlock_t b_state_lock;
+	spinlock_t b_journal_head_lock;
+#endif
+#endif
 };
+
+static inline unsigned long bh_uptodate_lock_irqsave(struct buffer_head *bh)
+{
+	unsigned long flags;
+
+#ifndef CONFIG_PREEMPT_RT_BASE
+	local_irq_save(flags);
+	bit_spin_lock(BH_Uptodate_Lock, &bh->b_state);
+#else
+	spin_lock_irqsave(&bh->b_uptodate_lock, flags);
+#endif
+	return flags;
+}
+
+static inline void
+bh_uptodate_unlock_irqrestore(struct buffer_head *bh, unsigned long flags)
+{
+#ifndef CONFIG_PREEMPT_RT_BASE
+	bit_spin_unlock(BH_Uptodate_Lock, &bh->b_state);
+	local_irq_restore(flags);
+#else
+	spin_unlock_irqrestore(&bh->b_uptodate_lock, flags);
+#endif
+}
+
+static inline void buffer_head_init_locks(struct buffer_head *bh)
+{
+#ifdef CONFIG_PREEMPT_RT_BASE
+	spin_lock_init(&bh->b_uptodate_lock);
+#if IS_ENABLED(CONFIG_JBD2)
+	spin_lock_init(&bh->b_state_lock);
+	spin_lock_init(&bh->b_journal_head_lock);
+#endif
+#endif
+}
 
 /*
  * macro tricks to expand the set_buffer_foo(), clear_buffer_foo()
@@ -150,7 +191,6 @@ void buffer_check_dirty_writeback(struct page *page,
  */
 
 void mark_buffer_dirty(struct buffer_head *bh);
-void mark_buffer_write_io_error(struct buffer_head *bh);
 void init_buffer(struct buffer_head *, bh_end_io_t *, void *);
 void touch_buffer(struct buffer_head *bh);
 void set_bh_page(struct buffer_head *bh,
@@ -170,12 +210,7 @@ int inode_has_buffers(struct inode *);
 void invalidate_inode_buffers(struct inode *);
 int remove_inode_buffers(struct inode *inode);
 int sync_mapping_buffers(struct address_space *mapping);
-void clean_bdev_aliases(struct block_device *bdev, sector_t block,
-			sector_t len);
-static inline void clean_bdev_bh_alias(struct buffer_head *bh)
-{
-	clean_bdev_aliases(bh->b_bdev, bh->b_blocknr, 1);
-}
+void unmap_underlying_metadata(struct block_device *bdev, sector_t block);
 
 void mark_buffer_async_write(struct buffer_head *bh);
 void __wait_on_buffer(struct buffer_head *);
@@ -198,13 +233,13 @@ void ll_rw_block(int, int, int, struct buffer_head * bh[]);
 int sync_dirty_buffer(struct buffer_head *bh);
 int __sync_dirty_buffer(struct buffer_head *bh, int op_flags);
 void write_dirty_buffer(struct buffer_head *bh, int op_flags);
+int _submit_bh(int op, int op_flags, struct buffer_head *bh,
+	       unsigned long bio_flags);
 int submit_bh(int, int, struct buffer_head *);
 void write_boundary_block(struct block_device *bdev,
 			sector_t bblock, unsigned blocksize);
 int bh_uptodate_or_lock(struct buffer_head *bh);
 int bh_submit_read(struct buffer_head *bh);
-loff_t page_cache_seek_hole_data(struct inode *inode, loff_t offset,
-				 loff_t length, int whence);
 
 extern int buffer_heads_over_limit;
 

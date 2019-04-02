@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_ARM_IRQ_H
 #define __ASM_ARM_IRQ_H
 
@@ -23,6 +22,8 @@
 #endif
 
 #ifndef __ASSEMBLY__
+#include <linux/cpumask.h>
+
 struct irqaction;
 struct pt_regs;
 extern void migrate_irqs(void);

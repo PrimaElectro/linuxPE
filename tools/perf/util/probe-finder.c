@@ -19,7 +19,6 @@
  *
  */
 
-#include <inttypes.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -38,11 +37,9 @@
 #include "debug.h"
 #include "intlist.h"
 #include "util.h"
-#include "strlist.h"
 #include "symbol.h"
 #include "probe-finder.h"
 #include "probe-file.h"
-#include "string2.h"
 
 /* Kprobe tracer basic type is up to u64 */
 #define MAX_BASIC_TYPE_BITS	64
@@ -467,7 +464,7 @@ static int convert_variable_fields(Dwarf_Die *vr_die, const char *varname,
 		/* Verify it is a data structure  */
 		tag = dwarf_tag(&type);
 		if (tag != DW_TAG_structure_type && tag != DW_TAG_union_type) {
-			pr_warning("%s is not a data structure nor a union.\n",
+			pr_warning("%s is not a data structure nor an union.\n",
 				   varname);
 			return -EINVAL;
 		}
@@ -482,7 +479,7 @@ static int convert_variable_fields(Dwarf_Die *vr_die, const char *varname,
 	} else {
 		/* Verify it is a data structure  */
 		if (tag != DW_TAG_structure_type && tag != DW_TAG_union_type) {
-			pr_warning("%s is not a data structure nor a union.\n",
+			pr_warning("%s is not a data structure nor an union.\n",
 				   varname);
 			return -EINVAL;
 		}

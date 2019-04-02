@@ -317,6 +317,7 @@ static void iproc_msi_handler(struct irq_desc *desc)
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct iproc_msi_grp *grp;
 	struct iproc_msi *msi;
+	struct iproc_pcie *pcie;
 	u32 eq, head, tail, nr_events;
 	unsigned long hwirq;
 	int virq;
@@ -325,6 +326,7 @@ static void iproc_msi_handler(struct irq_desc *desc)
 
 	grp = irq_desc_get_handler_data(desc);
 	msi = grp->msi;
+	pcie = msi->pcie;
 	eq = grp->eq;
 
 	/*
@@ -561,7 +563,6 @@ int iproc_msi_init(struct iproc_pcie *pcie, struct device_node *node)
 	}
 
 	switch (pcie->type) {
-	case IPROC_PCIE_PAXB_BCMA:
 	case IPROC_PCIE_PAXB:
 		msi->reg_offsets = iproc_msi_reg_paxb;
 		msi->nr_eq_region = 1;

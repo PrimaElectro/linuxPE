@@ -34,7 +34,7 @@
 #include <linux/list.h>
 #include <linux/pagemap.h>
 #include <linux/utsname.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/idr.h>
 #include <linux/uio.h>
 #include <linux/slab.h>
@@ -204,14 +204,6 @@ static int v9fs_file_do_lock(struct file *filp, int cmd, struct file_lock *fl)
 			break;
 		if (schedule_timeout_interruptible(P9_LOCK_TIMEOUT) != 0)
 			break;
-		/*
-		 * p9_client_lock_dotl overwrites flock.client_id with the
-		 * server message, free and reuse the client name
-		 */
-		if (flock.client_id != fid->clnt->name) {
-			kfree(flock.client_id);
-			flock.client_id = fid->clnt->name;
-		}
 	}
 
 	/* map 9p status to VFS status */
@@ -243,8 +235,6 @@ out_unlock:
 		locks_lock_file_wait(filp, fl);
 		fl->fl_type = fl_type;
 	}
-	if (flock.client_id != fid->clnt->name)
-		kfree(flock.client_id);
 out:
 	return res;
 }
@@ -279,7 +269,7 @@ static int v9fs_file_getlock(struct file *filp, struct file_lock *fl)
 
 	res = p9_client_getlock_dotl(fid, &glock);
 	if (res < 0)
-		goto out;
+		return res;
 	/* map 9p lock type to os lock type */
 	switch (glock.type) {
 	case P9_LOCK_TYPE_RDLCK:
@@ -298,11 +288,9 @@ static int v9fs_file_getlock(struct file *filp, struct file_lock *fl)
 			fl->fl_end = OFFSET_MAX;
 		else
 			fl->fl_end = glock.start + glock.length - 1;
-		fl->fl_pid = -glock.proc_id;
+		fl->fl_pid = glock.proc_id;
 	}
-out:
-	if (glock.client_id != fid->clnt->name)
-		kfree(glock.client_id);
+	kfree(glock.client_id);
 	return res;
 }
 
@@ -457,7 +445,7 @@ static int v9fs_file_fsync(struct file *filp, loff_t start, loff_t end,
 	struct p9_wstat wstat;
 	int retval;
 
-	retval = file_write_and_wait_range(filp, start, end);
+	retval = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (retval)
 		return retval;
 
@@ -480,7 +468,7 @@ int v9fs_file_fsync_dotl(struct file *filp, loff_t start, loff_t end,
 	struct inode *inode = filp->f_mapping->host;
 	int retval;
 
-	retval = file_write_and_wait_range(filp, start, end);
+	retval = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (retval)
 		return retval;
 
@@ -546,11 +534,11 @@ v9fs_mmap_file_mmap(struct file *filp, struct vm_area_struct *vma)
 }
 
 static int
-v9fs_vm_page_mkwrite(struct vm_fault *vmf)
+v9fs_vm_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct v9fs_inode *v9inode;
 	struct page *page = vmf->page;
-	struct file *filp = vmf->vma->vm_file;
+	struct file *filp = vma->vm_file;
 	struct inode *inode = file_inode(filp);
 
 

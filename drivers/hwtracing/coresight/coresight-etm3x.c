@@ -243,8 +243,6 @@ void etm_set_default(struct etm_config *config)
 	}
 
 	config->ctxid_mask = 0x0;
-	/* Setting default to 1024 as per TRM recommendation */
-	config->sync_freq = 0x400;
 }
 
 void etm_config_trace_mode(struct etm_config *config)
@@ -310,9 +308,7 @@ void etm_config_trace_mode(struct etm_config *config)
 	config->addr_type[1] = ETM_ADDR_TYPE_RANGE;
 }
 
-#define ETM3X_SUPPORTED_OPTIONS (ETMCR_CYC_ACC | \
-				 ETMCR_TIMESTAMP_EN | \
-				 ETMCR_RETURN_STACK)
+#define ETM3X_SUPPORTED_OPTIONS (ETMCR_CYC_ACC | ETMCR_TIMESTAMP_EN)
 
 static int etm_parse_event_config(struct etm_drvdata *drvdata,
 				  struct perf_event *event)
@@ -343,23 +339,13 @@ static int etm_parse_event_config(struct etm_drvdata *drvdata,
 		etm_config_trace_mode(config);
 
 	/*
-	 * At this time only cycle accurate, return stack  and timestamp
-	 * options are available.
+	 * At this time only cycle accurate and timestamp options are
+	 * available.
 	 */
 	if (attr->config & ~ETM3X_SUPPORTED_OPTIONS)
 		return -EINVAL;
 
 	config->ctrl = attr->config;
-
-	/*
-	 * Possible to have cores with PTM (supports ret stack) and ETM
-	 * (never has ret stack) on the same SoC. So if we have a request
-	 * for return stack that can't be honoured on this core then
-	 * clear the bit - trace will still continue normally
-	 */
-	if ((config->ctrl & ETMCR_RETURN_STACK) &&
-	    !(drvdata->etmccer & ETMCCER_RETSTACK))
-		config->ctrl &= ~ETMCR_RETURN_STACK;
 
 	return 0;
 }
@@ -601,7 +587,7 @@ static void etm_disable_sysfs(struct coresight_device *csdev)
 	 * after cpu online mask indicates the cpu is offline but before the
 	 * DYING hotplug callback is serviced by the ETM driver.
 	 */
-	cpus_read_lock();
+	get_online_cpus();
 	spin_lock(&drvdata->spinlock);
 
 	/*
@@ -611,7 +597,7 @@ static void etm_disable_sysfs(struct coresight_device *csdev)
 	smp_call_function_single(drvdata->cpu, etm_disable_hw, drvdata, 1);
 
 	spin_unlock(&drvdata->spinlock);
-	cpus_read_unlock();
+	put_online_cpus();
 
 	dev_info(drvdata->dev, "ETM tracing disabled\n");
 }
@@ -809,7 +795,7 @@ static int etm_probe(struct amba_device *adev, const struct amba_id *id)
 
 	drvdata->cpu = pdata ? pdata->cpu : 0;
 
-	cpus_read_lock();
+	get_online_cpus();
 	etmdrvdata[drvdata->cpu] = drvdata;
 
 	if (smp_call_function_single(drvdata->cpu,
@@ -817,17 +803,17 @@ static int etm_probe(struct amba_device *adev, const struct amba_id *id)
 		dev_err(dev, "ETM arch init failed\n");
 
 	if (!etm_count++) {
-		cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ARM_CORESIGHT_STARTING,
-						     "arm/coresight:starting",
-						     etm_starting_cpu, etm_dying_cpu);
-		ret = cpuhp_setup_state_nocalls_cpuslocked(CPUHP_AP_ONLINE_DYN,
-							   "arm/coresight:online",
-							   etm_online_cpu, NULL);
+		cpuhp_setup_state_nocalls(CPUHP_AP_ARM_CORESIGHT_STARTING,
+					  "AP_ARM_CORESIGHT_STARTING",
+					  etm_starting_cpu, etm_dying_cpu);
+		ret = cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
+						"AP_ARM_CORESIGHT_ONLINE",
+						etm_online_cpu, NULL);
 		if (ret < 0)
 			goto err_arch_supported;
 		hp_online = ret;
 	}
-	cpus_read_unlock();
+	put_online_cpus();
 
 	if (etm_arch_supported(drvdata->arch) == false) {
 		ret = -EINVAL;
@@ -899,7 +885,7 @@ static const struct dev_pm_ops etm_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(etm_runtime_suspend, etm_runtime_resume, NULL)
 };
 
-static const struct amba_id etm_ids[] = {
+static struct amba_id etm_ids[] = {
 	{	/* ETM 3.3 */
 		.id	= 0x0003b921,
 		.mask	= 0x0003ffff,

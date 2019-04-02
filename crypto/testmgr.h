@@ -34,9 +34,9 @@
 
 struct hash_testvec {
 	/* only used with keyed hash algorithms */
-	const char *key;
-	const char *plaintext;
-	const char *digest;
+	char *key;
+	char *plaintext;
+	char *digest;
 	unsigned char tap[MAX_TAP];
 	unsigned short psize;
 	unsigned char np;
@@ -63,11 +63,11 @@ struct hash_testvec {
  */
 
 struct cipher_testvec {
-	const char *key;
-	const char *iv;
-	const char *iv_out;
-	const char *input;
-	const char *result;
+	char *key;
+	char *iv;
+	char *iv_out;
+	char *input;
+	char *result;
 	unsigned short tap[MAX_TAP];
 	int np;
 	unsigned char also_non_np;
@@ -80,11 +80,11 @@ struct cipher_testvec {
 };
 
 struct aead_testvec {
-	const char *key;
-	const char *iv;
-	const char *input;
-	const char *assoc;
-	const char *result;
+	char *key;
+	char *iv;
+	char *input;
+	char *assoc;
+	char *result;
 	unsigned char tap[MAX_TAP];
 	unsigned char atap[MAX_TAP];
 	int np;
@@ -99,10 +99,10 @@ struct aead_testvec {
 };
 
 struct cprng_testvec {
-	const char *key;
-	const char *dt;
-	const char *v;
-	const char *result;
+	char *key;
+	char *dt;
+	char *v;
+	char *result;
 	unsigned char klen;
 	unsigned short dtlen;
 	unsigned short vlen;
@@ -111,51 +111,52 @@ struct cprng_testvec {
 };
 
 struct drbg_testvec {
-	const unsigned char *entropy;
+	unsigned char *entropy;
 	size_t entropylen;
-	const unsigned char *entpra;
-	const unsigned char *entprb;
+	unsigned char *entpra;
+	unsigned char *entprb;
 	size_t entprlen;
-	const unsigned char *addtla;
-	const unsigned char *addtlb;
+	unsigned char *addtla;
+	unsigned char *addtlb;
 	size_t addtllen;
-	const unsigned char *pers;
+	unsigned char *pers;
 	size_t perslen;
-	const unsigned char *expected;
+	unsigned char *expected;
 	size_t expectedlen;
 };
 
 struct akcipher_testvec {
-	const unsigned char *key;
-	const unsigned char *m;
-	const unsigned char *c;
+	unsigned char *key;
+	unsigned char *m;
+	unsigned char *c;
 	unsigned int key_len;
 	unsigned int m_size;
 	unsigned int c_size;
 	bool public_key_vec;
-	bool siggen_sigver_test;
 };
 
 struct kpp_testvec {
-	const unsigned char *secret;
-	const unsigned char *b_secret;
-	const unsigned char *b_public;
-	const unsigned char *expected_a_public;
-	const unsigned char *expected_ss;
+	unsigned char *secret;
+	unsigned char *b_public;
+	unsigned char *expected_a_public;
+	unsigned char *expected_ss;
 	unsigned short secret_size;
-	unsigned short b_secret_size;
 	unsigned short b_public_size;
 	unsigned short expected_a_public_size;
 	unsigned short expected_ss_size;
-	bool genkey;
 };
 
-static const char zeroed_string[48];
+static char zeroed_string[48];
 
 /*
  * RSA test vectors. Borrowed from openSSL.
  */
-static const struct akcipher_testvec rsa_tv_template[] = {
+#ifdef CONFIG_CRYPTO_FIPS
+#define RSA_TEST_VECTORS	2
+#else
+#define RSA_TEST_VECTORS	5
+#endif
+static struct akcipher_testvec rsa_tv_template[] = {
 	{
 #ifndef CONFIG_CRYPTO_FIPS
 	.key =
@@ -339,7 +340,6 @@ static const struct akcipher_testvec rsa_tv_template[] = {
 	.m_size = 8,
 	.c_size = 256,
 	.public_key_vec = true,
-#ifndef CONFIG_CRYPTO_FIPS
 	}, {
 	.key =
 	"\x30\x82\x09\x29" /* sequence of 2345 bytes */
@@ -538,106 +538,12 @@ static const struct akcipher_testvec rsa_tv_template[] = {
 	.key_len = 2349,
 	.m_size = 8,
 	.c_size = 512,
-#endif
 	}
 };
 
-/*
- * PKCS#1 RSA test vectors. Obtained from CAVS testing.
- */
-static const struct akcipher_testvec pkcs1pad_rsa_tv_template[] = {
-	{
-	.key =
-	"\x30\x82\x03\x1f\x02\x01\x00\x02\x82\x01\x01\x00\xd7\x1e\x77\x82"
-	"\x8c\x92\x31\xe7\x69\x02\xa2\xd5\x5c\x78\xde\xa2\x0c\x8f\xfe\x28"
-	"\x59\x31\xdf\x40\x9c\x60\x61\x06\xb9\x2f\x62\x40\x80\x76\xcb\x67"
-	"\x4a\xb5\x59\x56\x69\x17\x07\xfa\xf9\x4c\xbd\x6c\x37\x7a\x46\x7d"
-	"\x70\xa7\x67\x22\xb3\x4d\x7a\x94\xc3\xba\x4b\x7c\x4b\xa9\x32\x7c"
-	"\xb7\x38\x95\x45\x64\xa4\x05\xa8\x9f\x12\x7c\x4e\xc6\xc8\x2d\x40"
-	"\x06\x30\xf4\x60\xa6\x91\xbb\x9b\xca\x04\x79\x11\x13\x75\xf0\xae"
-	"\xd3\x51\x89\xc5\x74\xb9\xaa\x3f\xb6\x83\xe4\x78\x6b\xcd\xf9\x5c"
-	"\x4c\x85\xea\x52\x3b\x51\x93\xfc\x14\x6b\x33\x5d\x30\x70\xfa\x50"
-	"\x1b\x1b\x38\x81\x13\x8d\xf7\xa5\x0c\xc0\x8e\xf9\x63\x52\x18\x4e"
-	"\xa9\xf9\xf8\x5c\x5d\xcd\x7a\x0d\xd4\x8e\x7b\xee\x91\x7b\xad\x7d"
-	"\xb4\x92\xd5\xab\x16\x3b\x0a\x8a\xce\x8e\xde\x47\x1a\x17\x01\x86"
-	"\x7b\xab\x99\xf1\x4b\x0c\x3a\x0d\x82\x47\xc1\x91\x8c\xbb\x2e\x22"
-	"\x9e\x49\x63\x6e\x02\xc1\xc9\x3a\x9b\xa5\x22\x1b\x07\x95\xd6\x10"
-	"\x02\x50\xfd\xfd\xd1\x9b\xbe\xab\xc2\xc0\x74\xd7\xec\x00\xfb\x11"
-	"\x71\xcb\x7a\xdc\x81\x79\x9f\x86\x68\x46\x63\x82\x4d\xb7\xf1\xe6"
-	"\x16\x6f\x42\x63\xf4\x94\xa0\xca\x33\xcc\x75\x13\x02\x82\x01\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01"
-	"\x02\x82\x01\x00\x62\xb5\x60\x31\x4f\x3f\x66\x16\xc1\x60\xac\x47"
-	"\x2a\xff\x6b\x69\x00\x4a\xb2\x5c\xe1\x50\xb9\x18\x74\xa8\xe4\xdc"
-	"\xa8\xec\xcd\x30\xbb\xc1\xc6\xe3\xc6\xac\x20\x2a\x3e\x5e\x8b\x12"
-	"\xe6\x82\x08\x09\x38\x0b\xab\x7c\xb3\xcc\x9c\xce\x97\x67\xdd\xef"
-	"\x95\x40\x4e\x92\xe2\x44\xe9\x1d\xc1\x14\xfd\xa9\xb1\xdc\x71\x9c"
-	"\x46\x21\xbd\x58\x88\x6e\x22\x15\x56\xc1\xef\xe0\xc9\x8d\xe5\x80"
-	"\x3e\xda\x7e\x93\x0f\x52\xf6\xf5\xc1\x91\x90\x9e\x42\x49\x4f\x8d"
-	"\x9c\xba\x38\x83\xe9\x33\xc2\x50\x4f\xec\xc2\xf0\xa8\xb7\x6e\x28"
-	"\x25\x56\x6b\x62\x67\xfe\x08\xf1\x56\xe5\x6f\x0e\x99\xf1\xe5\x95"
-	"\x7b\xef\xeb\x0a\x2c\x92\x97\x57\x23\x33\x36\x07\xdd\xfb\xae\xf1"
-	"\xb1\xd8\x33\xb7\x96\x71\x42\x36\xc5\xa4\xa9\x19\x4b\x1b\x52\x4c"
-	"\x50\x69\x91\xf0\x0e\xfa\x80\x37\x4b\xb5\xd0\x2f\xb7\x44\x0d\xd4"
-	"\xf8\x39\x8d\xab\x71\x67\x59\x05\x88\x3d\xeb\x48\x48\x33\x88\x4e"
-	"\xfe\xf8\x27\x1b\xd6\x55\x60\x5e\x48\xb7\x6d\x9a\xa8\x37\xf9\x7a"
-	"\xde\x1b\xcd\x5d\x1a\x30\xd4\xe9\x9e\x5b\x3c\x15\xf8\x9c\x1f\xda"
-	"\xd1\x86\x48\x55\xce\x83\xee\x8e\x51\xc7\xde\x32\x12\x47\x7d\x46"
-	"\xb8\x35\xdf\x41\x02\x01\x00\x02\x01\x00\x02\x01\x00\x02\x01\x00"
-	"\x02\x01\x00",
-	.key_len = 804,
-	/*
-	 * m is SHA256 hash of following message:
-	 * "\x49\x41\xbe\x0a\x0c\xc9\xf6\x35\x51\xe4\x27\x56\x13\x71\x4b\xd0"
-	 * "\x36\x92\x84\x89\x1b\xf8\x56\x4a\x72\x61\x14\x69\x4f\x5e\x98\xa5"
-	 * "\x80\x5a\x37\x51\x1f\xd8\xf5\xb5\x63\xfc\xf4\xb1\xbb\x4d\x33\xa3"
-	 * "\x1e\xb9\x75\x8b\x9c\xda\x7e\x6d\x3a\x77\x85\xf7\xfc\x4e\xe7\x64"
-	 * "\x43\x10\x19\xa0\x59\xae\xe0\xad\x4b\xd3\xc4\x45\xf7\xb1\xc2\xc1"
-	 * "\x65\x01\x41\x39\x5b\x45\x47\xed\x2b\x51\xed\xe3\xd0\x09\x10\xd2"
-	 * "\x39\x6c\x4a\x3f\xe5\xd2\x20\xe6\xb0\x71\x7d\x5b\xed\x26\x60\xf1"
-	 * "\xb4\x73\xd1\xdb\x7d\xc4\x19\x91\xee\xf6\x32\x76\xf2\x19\x7d\xb7"
-	 */
-	.m =
-	"\x3e\xc8\xa1\x26\x20\x54\x44\x52\x48\x0d\xe5\x66\xf3\xb3\xf5\x04"
-	"\xbe\x10\xa8\x48\x94\x22\x2d\xdd\xba\x7a\xb4\x76\x8d\x79\x98\x89",
-	.m_size = 32,
-	.c =
-	"\xc7\xa3\x98\xeb\x43\xd1\x08\xc2\x3d\x78\x45\x04\x70\xc9\x01\xee"
-	"\xf8\x85\x37\x7c\x0b\xf9\x19\x70\x5c\x45\x7b\x2f\x3a\x0b\xb7\x8b"
-	"\xc4\x0d\x7b\x3a\x64\x0b\x0f\xdb\x78\xa9\x0b\xfd\x8d\x82\xa4\x86"
-	"\x39\xbf\x21\xb8\x84\xc4\xce\x9f\xc2\xe8\xb6\x61\x46\x17\xb9\x4e"
-	"\x0b\x57\x05\xb4\x4f\xf9\x9c\x93\x2d\x9b\xd5\x48\x1d\x80\x12\xef"
-	"\x3a\x77\x7f\xbc\xb5\x8e\x2b\x6b\x7c\xfc\x9f\x8c\x9d\xa2\xc4\x85"
-	"\xb0\x87\xe9\x17\x9b\xb6\x23\x62\xd2\xa9\x9f\x57\xe8\xf7\x04\x45"
-	"\x24\x3a\x45\xeb\xeb\x6a\x08\x8e\xaf\xc8\xa0\x84\xbc\x5d\x13\x38"
-	"\xf5\x17\x8c\xa3\x96\x9b\xa9\x38\x8d\xf0\x35\xad\x32\x8a\x72\x5b"
-	"\xdf\x21\xab\x4b\x0e\xa8\x29\xbb\x61\x54\xbf\x05\xdb\x84\x84\xde"
-	"\xdd\x16\x36\x31\xda\xf3\x42\x6d\x7a\x90\x22\x9b\x11\x29\xa6\xf8"
-	"\x30\x61\xda\xd3\x8b\x54\x1e\x42\xd1\x47\x1d\x6f\xd1\xcd\x42\x0b"
-	"\xd1\xe4\x15\x85\x7e\x08\xd6\x59\x64\x4c\x01\x34\x91\x92\x26\xe8"
-	"\xb0\x25\x8c\xf8\xf4\xfa\x8b\xc9\x31\x33\x76\x72\xfb\x64\x92\x9f"
-	"\xda\x62\x8d\xe1\x2a\x71\x91\x43\x40\x61\x3c\x5a\xbe\x86\xfc\x5b"
-	"\xe6\xf9\xa9\x16\x31\x1f\xaf\x25\x6d\xc2\x4a\x23\x6e\x63\x02\xa2",
-	.c_size = 256,
-	.siggen_sigver_test = true,
-	}
-};
+#define DH_TEST_VECTORS 2
 
-static const struct kpp_testvec dh_tv_template[] = {
+struct kpp_testvec dh_tv_template[] = {
 	{
 	.secret =
 #ifdef __LITTLE_ENDIAN
@@ -854,7 +760,12 @@ static const struct kpp_testvec dh_tv_template[] = {
 	}
 };
 
-static const struct kpp_testvec ecdh_tv_template[] = {
+#ifdef CONFIG_CRYPTO_FIPS
+#define ECDH_TEST_VECTORS 1
+#else
+#define ECDH_TEST_VECTORS 2
+#endif
+struct kpp_testvec ecdh_tv_template[] = {
 	{
 #ifndef CONFIG_CRYPTO_FIPS
 	.secret =
@@ -939,57 +850,15 @@ static const struct kpp_testvec ecdh_tv_template[] = {
 	.b_public_size = 64,
 	.expected_a_public_size = 64,
 	.expected_ss_size = 32
-	}, {
-	.secret =
-#ifdef __LITTLE_ENDIAN
-	"\x02\x00" /* type */
-	"\x08\x00" /* len */
-	"\x02\x00" /* curve_id */
-	"\x00\x00", /* key_size */
-#else
-	"\x00\x02" /* type */
-	"\x00\x08" /* len */
-	"\x00\x02" /* curve_id */
-	"\x00\x00", /* key_size */
-#endif
-	.b_secret =
-#ifdef __LITTLE_ENDIAN
-	"\x02\x00" /* type */
-	"\x28\x00" /* len */
-	"\x02\x00" /* curve_id */
-	"\x20\x00" /* key_size */
-#else
-	"\x00\x02" /* type */
-	"\x00\x28" /* len */
-	"\x00\x02" /* curve_id */
-	"\x00\x20" /* key_size */
-#endif
-	"\x24\xd1\x21\xeb\xe5\xcf\x2d\x83"
-	"\xf6\x62\x1b\x6e\x43\x84\x3a\xa3"
-	"\x8b\xe0\x86\xc3\x20\x19\xda\x92"
-	"\x50\x53\x03\xe1\xc0\xea\xb8\x82",
-	.b_public =
-	"\x1a\x7f\xeb\x52\x00\xbd\x3c\x31"
-	"\x7d\xb6\x70\xc1\x86\xa6\xc7\xc4"
-	"\x3b\xc5\x5f\x6c\x6f\x58\x3c\xf5"
-	"\xb6\x63\x82\x77\x33\x24\xa1\x5f"
-	"\x6a\xca\x43\x6f\xf7\x7e\xff\x02"
-	"\x37\x08\xcc\x40\x5e\x7a\xfd\x6a"
-	"\x6a\x02\x6e\x41\x87\x68\x38\x77"
-	"\xfa\xa9\x44\x43\x2d\xef\x09\xdf",
-	.secret_size = 8,
-	.b_secret_size = 40,
-	.b_public_size = 64,
-	.expected_a_public_size = 64,
-	.expected_ss_size = 32,
-	.genkey = true,
 	}
 };
 
 /*
  * MD4 test vectors from RFC1320
  */
-static const struct hash_testvec md4_tv_template[] = {
+#define MD4_TEST_VECTORS	7
+
+static struct hash_testvec md4_tv_template [] = {
 	{
 		.plaintext = "",
 		.digest	= "\x31\xd6\xcf\xe0\xd1\x6a\xe9\x31"
@@ -1030,7 +899,8 @@ static const struct hash_testvec md4_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec sha3_224_tv_template[] = {
+#define SHA3_224_TEST_VECTORS	3
+static struct hash_testvec sha3_224_tv_template[] = {
 	{
 		.plaintext = "",
 		.digest	= "\x6b\x4e\x03\x42\x36\x67\xdb\xb7"
@@ -1055,7 +925,8 @@ static const struct hash_testvec sha3_224_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec sha3_256_tv_template[] = {
+#define SHA3_256_TEST_VECTORS	3
+static struct hash_testvec sha3_256_tv_template[] = {
 	{
 		.plaintext = "",
 		.digest	= "\xa7\xff\xc6\xf8\xbf\x1e\xd7\x66"
@@ -1081,7 +952,8 @@ static const struct hash_testvec sha3_256_tv_template[] = {
 };
 
 
-static const struct hash_testvec sha3_384_tv_template[] = {
+#define SHA3_384_TEST_VECTORS	3
+static struct hash_testvec sha3_384_tv_template[] = {
 	{
 		.plaintext = "",
 		.digest	= "\x0c\x63\xa7\x5b\x84\x5e\x4f\x7d"
@@ -1113,7 +985,8 @@ static const struct hash_testvec sha3_384_tv_template[] = {
 };
 
 
-static const struct hash_testvec sha3_512_tv_template[] = {
+#define SHA3_512_TEST_VECTORS	3
+static struct hash_testvec sha3_512_tv_template[] = {
 	{
 		.plaintext = "",
 		.digest	= "\xa6\x9f\x73\xcc\xa2\x3a\x9a\xc5"
@@ -1154,7 +1027,9 @@ static const struct hash_testvec sha3_512_tv_template[] = {
 /*
  * MD5 test vectors from RFC1321
  */
-static const struct hash_testvec md5_tv_template[] = {
+#define MD5_TEST_VECTORS	7
+
+static struct hash_testvec md5_tv_template[] = {
 	{
 		.digest	= "\xd4\x1d\x8c\xd9\x8f\x00\xb2\x04"
 			  "\xe9\x80\x09\x98\xec\xf8\x42\x7e",
@@ -1198,7 +1073,9 @@ static const struct hash_testvec md5_tv_template[] = {
 /*
  * RIPEMD-128 test vectors from ISO/IEC 10118-3:2004(E)
  */
-static const struct hash_testvec rmd128_tv_template[] = {
+#define RMD128_TEST_VECTORS     10
+
+static struct hash_testvec rmd128_tv_template[] = {
 	{
 		.digest	= "\xcd\xf2\x62\x13\xa1\x50\xdc\x3e"
 			  "\xcb\x61\x0f\x18\xf6\xb3\x8b\x46",
@@ -1260,7 +1137,9 @@ static const struct hash_testvec rmd128_tv_template[] = {
 /*
  * RIPEMD-160 test vectors from ISO/IEC 10118-3:2004(E)
  */
-static const struct hash_testvec rmd160_tv_template[] = {
+#define RMD160_TEST_VECTORS     10
+
+static struct hash_testvec rmd160_tv_template[] = {
 	{
 		.digest	= "\x9c\x11\x85\xa5\xc5\xe9\xfc\x54\x61\x28"
 			  "\x08\x97\x7e\xe8\xf5\x48\xb2\x25\x8d\x31",
@@ -1322,7 +1201,9 @@ static const struct hash_testvec rmd160_tv_template[] = {
 /*
  * RIPEMD-256 test vectors
  */
-static const struct hash_testvec rmd256_tv_template[] = {
+#define RMD256_TEST_VECTORS     8
+
+static struct hash_testvec rmd256_tv_template[] = {
 	{
 		.digest	= "\x02\xba\x4c\x4e\x5f\x8e\xcd\x18"
 			  "\x77\xfc\x52\xd6\x4d\x30\xe3\x7a"
@@ -1388,7 +1269,9 @@ static const struct hash_testvec rmd256_tv_template[] = {
 /*
  * RIPEMD-320 test vectors
  */
-static const struct hash_testvec rmd320_tv_template[] = {
+#define RMD320_TEST_VECTORS     8
+
+static struct hash_testvec rmd320_tv_template[] = {
 	{
 		.digest	= "\x22\xd6\x5d\x56\x61\x53\x6c\xdc\x75\xc1"
 			  "\xfd\xf5\xc6\xde\x7b\x41\xb9\xf2\x73\x25"
@@ -1451,49 +1334,36 @@ static const struct hash_testvec rmd320_tv_template[] = {
 	}
 };
 
-static const struct hash_testvec crct10dif_tv_template[] = {
+#define CRCT10DIF_TEST_VECTORS	3
+static struct hash_testvec crct10dif_tv_template[] = {
 	{
-		.plaintext	= "abc",
-		.psize		= 3,
-		.digest		= (u8 *)(u16 []){ 0x443b },
+		.plaintext = "abc",
+		.psize  = 3,
+#ifdef __LITTLE_ENDIAN
+		.digest = "\x3b\x44",
+#else
+		.digest = "\x44\x3b",
+#endif
 	}, {
-		.plaintext 	= "1234567890123456789012345678901234567890"
-				  "123456789012345678901234567890123456789",
-		.psize		= 79,
-		.digest 	= (u8 *)(u16 []){ 0x4b70 },
-		.np		= 2,
-		.tap		= { 63, 16 },
+		.plaintext = "1234567890123456789012345678901234567890"
+			     "123456789012345678901234567890123456789",
+		.psize	= 79,
+#ifdef __LITTLE_ENDIAN
+		.digest	= "\x70\x4b",
+#else
+		.digest	= "\x4b\x70",
+#endif
 	}, {
-		.plaintext	= "abcdddddddddddddddddddddddddddddddddddddddd"
-				  "ddddddddddddd",
-		.psize		= 56,
-		.digest		= (u8 *)(u16 []){ 0x9ce3 },
-		.np		= 8,
-		.tap		= { 1, 2, 28, 7, 6, 5, 4, 3 },
-	}, {
-		.plaintext 	= "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "123456789012345678901234567890123456789",
-		.psize		= 319,
-		.digest		= (u8 *)(u16 []){ 0x44c6 },
-	}, {
-		.plaintext 	= "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "1234567890123456789012345678901234567890"
-				  "123456789012345678901234567890123456789",
-		.psize		= 319,
-		.digest		= (u8 *)(u16 []){ 0x44c6 },
-		.np		= 4,
-		.tap		= { 1, 255, 57, 6 },
+		.plaintext =
+		"abcddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		.psize  = 56,
+#ifdef __LITTLE_ENDIAN
+		.digest = "\xe3\x9c",
+#else
+		.digest = "\x9c\xe3",
+#endif
+		.np     = 2,
+		.tap    = { 28, 28 }
 	}
 };
 
@@ -1501,7 +1371,9 @@ static const struct hash_testvec crct10dif_tv_template[] = {
  * SHA1 test vectors  from from FIPS PUB 180-1
  * Long vector from CAVS 5.0
  */
-static const struct hash_testvec sha1_tv_template[] = {
+#define SHA1_TEST_VECTORS	6
+
+static struct hash_testvec sha1_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -1691,7 +1563,9 @@ static const struct hash_testvec sha1_tv_template[] = {
 /*
  * SHA224 test vectors from from FIPS PUB 180-2
  */
-static const struct hash_testvec sha224_tv_template[] = {
+#define SHA224_TEST_VECTORS     5
+
+static struct hash_testvec sha224_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -1863,7 +1737,9 @@ static const struct hash_testvec sha224_tv_template[] = {
 /*
  * SHA256 test vectors from from NIST
  */
-static const struct hash_testvec sha256_tv_template[] = {
+#define SHA256_TEST_VECTORS	5
+
+static struct hash_testvec sha256_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2034,7 +1910,9 @@ static const struct hash_testvec sha256_tv_template[] = {
 /*
  * SHA384 test vectors from from NIST and kerneli
  */
-static const struct hash_testvec sha384_tv_template[] = {
+#define SHA384_TEST_VECTORS	6
+
+static struct hash_testvec sha384_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2226,7 +2104,9 @@ static const struct hash_testvec sha384_tv_template[] = {
 /*
  * SHA512 test vectors from from NIST and kerneli
  */
-static const struct hash_testvec sha512_tv_template[] = {
+#define SHA512_TEST_VECTORS	6
+
+static struct hash_testvec sha512_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2433,7 +2313,9 @@ static const struct hash_testvec sha512_tv_template[] = {
  * by Vincent Rijmen and Paulo S. L. M. Barreto as part of the NESSIE
  * submission
  */
-static const struct hash_testvec wp512_tv_template[] = {
+#define WP512_TEST_VECTORS	8
+
+static struct hash_testvec wp512_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2529,7 +2411,9 @@ static const struct hash_testvec wp512_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec wp384_tv_template[] = {
+#define WP384_TEST_VECTORS	8
+
+static struct hash_testvec wp384_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2609,7 +2493,9 @@ static const struct hash_testvec wp384_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec wp256_tv_template[] = {
+#define WP256_TEST_VECTORS	8
+
+static struct hash_testvec wp256_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2676,7 +2562,9 @@ static const struct hash_testvec wp256_tv_template[] = {
 /*
  * TIGER test vectors from Tiger website
  */
-static const struct hash_testvec tgr192_tv_template[] = {
+#define TGR192_TEST_VECTORS	6
+
+static struct hash_testvec tgr192_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2719,7 +2607,9 @@ static const struct hash_testvec tgr192_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec tgr160_tv_template[] = {
+#define TGR160_TEST_VECTORS	6
+
+static struct hash_testvec tgr160_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2762,7 +2652,9 @@ static const struct hash_testvec tgr160_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec tgr128_tv_template[] = {
+#define TGR128_TEST_VECTORS	6
+
+static struct hash_testvec tgr128_tv_template[] = {
 	{
 		.plaintext = "",
 		.psize	= 0,
@@ -2799,7 +2691,9 @@ static const struct hash_testvec tgr128_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec ghash_tv_template[] =
+#define GHASH_TEST_VECTORS 6
+
+static struct hash_testvec ghash_tv_template[] =
 {
 	{
 		.key	= "\xdf\xa6\xbf\x4d\xed\x81\xdb\x03"
@@ -2914,7 +2808,9 @@ static const struct hash_testvec ghash_tv_template[] =
  * HMAC-MD5 test vectors from RFC2202
  * (These need to be fixed to not use strlen).
  */
-static const struct hash_testvec hmac_md5_tv_template[] =
+#define HMAC_MD5_TEST_VECTORS	7
+
+static struct hash_testvec hmac_md5_tv_template[] =
 {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b",
@@ -2994,7 +2890,9 @@ static const struct hash_testvec hmac_md5_tv_template[] =
 /*
  * HMAC-RIPEMD128 test vectors from RFC2286
  */
-static const struct hash_testvec hmac_rmd128_tv_template[] = {
+#define HMAC_RMD128_TEST_VECTORS	7
+
+static struct hash_testvec hmac_rmd128_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b",
 		.ksize	= 16,
@@ -3073,7 +2971,9 @@ static const struct hash_testvec hmac_rmd128_tv_template[] = {
 /*
  * HMAC-RIPEMD160 test vectors from RFC2286
  */
-static const struct hash_testvec hmac_rmd160_tv_template[] = {
+#define HMAC_RMD160_TEST_VECTORS	7
+
+static struct hash_testvec hmac_rmd160_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b",
 		.ksize	= 20,
@@ -3152,7 +3052,9 @@ static const struct hash_testvec hmac_rmd160_tv_template[] = {
 /*
  * HMAC-SHA1 test vectors from RFC2202
  */
-static const struct hash_testvec hmac_sha1_tv_template[] = {
+#define HMAC_SHA1_TEST_VECTORS	7
+
+static struct hash_testvec hmac_sha1_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b",
 		.ksize	= 20,
@@ -3233,7 +3135,9 @@ static const struct hash_testvec hmac_sha1_tv_template[] = {
 /*
  * SHA224 HMAC test vectors from RFC4231
  */
-static const struct hash_testvec hmac_sha224_tv_template[] = {
+#define HMAC_SHA224_TEST_VECTORS    4
+
+static struct hash_testvec hmac_sha224_tv_template[] = {
 	{
 		.key    = "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			"\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -3346,7 +3250,9 @@ static const struct hash_testvec hmac_sha224_tv_template[] = {
  * HMAC-SHA256 test vectors from
  * draft-ietf-ipsec-ciph-sha-256-01.txt
  */
-static const struct hash_testvec hmac_sha256_tv_template[] = {
+#define HMAC_SHA256_TEST_VECTORS	10
+
+static struct hash_testvec hmac_sha256_tv_template[] = {
 	{
 		.key	= "\x01\x02\x03\x04\x05\x06\x07\x08"
 			  "\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10"
@@ -3481,7 +3387,9 @@ static const struct hash_testvec hmac_sha256_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec aes_cmac128_tv_template[] = {
+#define CMAC_AES_TEST_VECTORS 6
+
+static struct hash_testvec aes_cmac128_tv_template[] = {
 	{ /* From NIST Special Publication 800-38B, AES-128 */
 		.key		= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
 				  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
@@ -3556,67 +3464,9 @@ static const struct hash_testvec aes_cmac128_tv_template[] = {
 	}
 };
 
-static const struct hash_testvec aes_cbcmac_tv_template[] = {
-	{
-		.key		= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
-				  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
-		.plaintext	= "\x6b\xc1\xbe\xe2\x2e\x40\x9f\x96"
-				  "\xe9\x3d\x7e\x11\x73\x93\x17\x2a",
-		.digest		= "\x3a\xd7\x7b\xb4\x0d\x7a\x36\x60"
-				  "\xa8\x9e\xca\xf3\x24\x66\xef\x97",
-		.psize		= 16,
-		.ksize		= 16,
-	}, {
-		.key		= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
-				  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
-		.plaintext	= "\x6b\xc1\xbe\xe2\x2e\x40\x9f\x96"
-				  "\xe9\x3d\x7e\x11\x73\x93\x17\x2a"
-				  "\xae\x2d\x8a\x57\x1e\x03\xac\x9c"
-				  "\x9e\xb7\x6f\xac\x45\xaf\x8e\x51"
-				  "\x30",
-		.digest		= "\x9d\x0d\xd0\x63\xfb\xcb\x24\x43"
-				  "\xf8\xf2\x76\x03\xac\x39\xb0\x9d",
-		.psize		= 33,
-		.ksize		= 16,
-		.np		= 2,
-		.tap		= { 7, 26 },
-	}, {
-		.key		= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
-				  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
-		.plaintext	= "\x6b\xc1\xbe\xe2\x2e\x40\x9f\x96"
-				  "\xe9\x3d\x7e\x11\x73\x93\x17\x2a"
-				  "\xae\x2d\x8a\x57\x1e\x03\xac\x9c"
-				  "\x9e\xb7\x6f\xac\x45\xaf\x8e\x51"
-				  "\x30\xc8\x1c\x46\xa3\x5c\xe4\x11"
-				  "\xe5\xfb\xc1\x19\x1a\x0a\x52\xef"
-				  "\xf6\x9f\x24\x45\xdf\x4f\x9b\x17"
-				  "\xad\x2b\x41\x7b\xe6\x6c\x37",
-		.digest		= "\xc0\x71\x73\xb8\xa0\x2c\x11\x7c"
-				  "\xaf\xdc\xb2\xf8\x89\x32\xa3\x3a",
-		.psize		= 63,
-		.ksize		= 16,
-	}, {
-		.key		= "\x60\x3d\xeb\x10\x15\xca\x71\xbe"
-				  "\x2b\x73\xae\xf0\x85\x7d\x77\x81"
-				  "\x1f\x35\x2c\x07\x3b\x61\x08\xd7"
-				  "\x2d\x98\x10\xa3\x09\x14\xdf\xf4",
-		.plaintext	= "\x6b\xc1\xbe\xe2\x2e\x40\x9f\x96"
-				  "\xe9\x3d\x7e\x11\x73\x93\x17\x2a"
-				  "\xae\x2d\x8a\x57\x1e\x03\xac\x9c"
-				  "\x9e\xb7\x6f\xac\x45\xaf\x8e\x51"
-				  "\x30\xc8\x1c\x46\xa3\x5c\xe4\x11"
-				  "\xe5\xfb\xc1\x19\x1a\x0a\x52\xef"
-				  "\xf6\x9f\x24\x45\xdf\x4f\x9b\x17"
-				  "\xad\x2b\x41\x7b\xe6\x6c\x37\x10"
-				  "\x1c",
-		.digest		= "\x6a\x4e\xdb\x21\x47\x51\xdf\x4f"
-				  "\xa8\x4d\x4c\x10\x3b\x72\x7d\xd6",
-		.psize		= 65,
-		.ksize		= 32,
-	}
-};
+#define CMAC_DES3_EDE_TEST_VECTORS 4
 
-static const struct hash_testvec des3_ede_cmac64_tv_template[] = {
+static struct hash_testvec des3_ede_cmac64_tv_template[] = {
 /*
  * From NIST Special Publication 800-38B, Three Key TDEA
  * Corrected test vectors from:
@@ -3662,7 +3512,9 @@ static const struct hash_testvec des3_ede_cmac64_tv_template[] = {
 	}
 };
 
-static const struct hash_testvec aes_xcbc128_tv_template[] = {
+#define XCBC_AES_TEST_VECTORS 6
+
+static struct hash_testvec aes_xcbc128_tv_template[] = {
 	{
 		.key	= "\x00\x01\x02\x03\x04\x05\x06\x07"
 			  "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
@@ -3728,35 +3580,36 @@ static const struct hash_testvec aes_xcbc128_tv_template[] = {
 	}
 };
 
-static const char vmac_string1[128] = {'\x01', '\x01', '\x01', '\x01',
-				       '\x02', '\x03', '\x02', '\x02',
-				       '\x02', '\x04', '\x01', '\x07',
-				       '\x04', '\x01', '\x04', '\x03',};
-static const char vmac_string2[128] = {'a', 'b', 'c',};
-static const char vmac_string3[128] = {'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				       'a', 'b', 'c', 'a', 'b', 'c',
-				      };
+#define VMAC_AES_TEST_VECTORS	11
+static char vmac_string1[128] = {'\x01', '\x01', '\x01', '\x01',
+				'\x02', '\x03', '\x02', '\x02',
+				'\x02', '\x04', '\x01', '\x07',
+				'\x04', '\x01', '\x04', '\x03',};
+static char vmac_string2[128] = {'a', 'b', 'c',};
+static char vmac_string3[128] = {'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				'a', 'b', 'c', 'a', 'b', 'c',
+				};
 
-static const char vmac_string4[17] = {'b', 'c', 'e', 'f',
-				      'i', 'j', 'l', 'm',
-				      'o', 'p', 'r', 's',
-				      't', 'u', 'w', 'x', 'z'};
+static char vmac_string4[17] = {'b', 'c', 'e', 'f',
+				'i', 'j', 'l', 'm',
+				'o', 'p', 'r', 's',
+				't', 'u', 'w', 'x', 'z'};
 
-static const char vmac_string5[127] = {'r', 'm', 'b', 't', 'c',
-				       'o', 'l', 'k', ']', '%',
-				       '9', '2', '7', '!', 'A'};
+static char vmac_string5[127] = {'r', 'm', 'b', 't', 'c',
+				 'o', 'l', 'k', ']', '%',
+				 '9', '2', '7', '!', 'A'};
 
-static const char vmac_string6[129] = {'p', 't', '*', '7', 'l',
-				       'i', '!', '#', 'w', '0',
-				       'z', '/', '4', 'A', 'n'};
+static char vmac_string6[129] = {'p', 't', '*', '7', 'l',
+				 'i', '!', '#', 'w', '0',
+				 'z', '/', '4', 'A', 'n'};
 
-static const struct hash_testvec aes_vmac128_tv_template[] = {
+static struct hash_testvec aes_vmac128_tv_template[] = {
 	{
 		.key	= "\x00\x01\x02\x03\x04\x05\x06\x07"
 			  "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
@@ -3834,7 +3687,9 @@ static const struct hash_testvec aes_vmac128_tv_template[] = {
  * SHA384 HMAC test vectors from RFC4231
  */
 
-static const struct hash_testvec hmac_sha384_tv_template[] = {
+#define HMAC_SHA384_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha384_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -3932,7 +3787,9 @@ static const struct hash_testvec hmac_sha384_tv_template[] = {
  * SHA512 HMAC test vectors from RFC4231
  */
 
-static const struct hash_testvec hmac_sha512_tv_template[] = {
+#define HMAC_SHA512_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha512_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -4037,7 +3894,9 @@ static const struct hash_testvec hmac_sha512_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec hmac_sha3_224_tv_template[] = {
+#define HMAC_SHA3_224_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha3_224_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -4126,7 +3985,9 @@ static const struct hash_testvec hmac_sha3_224_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec hmac_sha3_256_tv_template[] = {
+#define HMAC_SHA3_256_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha3_256_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -4215,7 +4076,9 @@ static const struct hash_testvec hmac_sha3_256_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec hmac_sha3_384_tv_template[] = {
+#define HMAC_SHA3_384_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha3_384_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -4312,7 +4175,9 @@ static const struct hash_testvec hmac_sha3_384_tv_template[] = {
 	},
 };
 
-static const struct hash_testvec hmac_sha3_512_tv_template[] = {
+#define HMAC_SHA3_512_TEST_VECTORS	4
+
+static struct hash_testvec hmac_sha3_512_tv_template[] = {
 	{
 		.key	= "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
 			  "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
@@ -4421,7 +4286,9 @@ static const struct hash_testvec hmac_sha3_512_tv_template[] = {
  * Poly1305 test vectors from RFC7539 A.3.
  */
 
-static const struct hash_testvec poly1305_tv_template[] = {
+#define POLY1305_TEST_VECTORS	11
+
+static struct hash_testvec poly1305_tv_template[] = {
 	{ /* Test Vector #1 */
 		.plaintext	= "\x00\x00\x00\x00\x00\x00\x00\x00"
 				  "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -4666,7 +4533,20 @@ static const struct hash_testvec poly1305_tv_template[] = {
 /*
  * DES test vectors.
  */
-static const struct cipher_testvec des_enc_tv_template[] = {
+#define DES_ENC_TEST_VECTORS		11
+#define DES_DEC_TEST_VECTORS		5
+#define DES_CBC_ENC_TEST_VECTORS	6
+#define DES_CBC_DEC_TEST_VECTORS	5
+#define DES_CTR_ENC_TEST_VECTORS	2
+#define DES_CTR_DEC_TEST_VECTORS	2
+#define DES3_EDE_ENC_TEST_VECTORS	4
+#define DES3_EDE_DEC_TEST_VECTORS	4
+#define DES3_EDE_CBC_ENC_TEST_VECTORS	2
+#define DES3_EDE_CBC_DEC_TEST_VECTORS	2
+#define DES3_EDE_CTR_ENC_TEST_VECTORS	2
+#define DES3_EDE_CTR_DEC_TEST_VECTORS	2
+
+static struct cipher_testvec des_enc_tv_template[] = {
 	{ /* From Applied Cryptography */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -4840,7 +4720,7 @@ static const struct cipher_testvec des_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des_dec_tv_template[] = {
+static struct cipher_testvec des_dec_tv_template[] = {
 	{ /* From Applied Cryptography */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -4950,7 +4830,7 @@ static const struct cipher_testvec des_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des_cbc_enc_tv_template[] = {
+static struct cipher_testvec des_cbc_enc_tv_template[] = {
 	{ /* From OpenSSL */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -5076,7 +4956,7 @@ static const struct cipher_testvec des_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des_cbc_dec_tv_template[] = {
+static struct cipher_testvec des_cbc_dec_tv_template[] = {
 	{ /* FIPS Pub 81 */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -5185,7 +5065,7 @@ static const struct cipher_testvec des_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des_ctr_enc_tv_template[] = {
+static struct cipher_testvec des_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\xC9\x83\xA6\xC9\xEC\x0F\x32\x55",
 		.klen	= 8,
@@ -5331,7 +5211,7 @@ static const struct cipher_testvec des_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des_ctr_dec_tv_template[] = {
+static struct cipher_testvec des_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\xC9\x83\xA6\xC9\xEC\x0F\x32\x55",
 		.klen	= 8,
@@ -5477,7 +5357,7 @@ static const struct cipher_testvec des_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_enc_tv_template[] = {
+static struct cipher_testvec des3_ede_enc_tv_template[] = {
 	{ /* These are from openssl */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\x55\x55\x55\x55\x55\x55\x55\x55"
@@ -5642,7 +5522,7 @@ static const struct cipher_testvec des3_ede_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_dec_tv_template[] = {
+static struct cipher_testvec des3_ede_dec_tv_template[] = {
 	{ /* These are from openssl */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\x55\x55\x55\x55\x55\x55\x55\x55"
@@ -5807,7 +5687,7 @@ static const struct cipher_testvec des3_ede_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_cbc_enc_tv_template[] = {
+static struct cipher_testvec des3_ede_cbc_enc_tv_template[] = {
 	{ /* Generated from openssl */
 		.key	= "\xE9\xC0\xFF\x2E\x76\x0B\x64\x24"
 			  "\x44\x4D\x99\x5A\x12\xD6\x40\xC0"
@@ -5987,7 +5867,7 @@ static const struct cipher_testvec des3_ede_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_cbc_dec_tv_template[] = {
+static struct cipher_testvec des3_ede_cbc_dec_tv_template[] = {
 	{ /* Generated from openssl */
 		.key	= "\xE9\xC0\xFF\x2E\x76\x0B\x64\x24"
 			  "\x44\x4D\x99\x5A\x12\xD6\x40\xC0"
@@ -6167,7 +6047,7 @@ static const struct cipher_testvec des3_ede_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_ctr_enc_tv_template[] = {
+static struct cipher_testvec des3_ede_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x9C\xD6\xF3\x9C\xB9\x5A\x67\x00"
 			  "\x5A\x67\x00\x2D\xCE\xEB\x2D\xCE"
@@ -6445,7 +6325,7 @@ static const struct cipher_testvec des3_ede_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec des3_ede_ctr_dec_tv_template[] = {
+static struct cipher_testvec des3_ede_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x9C\xD6\xF3\x9C\xB9\x5A\x67\x00"
 			  "\x5A\x67\x00\x2D\xCE\xEB\x2D\xCE"
@@ -6726,7 +6606,14 @@ static const struct cipher_testvec des3_ede_ctr_dec_tv_template[] = {
 /*
  * Blowfish test vectors.
  */
-static const struct cipher_testvec bf_enc_tv_template[] = {
+#define BF_ENC_TEST_VECTORS	7
+#define BF_DEC_TEST_VECTORS	7
+#define BF_CBC_ENC_TEST_VECTORS	2
+#define BF_CBC_DEC_TEST_VECTORS	2
+#define BF_CTR_ENC_TEST_VECTORS	2
+#define BF_CTR_DEC_TEST_VECTORS	2
+
+static struct cipher_testvec bf_enc_tv_template[] = {
 	{ /* DES test vectors from OpenSSL */
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen	= 8,
@@ -6918,7 +6805,7 @@ static const struct cipher_testvec bf_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec bf_dec_tv_template[] = {
+static struct cipher_testvec bf_dec_tv_template[] = {
 	{ /* DES test vectors from OpenSSL */
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen	= 8,
@@ -7110,7 +6997,7 @@ static const struct cipher_testvec bf_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec bf_cbc_enc_tv_template[] = {
+static struct cipher_testvec bf_cbc_enc_tv_template[] = {
 	{ /* From OpenSSL */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87",
@@ -7267,7 +7154,7 @@ static const struct cipher_testvec bf_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec bf_cbc_dec_tv_template[] = {
+static struct cipher_testvec bf_cbc_dec_tv_template[] = {
 	{ /* From OpenSSL */
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\xf0\xe1\xd2\xc3\xb4\xa5\x96\x87",
@@ -7424,7 +7311,7 @@ static const struct cipher_testvec bf_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec bf_ctr_enc_tv_template[] = {
+static struct cipher_testvec bf_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -7836,7 +7723,7 @@ static const struct cipher_testvec bf_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec bf_ctr_dec_tv_template[] = {
+static struct cipher_testvec bf_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -8251,7 +8138,18 @@ static const struct cipher_testvec bf_ctr_dec_tv_template[] = {
 /*
  * Twofish test vectors.
  */
-static const struct cipher_testvec tf_enc_tv_template[] = {
+#define TF_ENC_TEST_VECTORS		4
+#define TF_DEC_TEST_VECTORS		4
+#define TF_CBC_ENC_TEST_VECTORS		5
+#define TF_CBC_DEC_TEST_VECTORS		5
+#define TF_CTR_ENC_TEST_VECTORS		2
+#define TF_CTR_DEC_TEST_VECTORS		2
+#define TF_LRW_ENC_TEST_VECTORS		8
+#define TF_LRW_DEC_TEST_VECTORS		8
+#define TF_XTS_ENC_TEST_VECTORS		5
+#define TF_XTS_DEC_TEST_VECTORS		5
+
+static struct cipher_testvec tf_enc_tv_template[] = {
 	{
 		.key	= zeroed_string,
 		.klen	= 16,
@@ -8419,7 +8317,7 @@ static const struct cipher_testvec tf_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_dec_tv_template[] = {
+static struct cipher_testvec tf_dec_tv_template[] = {
 	{
 		.key	= zeroed_string,
 		.klen	= 16,
@@ -8587,7 +8485,7 @@ static const struct cipher_testvec tf_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_cbc_enc_tv_template[] = {
+static struct cipher_testvec tf_cbc_enc_tv_template[] = {
 	{ /* Generated with Nettle */
 		.key	= zeroed_string,
 		.klen	= 16,
@@ -8770,7 +8668,7 @@ static const struct cipher_testvec tf_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_cbc_dec_tv_template[] = {
+static struct cipher_testvec tf_cbc_dec_tv_template[] = {
 	{ /* Reverse of the first four above */
 		.key	= zeroed_string,
 		.klen	= 16,
@@ -8953,7 +8851,7 @@ static const struct cipher_testvec tf_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_ctr_enc_tv_template[] = {
+static struct cipher_testvec tf_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -9364,7 +9262,7 @@ static const struct cipher_testvec tf_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_ctr_dec_tv_template[] = {
+static struct cipher_testvec tf_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -9775,7 +9673,7 @@ static const struct cipher_testvec tf_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_lrw_enc_tv_template[] = {
+static struct cipher_testvec tf_lrw_enc_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	{
 		.key	= "\x45\x62\xac\x25\xf8\x28\x17\x6d"
@@ -10027,7 +9925,7 @@ static const struct cipher_testvec tf_lrw_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_lrw_dec_tv_template[] = {
+static struct cipher_testvec tf_lrw_dec_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -10280,7 +10178,7 @@ static const struct cipher_testvec tf_lrw_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_xts_enc_tv_template[] = {
+static struct cipher_testvec tf_xts_enc_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 {
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -10622,7 +10520,7 @@ static const struct cipher_testvec tf_xts_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tf_xts_dec_tv_template[] = {
+static struct cipher_testvec tf_xts_dec_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -10969,7 +10867,25 @@ static const struct cipher_testvec tf_xts_dec_tv_template[] = {
  * Serpent test vectors.  These are backwards because Serpent writes
  * octet sequences in right-to-left mode.
  */
-static const struct cipher_testvec serpent_enc_tv_template[] = {
+#define SERPENT_ENC_TEST_VECTORS	5
+#define SERPENT_DEC_TEST_VECTORS	5
+
+#define TNEPRES_ENC_TEST_VECTORS	4
+#define TNEPRES_DEC_TEST_VECTORS	4
+
+#define SERPENT_CBC_ENC_TEST_VECTORS	1
+#define SERPENT_CBC_DEC_TEST_VECTORS	1
+
+#define SERPENT_CTR_ENC_TEST_VECTORS	2
+#define SERPENT_CTR_DEC_TEST_VECTORS	2
+
+#define SERPENT_LRW_ENC_TEST_VECTORS	8
+#define SERPENT_LRW_DEC_TEST_VECTORS	8
+
+#define SERPENT_XTS_ENC_TEST_VECTORS	5
+#define SERPENT_XTS_DEC_TEST_VECTORS	5
+
+static struct cipher_testvec serpent_enc_tv_template[] = {
 	{
 		.input	= "\x00\x01\x02\x03\x04\x05\x06\x07"
 			  "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
@@ -11145,7 +11061,7 @@ static const struct cipher_testvec serpent_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tnepres_enc_tv_template[] = {
+static struct cipher_testvec tnepres_enc_tv_template[] = {
 	{ /* KeySize=128, PT=0, I=1 */
 		.input	= "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -11195,7 +11111,7 @@ static const struct cipher_testvec tnepres_enc_tv_template[] = {
 };
 
 
-static const struct cipher_testvec serpent_dec_tv_template[] = {
+static struct cipher_testvec serpent_dec_tv_template[] = {
 	{
 		.input	= "\x12\x07\xfc\xce\x9b\xd0\xd6\x47"
 			  "\x6a\xe9\x8f\xbe\xd1\x43\xa0\xe2",
@@ -11371,7 +11287,7 @@ static const struct cipher_testvec serpent_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec tnepres_dec_tv_template[] = {
+static struct cipher_testvec tnepres_dec_tv_template[] = {
 	{
 		.input	= "\x41\xcc\x6b\x31\x59\x31\x45\x97"
 			  "\x6d\x6f\xbb\x38\x4b\x37\x21\x28",
@@ -11412,7 +11328,7 @@ static const struct cipher_testvec tnepres_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_cbc_enc_tv_template[] = {
+static struct cipher_testvec serpent_cbc_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -11553,7 +11469,7 @@ static const struct cipher_testvec serpent_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_cbc_dec_tv_template[] = {
+static struct cipher_testvec serpent_cbc_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -11694,7 +11610,7 @@ static const struct cipher_testvec serpent_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_ctr_enc_tv_template[] = {
+static struct cipher_testvec serpent_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -12105,7 +12021,7 @@ static const struct cipher_testvec serpent_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_ctr_dec_tv_template[] = {
+static struct cipher_testvec serpent_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -12516,7 +12432,7 @@ static const struct cipher_testvec serpent_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_lrw_enc_tv_template[] = {
+static struct cipher_testvec serpent_lrw_enc_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	{
 		.key	= "\x45\x62\xac\x25\xf8\x28\x17\x6d"
@@ -12768,7 +12684,7 @@ static const struct cipher_testvec serpent_lrw_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_lrw_dec_tv_template[] = {
+static struct cipher_testvec serpent_lrw_dec_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -13021,7 +12937,7 @@ static const struct cipher_testvec serpent_lrw_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_xts_enc_tv_template[] = {
+static struct cipher_testvec serpent_xts_enc_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 	{
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -13363,7 +13279,7 @@ static const struct cipher_testvec serpent_xts_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec serpent_xts_dec_tv_template[] = {
+static struct cipher_testvec serpent_xts_dec_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -13707,7 +13623,18 @@ static const struct cipher_testvec serpent_xts_dec_tv_template[] = {
 };
 
 /* Cast6 test vectors from RFC 2612 */
-static const struct cipher_testvec cast6_enc_tv_template[] = {
+#define CAST6_ENC_TEST_VECTORS		4
+#define CAST6_DEC_TEST_VECTORS		4
+#define CAST6_CBC_ENC_TEST_VECTORS	1
+#define CAST6_CBC_DEC_TEST_VECTORS	1
+#define CAST6_CTR_ENC_TEST_VECTORS	2
+#define CAST6_CTR_DEC_TEST_VECTORS	2
+#define CAST6_LRW_ENC_TEST_VECTORS	1
+#define CAST6_LRW_DEC_TEST_VECTORS	1
+#define CAST6_XTS_ENC_TEST_VECTORS	1
+#define CAST6_XTS_DEC_TEST_VECTORS	1
+
+static struct cipher_testvec cast6_enc_tv_template[] = {
 	{
 		.key	= "\x23\x42\xbb\x9e\xfa\x38\x54\x2c"
 			  "\x0a\xf7\x56\x47\xf2\x9f\x61\x5d",
@@ -13878,7 +13805,7 @@ static const struct cipher_testvec cast6_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_dec_tv_template[] = {
+static struct cipher_testvec cast6_dec_tv_template[] = {
 	{
 		.key	= "\x23\x42\xbb\x9e\xfa\x38\x54\x2c"
 			  "\x0a\xf7\x56\x47\xf2\x9f\x61\x5d",
@@ -14049,7 +13976,7 @@ static const struct cipher_testvec cast6_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_cbc_enc_tv_template[] = {
+static struct cipher_testvec cast6_cbc_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -14190,7 +14117,7 @@ static const struct cipher_testvec cast6_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_cbc_dec_tv_template[] = {
+static struct cipher_testvec cast6_cbc_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -14331,7 +14258,7 @@ static const struct cipher_testvec cast6_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_ctr_enc_tv_template[] = {
+static struct cipher_testvec cast6_ctr_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -14488,7 +14415,7 @@ static const struct cipher_testvec cast6_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_ctr_dec_tv_template[] = {
+static struct cipher_testvec cast6_ctr_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -14645,7 +14572,7 @@ static const struct cipher_testvec cast6_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_lrw_enc_tv_template[] = {
+static struct cipher_testvec cast6_lrw_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\xf8\xd4\x76\xff\xd6\x46\xee\x6c"
 			  "\x23\x84\xcb\x1c\x77\xd6\x19\x5d"
@@ -14792,7 +14719,7 @@ static const struct cipher_testvec cast6_lrw_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_lrw_dec_tv_template[] = {
+static struct cipher_testvec cast6_lrw_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\xf8\xd4\x76\xff\xd6\x46\xee\x6c"
 			  "\x23\x84\xcb\x1c\x77\xd6\x19\x5d"
@@ -14939,7 +14866,7 @@ static const struct cipher_testvec cast6_lrw_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_xts_enc_tv_template[] = {
+static struct cipher_testvec cast6_xts_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x27\x18\x28\x18\x28\x45\x90\x45"
 			  "\x23\x53\x60\x28\x74\x71\x35\x26"
@@ -15088,7 +15015,7 @@ static const struct cipher_testvec cast6_xts_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast6_xts_dec_tv_template[] = {
+static struct cipher_testvec cast6_xts_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x27\x18\x28\x18\x28\x45\x90\x45"
 			  "\x23\x53\x60\x28\x74\x71\x35\x26"
@@ -15241,7 +15168,39 @@ static const struct cipher_testvec cast6_xts_dec_tv_template[] = {
 /*
  * AES test vectors.
  */
-static const struct cipher_testvec aes_enc_tv_template[] = {
+#define AES_ENC_TEST_VECTORS 4
+#define AES_DEC_TEST_VECTORS 4
+#define AES_CBC_ENC_TEST_VECTORS 5
+#define AES_CBC_DEC_TEST_VECTORS 5
+#define HMAC_MD5_ECB_CIPHER_NULL_ENC_TEST_VECTORS 2
+#define HMAC_MD5_ECB_CIPHER_NULL_DEC_TEST_VECTORS 2
+#define HMAC_SHA1_ECB_CIPHER_NULL_ENC_TEST_VEC 2
+#define HMAC_SHA1_ECB_CIPHER_NULL_DEC_TEST_VEC 2
+#define HMAC_SHA1_AES_CBC_ENC_TEST_VEC 7
+#define HMAC_SHA256_AES_CBC_ENC_TEST_VEC 7
+#define HMAC_SHA512_AES_CBC_ENC_TEST_VEC 7
+#define AES_LRW_ENC_TEST_VECTORS 8
+#define AES_LRW_DEC_TEST_VECTORS 8
+#define AES_XTS_ENC_TEST_VECTORS 5
+#define AES_XTS_DEC_TEST_VECTORS 5
+#define AES_CTR_ENC_TEST_VECTORS 5
+#define AES_CTR_DEC_TEST_VECTORS 5
+#define AES_OFB_ENC_TEST_VECTORS 1
+#define AES_OFB_DEC_TEST_VECTORS 1
+#define AES_CTR_3686_ENC_TEST_VECTORS 7
+#define AES_CTR_3686_DEC_TEST_VECTORS 6
+#define AES_GCM_ENC_TEST_VECTORS 9
+#define AES_GCM_DEC_TEST_VECTORS 8
+#define AES_GCM_4106_ENC_TEST_VECTORS 23
+#define AES_GCM_4106_DEC_TEST_VECTORS 23
+#define AES_GCM_4543_ENC_TEST_VECTORS 1
+#define AES_GCM_4543_DEC_TEST_VECTORS 2
+#define AES_CCM_ENC_TEST_VECTORS 8
+#define AES_CCM_DEC_TEST_VECTORS 7
+#define AES_CCM_4309_ENC_TEST_VECTORS 7
+#define AES_CCM_4309_DEC_TEST_VECTORS 10
+
+static struct cipher_testvec aes_enc_tv_template[] = {
 	{ /* From FIPS-197 */
 		.key	= "\x00\x01\x02\x03\x04\x05\x06\x07"
 			  "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
@@ -15413,7 +15372,7 @@ static const struct cipher_testvec aes_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_dec_tv_template[] = {
+static struct cipher_testvec aes_dec_tv_template[] = {
 	{ /* From FIPS-197 */
 		.key	= "\x00\x01\x02\x03\x04\x05\x06\x07"
 			  "\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
@@ -15585,7 +15544,7 @@ static const struct cipher_testvec aes_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_cbc_enc_tv_template[] = {
+static struct cipher_testvec aes_cbc_enc_tv_template[] = {
 	{ /* From RFC 3602 */
 		.key    = "\x06\xa9\x21\x40\x36\xb8\xa1\x5b"
 			  "\x51\x2e\x03\xd5\x34\x12\x00\x06",
@@ -15807,7 +15766,7 @@ static const struct cipher_testvec aes_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_cbc_dec_tv_template[] = {
+static struct cipher_testvec aes_cbc_dec_tv_template[] = {
 	{ /* From RFC 3602 */
 		.key    = "\x06\xa9\x21\x40\x36\xb8\xa1\x5b"
 			  "\x51\x2e\x03\xd5\x34\x12\x00\x06",
@@ -16029,7 +15988,7 @@ static const struct cipher_testvec aes_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec hmac_md5_ecb_cipher_null_enc_tv_template[] = {
+static struct aead_testvec hmac_md5_ecb_cipher_null_enc_tv_template[] = {
 	{ /* Input data from RFC 2410 Case 1 */
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16071,7 +16030,7 @@ static const struct aead_testvec hmac_md5_ecb_cipher_null_enc_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec hmac_md5_ecb_cipher_null_dec_tv_template[] = {
+static struct aead_testvec hmac_md5_ecb_cipher_null_dec_tv_template[] = {
 	{
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16113,7 +16072,7 @@ static const struct aead_testvec hmac_md5_ecb_cipher_null_dec_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha1_aes_cbc_enc_tv_temp[] = {
+static struct aead_testvec hmac_sha1_aes_cbc_enc_tv_temp[] = {
 	{ /* RFC 3602 Case 1 */
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16382,7 +16341,7 @@ static const struct aead_testvec hmac_sha1_aes_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha1_ecb_cipher_null_enc_tv_temp[] = {
+static struct aead_testvec hmac_sha1_ecb_cipher_null_enc_tv_temp[] = {
 	{ /* Input data from RFC 2410 Case 1 */
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16428,7 +16387,7 @@ static const struct aead_testvec hmac_sha1_ecb_cipher_null_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha1_ecb_cipher_null_dec_tv_temp[] = {
+static struct aead_testvec hmac_sha1_ecb_cipher_null_dec_tv_temp[] = {
 	{
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16474,7 +16433,7 @@ static const struct aead_testvec hmac_sha1_ecb_cipher_null_dec_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha256_aes_cbc_enc_tv_temp[] = {
+static struct aead_testvec hmac_sha256_aes_cbc_enc_tv_temp[] = {
 	{ /* RFC 3602 Case 1 */
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -16757,7 +16716,7 @@ static const struct aead_testvec hmac_sha256_aes_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha512_aes_cbc_enc_tv_temp[] = {
+static struct aead_testvec hmac_sha512_aes_cbc_enc_tv_temp[] = {
 	{ /* RFC 3602 Case 1 */
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17096,7 +17055,9 @@ static const struct aead_testvec hmac_sha512_aes_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha1_des_cbc_enc_tv_temp[] = {
+#define HMAC_SHA1_DES_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha1_des_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17155,7 +17116,9 @@ static const struct aead_testvec hmac_sha1_des_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha224_des_cbc_enc_tv_temp[] = {
+#define HMAC_SHA224_DES_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha224_des_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17214,7 +17177,9 @@ static const struct aead_testvec hmac_sha224_des_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha256_des_cbc_enc_tv_temp[] = {
+#define HMAC_SHA256_DES_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha256_des_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17275,7 +17240,9 @@ static const struct aead_testvec hmac_sha256_des_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha384_des_cbc_enc_tv_temp[] = {
+#define HMAC_SHA384_DES_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha384_des_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17340,7 +17307,9 @@ static const struct aead_testvec hmac_sha384_des_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha512_des_cbc_enc_tv_temp[] = {
+#define HMAC_SHA512_DES_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha512_des_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17409,7 +17378,9 @@ static const struct aead_testvec hmac_sha512_des_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha1_des3_ede_cbc_enc_tv_temp[] = {
+#define HMAC_SHA1_DES3_EDE_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha1_des3_ede_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17470,7 +17441,9 @@ static const struct aead_testvec hmac_sha1_des3_ede_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha224_des3_ede_cbc_enc_tv_temp[] = {
+#define HMAC_SHA224_DES3_EDE_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha224_des3_ede_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17531,7 +17504,9 @@ static const struct aead_testvec hmac_sha224_des3_ede_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha256_des3_ede_cbc_enc_tv_temp[] = {
+#define HMAC_SHA256_DES3_EDE_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha256_des3_ede_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17594,7 +17569,9 @@ static const struct aead_testvec hmac_sha256_des3_ede_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha384_des3_ede_cbc_enc_tv_temp[] = {
+#define HMAC_SHA384_DES3_EDE_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha384_des3_ede_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17661,7 +17638,9 @@ static const struct aead_testvec hmac_sha384_des3_ede_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct aead_testvec hmac_sha512_des3_ede_cbc_enc_tv_temp[] = {
+#define HMAC_SHA512_DES3_EDE_CBC_ENC_TEST_VEC	1
+
+static struct aead_testvec hmac_sha512_des3_ede_cbc_enc_tv_temp[] = {
 	{ /*Generated with cryptopp*/
 #ifdef __LITTLE_ENDIAN
 		.key    = "\x08\x00"		/* rta length */
@@ -17732,7 +17711,7 @@ static const struct aead_testvec hmac_sha512_des3_ede_cbc_enc_tv_temp[] = {
 	},
 };
 
-static const struct cipher_testvec aes_lrw_enc_tv_template[] = {
+static struct cipher_testvec aes_lrw_enc_tv_template[] = {
 	/* from http://grouper.ieee.org/groups/1619/email/pdf00017.pdf */
 	{ /* LRW-32-AES 1 */
 		.key    = "\x45\x62\xac\x25\xf8\x28\x17\x6d"
@@ -17985,7 +17964,7 @@ static const struct cipher_testvec aes_lrw_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec aes_lrw_dec_tv_template[] = {
+static struct cipher_testvec aes_lrw_dec_tv_template[] = {
 	/* from http://grouper.ieee.org/groups/1619/email/pdf00017.pdf */
 	/* same as enc vectors with input and result reversed */
 	{ /* LRW-32-AES 1 */
@@ -18239,7 +18218,7 @@ static const struct cipher_testvec aes_lrw_dec_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec aes_xts_enc_tv_template[] = {
+static struct cipher_testvec aes_xts_enc_tv_template[] = {
 	/* http://grouper.ieee.org/groups/1619/email/pdf00086.pdf */
 	{ /* XTS-AES 1 */
 		.key    = "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -18582,7 +18561,7 @@ static const struct cipher_testvec aes_xts_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec aes_xts_dec_tv_template[] = {
+static struct cipher_testvec aes_xts_dec_tv_template[] = {
 	/* http://grouper.ieee.org/groups/1619/email/pdf00086.pdf */
 	{ /* XTS-AES 1 */
 		.key    = "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -18926,7 +18905,7 @@ static const struct cipher_testvec aes_xts_dec_tv_template[] = {
 };
 
 
-static const struct cipher_testvec aes_ctr_enc_tv_template[] = {
+static struct cipher_testvec aes_ctr_enc_tv_template[] = {
 	{ /* From NIST Special Publication 800-38A, Appendix F.5 */
 		.key	= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
 			  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
@@ -19281,7 +19260,7 @@ static const struct cipher_testvec aes_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_ctr_dec_tv_template[] = {
+static struct cipher_testvec aes_ctr_dec_tv_template[] = {
 	{ /* From NIST Special Publication 800-38A, Appendix F.5 */
 		.key	= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
 			  "\xab\xf7\x15\x88\x09\xcf\x4f\x3c",
@@ -19636,7 +19615,7 @@ static const struct cipher_testvec aes_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_ctr_rfc3686_enc_tv_template[] = {
+static struct cipher_testvec aes_ctr_rfc3686_enc_tv_template[] = {
 	{ /* From RFC 3686 */
 		.key	= "\xae\x68\x52\xf8\x12\x10\x67\xcc"
 			  "\x4b\xf7\xa5\x76\x55\x77\xf3\x9e"
@@ -20768,7 +20747,7 @@ static const struct cipher_testvec aes_ctr_rfc3686_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_ctr_rfc3686_dec_tv_template[] = {
+static struct cipher_testvec aes_ctr_rfc3686_dec_tv_template[] = {
 	{ /* From RFC 3686 */
 		.key	= "\xae\x68\x52\xf8\x12\x10\x67\xcc"
 			  "\x4b\xf7\xa5\x76\x55\x77\xf3\x9e"
@@ -20859,7 +20838,7 @@ static const struct cipher_testvec aes_ctr_rfc3686_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_ofb_enc_tv_template[] = {
+static struct cipher_testvec aes_ofb_enc_tv_template[] = {
 	 /* From NIST Special Publication 800-38A, Appendix F.5 */
 	{
 		.key	= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
@@ -20888,7 +20867,7 @@ static const struct cipher_testvec aes_ofb_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec aes_ofb_dec_tv_template[] = {
+static struct cipher_testvec aes_ofb_dec_tv_template[] = {
 	 /* From NIST Special Publication 800-38A, Appendix F.5 */
 	{
 		.key	= "\x2b\x7e\x15\x16\x28\xae\xd2\xa6"
@@ -20917,7 +20896,7 @@ static const struct cipher_testvec aes_ofb_dec_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_enc_tv_template[] = {
+static struct aead_testvec aes_gcm_enc_tv_template[] = {
 	{ /* From McGrew & Viega - http://citeseer.ist.psu.edu/656989.html */
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -21077,7 +21056,7 @@ static const struct aead_testvec aes_gcm_enc_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_dec_tv_template[] = {
+static struct aead_testvec aes_gcm_dec_tv_template[] = {
 	{ /* From McGrew & Viega - http://citeseer.ist.psu.edu/656989.html */
 		.key    = zeroed_string,
 		.klen	= 32,
@@ -21279,7 +21258,7 @@ static const struct aead_testvec aes_gcm_dec_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
+static struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
 	{ /* Generated using Crypto++ */
 		.key    = zeroed_string,
 		.klen	= 20,
@@ -21892,7 +21871,7 @@ static const struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
+static struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
 	{ /* Generated using Crypto++ */
 		.key    = zeroed_string,
 		.klen	= 20,
@@ -22506,7 +22485,7 @@ static const struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_rfc4543_enc_tv_template[] = {
+static struct aead_testvec aes_gcm_rfc4543_enc_tv_template[] = {
 	{ /* From draft-mcgrew-gcm-test-01 */
 		.key	= "\x4c\x80\xcd\xef\xbb\x5d\x10\xda"
 			  "\x90\x6a\xc7\x3c\x36\x13\xa6\x34"
@@ -22537,7 +22516,7 @@ static const struct aead_testvec aes_gcm_rfc4543_enc_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_gcm_rfc4543_dec_tv_template[] = {
+static struct aead_testvec aes_gcm_rfc4543_dec_tv_template[] = {
 	{ /* From draft-mcgrew-gcm-test-01 */
 		.key	= "\x4c\x80\xcd\xef\xbb\x5d\x10\xda"
 			  "\x90\x6a\xc7\x3c\x36\x13\xa6\x34"
@@ -22596,7 +22575,7 @@ static const struct aead_testvec aes_gcm_rfc4543_dec_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec aes_ccm_enc_tv_template[] = {
+static struct aead_testvec aes_ccm_enc_tv_template[] = {
 	{ /* From RFC 3610 */
 		.key	= "\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7"
 			  "\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf",
@@ -22880,7 +22859,7 @@ static const struct aead_testvec aes_ccm_enc_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_ccm_dec_tv_template[] = {
+static struct aead_testvec aes_ccm_dec_tv_template[] = {
 	{ /* From RFC 3610 */
 		.key	= "\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7"
 			  "\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf",
@@ -23212,7 +23191,7 @@ static const struct aead_testvec aes_ccm_dec_tv_template[] = {
  * These vectors are copied/generated from the ones for rfc4106 with
  * the key truncated by one byte..
  */
-static const struct aead_testvec aes_ccm_rfc4309_enc_tv_template[] = {
+static struct aead_testvec aes_ccm_rfc4309_enc_tv_template[] = {
 	{ /* Generated using Crypto++ */
 		.key	= zeroed_string,
 		.klen	= 19,
@@ -23825,7 +23804,7 @@ static const struct aead_testvec aes_ccm_rfc4309_enc_tv_template[] = {
 	}
 };
 
-static const struct aead_testvec aes_ccm_rfc4309_dec_tv_template[]	= {
+static struct aead_testvec aes_ccm_rfc4309_dec_tv_template[]	= {
 	{ /* Generated using Crypto++ */
 		.key	= zeroed_string,
 		.klen	= 19,
@@ -24441,7 +24420,9 @@ static const struct aead_testvec aes_ccm_rfc4309_dec_tv_template[]	= {
 /*
  * ChaCha20-Poly1305 AEAD test vectors from RFC7539 2.8.2./A.5.
  */
-static const struct aead_testvec rfc7539_enc_tv_template[] = {
+#define RFC7539_ENC_TEST_VECTORS 2
+#define RFC7539_DEC_TEST_VECTORS 2
+static struct aead_testvec rfc7539_enc_tv_template[] = {
 	{
 		.key	= "\x80\x81\x82\x83\x84\x85\x86\x87"
 			  "\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f"
@@ -24573,7 +24554,7 @@ static const struct aead_testvec rfc7539_enc_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec rfc7539_dec_tv_template[] = {
+static struct aead_testvec rfc7539_dec_tv_template[] = {
 	{
 		.key	= "\x80\x81\x82\x83\x84\x85\x86\x87"
 			  "\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f"
@@ -24708,7 +24689,9 @@ static const struct aead_testvec rfc7539_dec_tv_template[] = {
 /*
  * draft-irtf-cfrg-chacha20-poly1305
  */
-static const struct aead_testvec rfc7539esp_enc_tv_template[] = {
+#define RFC7539ESP_DEC_TEST_VECTORS 1
+#define RFC7539ESP_ENC_TEST_VECTORS 1
+static struct aead_testvec rfc7539esp_enc_tv_template[] = {
 	{
 		.key	= "\x1c\x92\x40\xa5\xeb\x55\xd3\x8a"
 			  "\xf3\x33\x88\x86\x04\xf6\xb5\xf0"
@@ -24796,7 +24779,7 @@ static const struct aead_testvec rfc7539esp_enc_tv_template[] = {
 	},
 };
 
-static const struct aead_testvec rfc7539esp_dec_tv_template[] = {
+static struct aead_testvec rfc7539esp_dec_tv_template[] = {
 	{
 		.key	= "\x1c\x92\x40\xa5\xeb\x55\xd3\x8a"
 			  "\xf3\x33\x88\x86\x04\xf6\xb5\xf0"
@@ -24892,7 +24875,7 @@ static const struct aead_testvec rfc7539esp_dec_tv_template[] = {
  * semiblock of the ciphertext from the test vector. For decryption, iv is
  * the first semiblock of the ciphertext.
  */
-static const struct cipher_testvec aes_kw_enc_tv_template[] = {
+static struct cipher_testvec aes_kw_enc_tv_template[] = {
 	{
 		.key	= "\x75\x75\xda\x3a\x93\x60\x7c\xc2"
 			  "\xbf\xd8\xce\xc7\xaa\xdf\xd9\xa6",
@@ -24907,7 +24890,7 @@ static const struct cipher_testvec aes_kw_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec aes_kw_dec_tv_template[] = {
+static struct cipher_testvec aes_kw_dec_tv_template[] = {
 	{
 		.key	= "\x80\xaa\x99\x73\x27\xa4\x80\x6b"
 			  "\x6a\x7a\x41\xa5\x2b\x86\xc3\x71"
@@ -24930,7 +24913,9 @@ static const struct cipher_testvec aes_kw_dec_tv_template[] = {
  *     http://csrc.nist.gov/groups/STM/cavp/documents/rng/RNGVS.pdf
  * Only AES-128 is supported at this time.
  */
-static const struct cprng_testvec ansi_cprng_aes_tv_template[] = {
+#define ANSI_CPRNG_AES_TEST_VECTORS	6
+
+static struct cprng_testvec ansi_cprng_aes_tv_template[] = {
 	{
 		.key	= "\xf3\xb1\x66\x6d\x13\x60\x72\x42"
 			  "\xed\x06\x1c\xab\xb8\xd4\x62\x02",
@@ -25026,7 +25011,7 @@ static const struct cprng_testvec ansi_cprng_aes_tv_template[] = {
  * (Hash, HMAC, CTR) are tested with all permutations of use cases (w/ and
  * w/o personalization string, w/ and w/o additional input string).
  */
-static const struct drbg_testvec drbg_pr_sha256_tv_template[] = {
+static struct drbg_testvec drbg_pr_sha256_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\x72\x88\x4c\xcd\x6c\x85\x57\x70\xf7\x0b\x8b\x86"
@@ -25184,7 +25169,7 @@ static const struct drbg_testvec drbg_pr_sha256_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_pr_hmac_sha256_tv_template[] = {
+static struct drbg_testvec drbg_pr_hmac_sha256_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\x99\x69\xe5\x4b\x47\x03\xff\x31\x78\x5b\x87\x9a"
@@ -25342,7 +25327,7 @@ static const struct drbg_testvec drbg_pr_hmac_sha256_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_pr_ctr_aes128_tv_template[] = {
+static struct drbg_testvec drbg_pr_ctr_aes128_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\xd1\x44\xc6\x61\x81\x6d\xca\x9d\x15\x28\x8a\x42"
@@ -25466,7 +25451,7 @@ static const struct drbg_testvec drbg_pr_ctr_aes128_tv_template[] = {
  * (Hash, HMAC, CTR) are tested with all permutations of use cases (w/ and
  * w/o personalization string, w/ and w/o additional input string).
  */
-static const struct drbg_testvec drbg_nopr_sha256_tv_template[] = {
+static struct drbg_testvec drbg_nopr_sha256_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\xa6\x5a\xd0\xf3\x45\xdb\x4e\x0e\xff\xe8\x75\xc3"
@@ -25588,7 +25573,7 @@ static const struct drbg_testvec drbg_nopr_sha256_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_nopr_hmac_sha256_tv_template[] = {
+static struct drbg_testvec drbg_nopr_hmac_sha256_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\xca\x85\x19\x11\x34\x93\x84\xbf\xfe\x89\xde\x1c"
@@ -25710,7 +25695,7 @@ static const struct drbg_testvec drbg_nopr_hmac_sha256_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_nopr_ctr_aes192_tv_template[] = {
+static struct drbg_testvec drbg_nopr_ctr_aes192_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\xc3\x5c\x2f\xa2\xa8\x9d\x52\xa1\x1f\xa3\x2a\xa9"
@@ -25734,7 +25719,7 @@ static const struct drbg_testvec drbg_nopr_ctr_aes192_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_nopr_ctr_aes256_tv_template[] = {
+static struct drbg_testvec drbg_nopr_ctr_aes256_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\x36\x40\x19\x40\xfa\x8b\x1f\xba\x91\xa1\x66\x1f"
@@ -25758,7 +25743,7 @@ static const struct drbg_testvec drbg_nopr_ctr_aes256_tv_template[] = {
 	},
 };
 
-static const struct drbg_testvec drbg_nopr_ctr_aes128_tv_template[] = {
+static struct drbg_testvec drbg_nopr_ctr_aes128_tv_template[] = {
 	{
 		.entropy = (unsigned char *)
 			"\x87\xe1\xc5\x32\x99\x7f\x57\xa3\x5c\x28\x6d\xe8"
@@ -25847,7 +25832,14 @@ static const struct drbg_testvec drbg_nopr_ctr_aes128_tv_template[] = {
 };
 
 /* Cast5 test vectors from RFC 2144 */
-static const struct cipher_testvec cast5_enc_tv_template[] = {
+#define CAST5_ENC_TEST_VECTORS		4
+#define CAST5_DEC_TEST_VECTORS		4
+#define CAST5_CBC_ENC_TEST_VECTORS	1
+#define CAST5_CBC_DEC_TEST_VECTORS	1
+#define CAST5_CTR_ENC_TEST_VECTORS	2
+#define CAST5_CTR_DEC_TEST_VECTORS	2
+
+static struct cipher_testvec cast5_enc_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x12\x34\x56\x78"
 			  "\x23\x45\x67\x89\x34\x56\x78\x9a",
@@ -26008,7 +26000,7 @@ static const struct cipher_testvec cast5_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast5_dec_tv_template[] = {
+static struct cipher_testvec cast5_dec_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x12\x34\x56\x78"
 			  "\x23\x45\x67\x89\x34\x56\x78\x9a",
@@ -26169,7 +26161,7 @@ static const struct cipher_testvec cast5_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast5_cbc_enc_tv_template[] = {
+static struct cipher_testvec cast5_cbc_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A",
@@ -26307,7 +26299,7 @@ static const struct cipher_testvec cast5_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast5_cbc_dec_tv_template[] = {
+static struct cipher_testvec cast5_cbc_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A",
@@ -26445,7 +26437,7 @@ static const struct cipher_testvec cast5_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast5_ctr_enc_tv_template[] = {
+static struct cipher_testvec cast5_ctr_enc_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A",
@@ -26596,7 +26588,7 @@ static const struct cipher_testvec cast5_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec cast5_ctr_dec_tv_template[] = {
+static struct cipher_testvec cast5_ctr_dec_tv_template[] = {
 	{ /* Generated from TF test vectors */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A",
@@ -26750,7 +26742,10 @@ static const struct cipher_testvec cast5_ctr_dec_tv_template[] = {
 /*
  * ARC4 test vectors from OpenSSL
  */
-static const struct cipher_testvec arc4_enc_tv_template[] = {
+#define ARC4_ENC_TEST_VECTORS	7
+#define ARC4_DEC_TEST_VECTORS	7
+
+static struct cipher_testvec arc4_enc_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -26816,7 +26811,7 @@ static const struct cipher_testvec arc4_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec arc4_dec_tv_template[] = {
+static struct cipher_testvec arc4_dec_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef",
 		.klen	= 8,
@@ -26885,7 +26880,10 @@ static const struct cipher_testvec arc4_dec_tv_template[] = {
 /*
  * TEA test vectors
  */
-static const struct cipher_testvec tea_enc_tv_template[] = {
+#define TEA_ENC_TEST_VECTORS	4
+#define TEA_DEC_TEST_VECTORS	4
+
+static struct cipher_testvec tea_enc_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -26928,7 +26926,7 @@ static const struct cipher_testvec tea_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec tea_dec_tv_template[] = {
+static struct cipher_testvec tea_dec_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -26974,7 +26972,10 @@ static const struct cipher_testvec tea_dec_tv_template[] = {
 /*
  * XTEA test vectors
  */
-static const struct cipher_testvec xtea_enc_tv_template[] = {
+#define XTEA_ENC_TEST_VECTORS	4
+#define XTEA_DEC_TEST_VECTORS	4
+
+static struct cipher_testvec xtea_enc_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -27017,7 +27018,7 @@ static const struct cipher_testvec xtea_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec xtea_dec_tv_template[] = {
+static struct cipher_testvec xtea_dec_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -27063,7 +27064,10 @@ static const struct cipher_testvec xtea_dec_tv_template[] = {
 /*
  * KHAZAD test vectors.
  */
-static const struct cipher_testvec khazad_enc_tv_template[] = {
+#define KHAZAD_ENC_TEST_VECTORS 5
+#define KHAZAD_DEC_TEST_VECTORS 5
+
+static struct cipher_testvec khazad_enc_tv_template[] = {
 	{
 		.key	= "\x80\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -27109,7 +27113,7 @@ static const struct cipher_testvec khazad_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec khazad_dec_tv_template[] = {
+static struct cipher_testvec khazad_dec_tv_template[] = {
 	{
 		.key	= "\x80\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -27159,7 +27163,12 @@ static const struct cipher_testvec khazad_dec_tv_template[] = {
  * Anubis test vectors.
  */
 
-static const struct cipher_testvec anubis_enc_tv_template[] = {
+#define ANUBIS_ENC_TEST_VECTORS			5
+#define ANUBIS_DEC_TEST_VECTORS			5
+#define ANUBIS_CBC_ENC_TEST_VECTORS		2
+#define ANUBIS_CBC_DEC_TEST_VECTORS		2
+
+static struct cipher_testvec anubis_enc_tv_template[] = {
 	{
 		.key	= "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe"
 			  "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe",
@@ -27222,7 +27231,7 @@ static const struct cipher_testvec anubis_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec anubis_dec_tv_template[] = {
+static struct cipher_testvec anubis_dec_tv_template[] = {
 	{
 		.key	= "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe"
 			  "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe",
@@ -27285,7 +27294,7 @@ static const struct cipher_testvec anubis_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec anubis_cbc_enc_tv_template[] = {
+static struct cipher_testvec anubis_cbc_enc_tv_template[] = {
 	{
 		.key	= "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe"
 			  "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe",
@@ -27320,7 +27329,7 @@ static const struct cipher_testvec anubis_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec anubis_cbc_dec_tv_template[] = {
+static struct cipher_testvec anubis_cbc_dec_tv_template[] = {
 	{
 		.key	= "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe"
 			  "\xfe\xfe\xfe\xfe\xfe\xfe\xfe\xfe",
@@ -27358,7 +27367,10 @@ static const struct cipher_testvec anubis_cbc_dec_tv_template[] = {
 /*
  * XETA test vectors
  */
-static const struct cipher_testvec xeta_enc_tv_template[] = {
+#define XETA_ENC_TEST_VECTORS	4
+#define XETA_DEC_TEST_VECTORS	4
+
+static struct cipher_testvec xeta_enc_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -27401,7 +27413,7 @@ static const struct cipher_testvec xeta_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec xeta_dec_tv_template[] = {
+static struct cipher_testvec xeta_dec_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -27447,7 +27459,10 @@ static const struct cipher_testvec xeta_dec_tv_template[] = {
 /*
  * FCrypt test vectors
  */
-static const struct cipher_testvec fcrypt_pcbc_enc_tv_template[] = {
+#define FCRYPT_ENC_TEST_VECTORS	ARRAY_SIZE(fcrypt_pcbc_enc_tv_template)
+#define FCRYPT_DEC_TEST_VECTORS	ARRAY_SIZE(fcrypt_pcbc_dec_tv_template)
+
+static struct cipher_testvec fcrypt_pcbc_enc_tv_template[] = {
 	{ /* http://www.openafs.org/pipermail/openafs-devel/2000-December/005320.html */
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen	= 8,
@@ -27508,7 +27523,7 @@ static const struct cipher_testvec fcrypt_pcbc_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec fcrypt_pcbc_dec_tv_template[] = {
+static struct cipher_testvec fcrypt_pcbc_dec_tv_template[] = {
 	{ /* http://www.openafs.org/pipermail/openafs-devel/2000-December/005320.html */
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen	= 8,
@@ -27572,7 +27587,18 @@ static const struct cipher_testvec fcrypt_pcbc_dec_tv_template[] = {
 /*
  * CAMELLIA test vectors.
  */
-static const struct cipher_testvec camellia_enc_tv_template[] = {
+#define CAMELLIA_ENC_TEST_VECTORS 4
+#define CAMELLIA_DEC_TEST_VECTORS 4
+#define CAMELLIA_CBC_ENC_TEST_VECTORS 3
+#define CAMELLIA_CBC_DEC_TEST_VECTORS 3
+#define CAMELLIA_CTR_ENC_TEST_VECTORS 2
+#define CAMELLIA_CTR_DEC_TEST_VECTORS 2
+#define CAMELLIA_LRW_ENC_TEST_VECTORS 8
+#define CAMELLIA_LRW_DEC_TEST_VECTORS 8
+#define CAMELLIA_XTS_ENC_TEST_VECTORS 5
+#define CAMELLIA_XTS_DEC_TEST_VECTORS 5
+
+static struct cipher_testvec camellia_enc_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\xfe\xdc\xba\x98\x76\x54\x32\x10",
@@ -27872,7 +27898,7 @@ static const struct cipher_testvec camellia_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_dec_tv_template[] = {
+static struct cipher_testvec camellia_dec_tv_template[] = {
 	{
 		.key	= "\x01\x23\x45\x67\x89\xab\xcd\xef"
 			  "\xfe\xdc\xba\x98\x76\x54\x32\x10",
@@ -28172,7 +28198,7 @@ static const struct cipher_testvec camellia_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_cbc_enc_tv_template[] = {
+static struct cipher_testvec camellia_cbc_enc_tv_template[] = {
 	{
 		.key    = "\x06\xa9\x21\x40\x36\xb8\xa1\x5b"
 			  "\x51\x2e\x03\xd5\x34\x12\x00\x06",
@@ -28468,7 +28494,7 @@ static const struct cipher_testvec camellia_cbc_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_cbc_dec_tv_template[] = {
+static struct cipher_testvec camellia_cbc_dec_tv_template[] = {
 	{
 		.key    = "\x06\xa9\x21\x40\x36\xb8\xa1\x5b"
 			  "\x51\x2e\x03\xd5\x34\x12\x00\x06",
@@ -28764,7 +28790,7 @@ static const struct cipher_testvec camellia_cbc_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_ctr_enc_tv_template[] = {
+static struct cipher_testvec camellia_ctr_enc_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -29431,7 +29457,7 @@ static const struct cipher_testvec camellia_ctr_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_ctr_dec_tv_template[] = {
+static struct cipher_testvec camellia_ctr_dec_tv_template[] = {
 	{ /* Generated with Crypto++ */
 		.key	= "\x85\x62\x3F\x1C\xF9\xD6\x1C\xF9"
 			  "\xD6\xB3\x90\x6D\x4A\x90\x6D\x4A"
@@ -30098,7 +30124,7 @@ static const struct cipher_testvec camellia_ctr_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_lrw_enc_tv_template[] = {
+static struct cipher_testvec camellia_lrw_enc_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	{
 		.key	= "\x45\x62\xac\x25\xf8\x28\x17\x6d"
@@ -30350,7 +30376,7 @@ static const struct cipher_testvec camellia_lrw_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_lrw_dec_tv_template[] = {
+static struct cipher_testvec camellia_lrw_dec_tv_template[] = {
 	/* Generated from AES-LRW test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -30603,7 +30629,7 @@ static const struct cipher_testvec camellia_lrw_dec_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_xts_enc_tv_template[] = {
+static struct cipher_testvec camellia_xts_enc_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 	{
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -30945,7 +30971,7 @@ static const struct cipher_testvec camellia_xts_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec camellia_xts_dec_tv_template[] = {
+static struct cipher_testvec camellia_xts_dec_tv_template[] = {
 	/* Generated from AES-XTS test vectors */
 	/* same as enc vectors with input and result reversed */
 	{
@@ -31291,7 +31317,10 @@ static const struct cipher_testvec camellia_xts_dec_tv_template[] = {
 /*
  * SEED test vectors
  */
-static const struct cipher_testvec seed_enc_tv_template[] = {
+#define SEED_ENC_TEST_VECTORS	4
+#define SEED_DEC_TEST_VECTORS	4
+
+static struct cipher_testvec seed_enc_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -31333,7 +31362,7 @@ static const struct cipher_testvec seed_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec seed_dec_tv_template[] = {
+static struct cipher_testvec seed_dec_tv_template[] = {
 	{
 		.key    = zeroed_string,
 		.klen	= 16,
@@ -31375,7 +31404,8 @@ static const struct cipher_testvec seed_dec_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec salsa20_stream_enc_tv_template[] = {
+#define SALSA20_STREAM_ENC_TEST_VECTORS 5
+static struct cipher_testvec salsa20_stream_enc_tv_template[] = {
 	/*
 	* Testvectors from verified.test-vectors submitted to ECRYPT.
 	* They are truncated to size 39, 64, 111, 129 to test a variety
@@ -32544,7 +32574,8 @@ static const struct cipher_testvec salsa20_stream_enc_tv_template[] = {
 	},
 };
 
-static const struct cipher_testvec chacha20_enc_tv_template[] = {
+#define CHACHA20_ENC_TEST_VECTORS 4
+static struct cipher_testvec chacha20_enc_tv_template[] = {
 	{ /* RFC7539 A.2. Test Vector #1 */
 		.key	= "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -32675,10 +32706,6 @@ static const struct cipher_testvec chacha20_enc_tv_template[] = {
 			  "\x5b\x86\x2f\x37\x30\xe3\x7c\xfd"
 			  "\xc4\xfd\x80\x6c\x22\xf2\x21",
 		.rlen	= 375,
-		.also_non_np = 1,
-		.np	= 3,
-		.tap	= { 375 - 20, 4, 16 },
-
 	}, { /* RFC7539 A.2. Test Vector #3 */
 		.key	= "\x1c\x92\x40\xa5\xeb\x55\xd3\x8a"
 			  "\xf3\x33\x88\x86\x04\xf6\xb5\xf0"
@@ -33053,16 +33080,15 @@ static const struct cipher_testvec chacha20_enc_tv_template[] = {
 			  "\xa1\xed\xad\xd5\x76\xfa\x24\x8f"
 			  "\x98",
 		.rlen	= 1281,
-		.also_non_np = 1,
-		.np	= 3,
-		.tap	= { 1200, 1, 80 },
 	},
 };
 
 /*
  * CTS (Cipher Text Stealing) mode tests
  */
-static const struct cipher_testvec cts_mode_enc_tv_template[] = {
+#define CTS_MODE_ENC_TEST_VECTORS 6
+#define CTS_MODE_DEC_TEST_VECTORS 6
+static struct cipher_testvec cts_mode_enc_tv_template[] = {
 	{ /* from rfc3962 */
 		.klen	= 16,
 		.key    = "\x63\x68\x69\x63\x6b\x65\x6e\x20"
@@ -33164,7 +33190,7 @@ static const struct cipher_testvec cts_mode_enc_tv_template[] = {
 	}
 };
 
-static const struct cipher_testvec cts_mode_dec_tv_template[] = {
+static struct cipher_testvec cts_mode_dec_tv_template[] = {
 	{ /* from rfc3962 */
 		.klen	= 16,
 		.key    = "\x63\x68\x69\x63\x6b\x65\x6e\x20"
@@ -33282,7 +33308,10 @@ struct comp_testvec {
  * Params: winbits=-11, Z_DEFAULT_COMPRESSION, MAX_MEM_LEVEL.
  */
 
-static const struct comp_testvec deflate_comp_tv_template[] = {
+#define DEFLATE_COMP_TEST_VECTORS 2
+#define DEFLATE_DECOMP_TEST_VECTORS 2
+
+static struct comp_testvec deflate_comp_tv_template[] = {
 	{
 		.inlen	= 70,
 		.outlen	= 38,
@@ -33318,7 +33347,7 @@ static const struct comp_testvec deflate_comp_tv_template[] = {
 	},
 };
 
-static const struct comp_testvec deflate_decomp_tv_template[] = {
+static struct comp_testvec deflate_decomp_tv_template[] = {
 	{
 		.inlen	= 122,
 		.outlen	= 191,
@@ -33354,85 +33383,13 @@ static const struct comp_testvec deflate_decomp_tv_template[] = {
 	},
 };
 
-static const struct comp_testvec zlib_deflate_comp_tv_template[] = {
-	{
-		.inlen	= 70,
-		.outlen	= 44,
-		.input	= "Join us now and share the software "
-			"Join us now and share the software ",
-		.output	= "\x78\x5e\xf3\xca\xcf\xcc\x53\x28"
-			  "\x2d\x56\xc8\xcb\x2f\x57\x48\xcc"
-			  "\x4b\x51\x28\xce\x48\x2c\x4a\x55"
-			  "\x28\xc9\x48\x55\x28\xce\x4f\x2b"
-			  "\x29\x07\x71\xbc\x08\x2b\x01\x00"
-			  "\x7c\x65\x19\x3d",
-	}, {
-		.inlen	= 191,
-		.outlen	= 129,
-		.input	= "This document describes a compression method based on the DEFLATE"
-			"compression algorithm.  This document defines the application of "
-			"the DEFLATE algorithm to the IP Payload Compression Protocol.",
-		.output	= "\x78\x5e\x5d\xce\x41\x0a\xc3\x30"
-			  "\x0c\x04\xc0\xaf\xec\x0b\xf2\x87"
-			  "\xd2\xa6\x50\xe8\xc1\x07\x7f\x40"
-			  "\xb1\x95\x5a\x60\x5b\xc6\x56\x0f"
-			  "\xfd\x7d\x93\x1e\x42\xe8\x51\xec"
-			  "\xee\x20\x9f\x64\x20\x6a\x78\x17"
-			  "\xae\x86\xc8\x23\x74\x59\x78\x80"
-			  "\x10\xb4\xb4\xce\x63\x88\x56\x14"
-			  "\xb6\xa4\x11\x0b\x0d\x8e\xd8\x6e"
-			  "\x4b\x8c\xdb\x7c\x7f\x5e\xfc\x7c"
-			  "\xae\x51\x7e\x69\x17\x4b\x65\x02"
-			  "\xfc\x1f\xbc\x4a\xdd\xd8\x7d\x48"
-			  "\xad\x65\x09\x64\x3b\xac\xeb\xd9"
-			  "\xc2\x01\xc0\xf4\x17\x3c\x1c\x1c"
-			  "\x7d\xb2\x52\xc4\xf5\xf4\x8f\xeb"
-			  "\x6a\x1a\x34\x4f\x5f\x2e\x32\x45"
-			  "\x4e",
-	},
-};
-
-static const struct comp_testvec zlib_deflate_decomp_tv_template[] = {
-	{
-		.inlen	= 128,
-		.outlen	= 191,
-		.input	= "\x78\x9c\x5d\x8d\x31\x0e\xc2\x30"
-			  "\x10\x04\xbf\xb2\x2f\xc8\x1f\x10"
-			  "\x04\x09\x89\xc2\x85\x3f\x70\xb1"
-			  "\x2f\xf8\x24\xdb\x67\xd9\x47\xc1"
-			  "\xef\x49\x68\x12\x51\xae\x76\x67"
-			  "\xd6\x27\x19\x88\x1a\xde\x85\xab"
-			  "\x21\xf2\x08\x5d\x16\x1e\x20\x04"
-			  "\x2d\xad\xf3\x18\xa2\x15\x85\x2d"
-			  "\x69\xc4\x42\x83\x23\xb6\x6c\x89"
-			  "\x71\x9b\xef\xcf\x8b\x9f\xcf\x33"
-			  "\xca\x2f\xed\x62\xa9\x4c\x80\xff"
-			  "\x13\xaf\x52\x37\xed\x0e\x52\x6b"
-			  "\x59\x02\xd9\x4e\xe8\x7a\x76\x1d"
-			  "\x02\x98\xfe\x8a\x87\x83\xa3\x4f"
-			  "\x56\x8a\xb8\x9e\x8e\x5c\x57\xd3"
-			  "\xa0\x79\xfa\x02\x2e\x32\x45\x4e",
-		.output	= "This document describes a compression method based on the DEFLATE"
-			"compression algorithm.  This document defines the application of "
-			"the DEFLATE algorithm to the IP Payload Compression Protocol.",
-	}, {
-		.inlen	= 44,
-		.outlen	= 70,
-		.input	= "\x78\x9c\xf3\xca\xcf\xcc\x53\x28"
-			  "\x2d\x56\xc8\xcb\x2f\x57\x48\xcc"
-			  "\x4b\x51\x28\xce\x48\x2c\x4a\x55"
-			  "\x28\xc9\x48\x55\x28\xce\x4f\x2b"
-			  "\x29\x07\x71\xbc\x08\x2b\x01\x00"
-			  "\x7c\x65\x19\x3d",
-		.output	= "Join us now and share the software "
-			"Join us now and share the software ",
-	},
-};
-
 /*
  * LZO test vectors (null-terminated strings).
  */
-static const struct comp_testvec lzo_comp_tv_template[] = {
+#define LZO_COMP_TEST_VECTORS 2
+#define LZO_DECOMP_TEST_VECTORS 2
+
+static struct comp_testvec lzo_comp_tv_template[] = {
 	{
 		.inlen	= 70,
 		.outlen	= 57,
@@ -33472,7 +33429,7 @@ static const struct comp_testvec lzo_comp_tv_template[] = {
 	},
 };
 
-static const struct comp_testvec lzo_decomp_tv_template[] = {
+static struct comp_testvec lzo_decomp_tv_template[] = {
 	{
 		.inlen	= 133,
 		.outlen	= 159,
@@ -33515,7 +33472,7 @@ static const struct comp_testvec lzo_decomp_tv_template[] = {
  */
 #define MICHAEL_MIC_TEST_VECTORS 6
 
-static const struct hash_testvec michael_mic_tv_template[] = {
+static struct hash_testvec michael_mic_tv_template[] = {
 	{
 		.key = "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.ksize = 8,
@@ -33563,7 +33520,9 @@ static const struct hash_testvec michael_mic_tv_template[] = {
 /*
  * CRC32 test vectors
  */
-static const struct hash_testvec crc32_tv_template[] = {
+#define CRC32_TEST_VECTORS 14
+
+static struct hash_testvec crc32_tv_template[] = {
 	{
 		.key = "\x87\xa9\xcb\xed",
 		.ksize = 4,
@@ -33995,7 +33954,9 @@ static const struct hash_testvec crc32_tv_template[] = {
 /*
  * CRC32C test vectors
  */
-static const struct hash_testvec crc32c_tv_template[] = {
+#define CRC32C_TEST_VECTORS 15
+
+static struct hash_testvec crc32c_tv_template[] = {
 	{
 		.psize = 0,
 		.digest = "\x00\x00\x00\x00",
@@ -34431,7 +34392,9 @@ static const struct hash_testvec crc32c_tv_template[] = {
 /*
  * Blakcifn CRC test vectors
  */
-static const struct hash_testvec bfin_crc_tv_template[] = {
+#define BFIN_CRC_TEST_VECTORS 6
+
+static struct hash_testvec bfin_crc_tv_template[] = {
 	{
 		.psize = 0,
 		.digest = "\x00\x00\x00\x00",
@@ -34516,125 +34479,69 @@ static const struct hash_testvec bfin_crc_tv_template[] = {
 
 };
 
-static const struct comp_testvec lz4_comp_tv_template[] = {
-	{
-		.inlen	= 255,
-		.outlen	= 218,
-		.input	= "LZ4 is lossless compression algorithm, providing"
-			 " compression speed at 400 MB/s per core, scalable "
-			 "with multi-cores CPU. It features an extremely fast "
-			 "decoder, with speed in multiple GB/s per core, "
-			 "typically reaching RAM speed limits on multi-core "
-			 "systems.",
-		.output	= "\xf9\x21\x4c\x5a\x34\x20\x69\x73\x20\x6c\x6f\x73\x73"
-			  "\x6c\x65\x73\x73\x20\x63\x6f\x6d\x70\x72\x65\x73\x73"
-			  "\x69\x6f\x6e\x20\x61\x6c\x67\x6f\x72\x69\x74\x68\x6d"
-			  "\x2c\x20\x70\x72\x6f\x76\x69\x64\x69\x6e\x67\x21\x00"
-			  "\xf0\x21\x73\x70\x65\x65\x64\x20\x61\x74\x20\x34\x30"
-			  "\x30\x20\x4d\x42\x2f\x73\x20\x70\x65\x72\x20\x63\x6f"
-			  "\x72\x65\x2c\x20\x73\x63\x61\x6c\x61\x62\x6c\x65\x20"
-			  "\x77\x69\x74\x68\x20\x6d\x75\x6c\x74\x69\x2d\x1a\x00"
-			  "\xf0\x00\x73\x20\x43\x50\x55\x2e\x20\x49\x74\x20\x66"
-			  "\x65\x61\x74\x75\x11\x00\xf2\x0b\x61\x6e\x20\x65\x78"
-			  "\x74\x72\x65\x6d\x65\x6c\x79\x20\x66\x61\x73\x74\x20"
-			  "\x64\x65\x63\x6f\x64\x65\x72\x2c\x3d\x00\x02\x67\x00"
-			  "\x22\x69\x6e\x46\x00\x5a\x70\x6c\x65\x20\x47\x6c\x00"
-			  "\xf0\x00\x74\x79\x70\x69\x63\x61\x6c\x6c\x79\x20\x72"
-			  "\x65\x61\x63\x68\xa7\x00\x33\x52\x41\x4d\x38\x00\x83"
-			  "\x6c\x69\x6d\x69\x74\x73\x20\x6f\x3f\x00\x01\x85\x00"
-			  "\x90\x20\x73\x79\x73\x74\x65\x6d\x73\x2e",
+#define LZ4_COMP_TEST_VECTORS 1
+#define LZ4_DECOMP_TEST_VECTORS 1
 
+static struct comp_testvec lz4_comp_tv_template[] = {
+	{
+		.inlen	= 70,
+		.outlen	= 45,
+		.input	= "Join us now and share the software "
+			  "Join us now and share the software ",
+		.output = "\xf0\x10\x4a\x6f\x69\x6e\x20\x75"
+			  "\x73\x20\x6e\x6f\x77\x20\x61\x6e"
+			  "\x64\x20\x73\x68\x61\x72\x65\x20"
+			  "\x74\x68\x65\x20\x73\x6f\x66\x74"
+			  "\x77\x0d\x00\x0f\x23\x00\x0b\x50"
+			  "\x77\x61\x72\x65\x20",
 	},
 };
 
-static const struct comp_testvec lz4_decomp_tv_template[] = {
+static struct comp_testvec lz4_decomp_tv_template[] = {
 	{
-		.inlen	= 218,
-		.outlen	= 255,
-		.input	= "\xf9\x21\x4c\x5a\x34\x20\x69\x73\x20\x6c\x6f\x73\x73"
-			  "\x6c\x65\x73\x73\x20\x63\x6f\x6d\x70\x72\x65\x73\x73"
-			  "\x69\x6f\x6e\x20\x61\x6c\x67\x6f\x72\x69\x74\x68\x6d"
-			  "\x2c\x20\x70\x72\x6f\x76\x69\x64\x69\x6e\x67\x21\x00"
-			  "\xf0\x21\x73\x70\x65\x65\x64\x20\x61\x74\x20\x34\x30"
-			  "\x30\x20\x4d\x42\x2f\x73\x20\x70\x65\x72\x20\x63\x6f"
-			  "\x72\x65\x2c\x20\x73\x63\x61\x6c\x61\x62\x6c\x65\x20"
-			  "\x77\x69\x74\x68\x20\x6d\x75\x6c\x74\x69\x2d\x1a\x00"
-			  "\xf0\x00\x73\x20\x43\x50\x55\x2e\x20\x49\x74\x20\x66"
-			  "\x65\x61\x74\x75\x11\x00\xf2\x0b\x61\x6e\x20\x65\x78"
-			  "\x74\x72\x65\x6d\x65\x6c\x79\x20\x66\x61\x73\x74\x20"
-			  "\x64\x65\x63\x6f\x64\x65\x72\x2c\x3d\x00\x02\x67\x00"
-			  "\x22\x69\x6e\x46\x00\x5a\x70\x6c\x65\x20\x47\x6c\x00"
-			  "\xf0\x00\x74\x79\x70\x69\x63\x61\x6c\x6c\x79\x20\x72"
-			  "\x65\x61\x63\x68\xa7\x00\x33\x52\x41\x4d\x38\x00\x83"
-			  "\x6c\x69\x6d\x69\x74\x73\x20\x6f\x3f\x00\x01\x85\x00"
-			  "\x90\x20\x73\x79\x73\x74\x65\x6d\x73\x2e",
-		.output	= "LZ4 is lossless compression algorithm, providing"
-			 " compression speed at 400 MB/s per core, scalable "
-			 "with multi-cores CPU. It features an extremely fast "
-			 "decoder, with speed in multiple GB/s per core, "
-			 "typically reaching RAM speed limits on multi-core "
-			 "systems.",
+		.inlen	= 45,
+		.outlen	= 70,
+		.input  = "\xf0\x10\x4a\x6f\x69\x6e\x20\x75"
+			  "\x73\x20\x6e\x6f\x77\x20\x61\x6e"
+			  "\x64\x20\x73\x68\x61\x72\x65\x20"
+			  "\x74\x68\x65\x20\x73\x6f\x66\x74"
+			  "\x77\x0d\x00\x0f\x23\x00\x0b\x50"
+			  "\x77\x61\x72\x65\x20",
+		.output	= "Join us now and share the software "
+			  "Join us now and share the software ",
 	},
 };
 
-static const struct comp_testvec lz4hc_comp_tv_template[] = {
-	{
-		.inlen	= 255,
-		.outlen	= 216,
-		.input	= "LZ4 is lossless compression algorithm, providing"
-			 " compression speed at 400 MB/s per core, scalable "
-			 "with multi-cores CPU. It features an extremely fast "
-			 "decoder, with speed in multiple GB/s per core, "
-			 "typically reaching RAM speed limits on multi-core "
-			 "systems.",
-		.output = "\xf9\x21\x4c\x5a\x34\x20\x69\x73\x20\x6c\x6f\x73\x73"
-			  "\x6c\x65\x73\x73\x20\x63\x6f\x6d\x70\x72\x65\x73\x73"
-			  "\x69\x6f\x6e\x20\x61\x6c\x67\x6f\x72\x69\x74\x68\x6d"
-			  "\x2c\x20\x70\x72\x6f\x76\x69\x64\x69\x6e\x67\x21\x00"
-			  "\xf0\x21\x73\x70\x65\x65\x64\x20\x61\x74\x20\x34\x30"
-			  "\x30\x20\x4d\x42\x2f\x73\x20\x70\x65\x72\x20\x63\x6f"
-			  "\x72\x65\x2c\x20\x73\x63\x61\x6c\x61\x62\x6c\x65\x20"
-			  "\x77\x69\x74\x68\x20\x6d\x75\x6c\x74\x69\x2d\x1a\x00"
-			  "\xf0\x00\x73\x20\x43\x50\x55\x2e\x20\x49\x74\x20\x66"
-			  "\x65\x61\x74\x75\x11\x00\xf2\x0b\x61\x6e\x20\x65\x78"
-			  "\x74\x72\x65\x6d\x65\x6c\x79\x20\x66\x61\x73\x74\x20"
-			  "\x64\x65\x63\x6f\x64\x65\x72\x2c\x3d\x00\x02\x67\x00"
-			  "\x22\x69\x6e\x46\x00\x5a\x70\x6c\x65\x20\x47\x6c\x00"
-			  "\xf0\x00\x74\x79\x70\x69\x63\x61\x6c\x6c\x79\x20\x72"
-			  "\x65\x61\x63\x68\xa7\x00\x33\x52\x41\x4d\x38\x00\x97"
-			  "\x6c\x69\x6d\x69\x74\x73\x20\x6f\x6e\x85\x00\x90\x20"
-			  "\x73\x79\x73\x74\x65\x6d\x73\x2e",
+#define LZ4HC_COMP_TEST_VECTORS 1
+#define LZ4HC_DECOMP_TEST_VECTORS 1
 
+static struct comp_testvec lz4hc_comp_tv_template[] = {
+	{
+		.inlen	= 70,
+		.outlen	= 45,
+		.input	= "Join us now and share the software "
+			  "Join us now and share the software ",
+		.output = "\xf0\x10\x4a\x6f\x69\x6e\x20\x75"
+			  "\x73\x20\x6e\x6f\x77\x20\x61\x6e"
+			  "\x64\x20\x73\x68\x61\x72\x65\x20"
+			  "\x74\x68\x65\x20\x73\x6f\x66\x74"
+			  "\x77\x0d\x00\x0f\x23\x00\x0b\x50"
+			  "\x77\x61\x72\x65\x20",
 	},
 };
 
-static const struct comp_testvec lz4hc_decomp_tv_template[] = {
+static struct comp_testvec lz4hc_decomp_tv_template[] = {
 	{
-		.inlen	= 216,
-		.outlen	= 255,
-		.input	= "\xf9\x21\x4c\x5a\x34\x20\x69\x73\x20\x6c\x6f\x73\x73"
-			  "\x6c\x65\x73\x73\x20\x63\x6f\x6d\x70\x72\x65\x73\x73"
-			  "\x69\x6f\x6e\x20\x61\x6c\x67\x6f\x72\x69\x74\x68\x6d"
-			  "\x2c\x20\x70\x72\x6f\x76\x69\x64\x69\x6e\x67\x21\x00"
-			  "\xf0\x21\x73\x70\x65\x65\x64\x20\x61\x74\x20\x34\x30"
-			  "\x30\x20\x4d\x42\x2f\x73\x20\x70\x65\x72\x20\x63\x6f"
-			  "\x72\x65\x2c\x20\x73\x63\x61\x6c\x61\x62\x6c\x65\x20"
-			  "\x77\x69\x74\x68\x20\x6d\x75\x6c\x74\x69\x2d\x1a\x00"
-			  "\xf0\x00\x73\x20\x43\x50\x55\x2e\x20\x49\x74\x20\x66"
-			  "\x65\x61\x74\x75\x11\x00\xf2\x0b\x61\x6e\x20\x65\x78"
-			  "\x74\x72\x65\x6d\x65\x6c\x79\x20\x66\x61\x73\x74\x20"
-			  "\x64\x65\x63\x6f\x64\x65\x72\x2c\x3d\x00\x02\x67\x00"
-			  "\x22\x69\x6e\x46\x00\x5a\x70\x6c\x65\x20\x47\x6c\x00"
-			  "\xf0\x00\x74\x79\x70\x69\x63\x61\x6c\x6c\x79\x20\x72"
-			  "\x65\x61\x63\x68\xa7\x00\x33\x52\x41\x4d\x38\x00\x97"
-			  "\x6c\x69\x6d\x69\x74\x73\x20\x6f\x6e\x85\x00\x90\x20"
-			  "\x73\x79\x73\x74\x65\x6d\x73\x2e",
-		.output	= "LZ4 is lossless compression algorithm, providing"
-			 " compression speed at 400 MB/s per core, scalable "
-			 "with multi-cores CPU. It features an extremely fast "
-			 "decoder, with speed in multiple GB/s per core, "
-			 "typically reaching RAM speed limits on multi-core "
-			 "systems.",
+		.inlen	= 45,
+		.outlen	= 70,
+		.input  = "\xf0\x10\x4a\x6f\x69\x6e\x20\x75"
+			  "\x73\x20\x6e\x6f\x77\x20\x61\x6e"
+			  "\x64\x20\x73\x68\x61\x72\x65\x20"
+			  "\x74\x68\x65\x20\x73\x6f\x66\x74"
+			  "\x77\x0d\x00\x0f\x23\x00\x0b\x50"
+			  "\x77\x61\x72\x65\x20",
+		.output	= "Join us now and share the software "
+			  "Join us now and share the software ",
 	},
 };
 

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * include/asm-cris/processor.h
  *
@@ -53,6 +52,8 @@ unsigned long get_wchan(struct task_struct *p);
 
 #define KSTK_ESP(tsk)   ((tsk) == current ? rdusp() : (tsk)->thread.usp)
 
+extern unsigned long thread_saved_pc(struct task_struct *tsk);
+
 /* Free all resources held by a thread. */
 static inline void release_thread(struct task_struct *dead_task)
 {
@@ -62,6 +63,7 @@ static inline void release_thread(struct task_struct *dead_task)
 #define init_stack      (init_thread_union.stack)
 
 #define cpu_relax()     barrier()
+#define cpu_relax_lowlatency() cpu_relax()
 
 void default_idle(void);
 

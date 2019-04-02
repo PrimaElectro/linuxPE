@@ -74,7 +74,6 @@ static void iint_free(struct integrity_iint_cache *iint)
 	iint->ima_hash = NULL;
 	iint->version = 0;
 	iint->flags = 0UL;
-	iint->atomic_flags = 0UL;
 	iint->ima_file_status = INTEGRITY_UNKNOWN;
 	iint->ima_mmap_status = INTEGRITY_UNKNOWN;
 	iint->ima_bprm_status = INTEGRITY_UNKNOWN;
@@ -156,14 +155,12 @@ static void init_once(void *foo)
 	memset(iint, 0, sizeof(*iint));
 	iint->version = 0;
 	iint->flags = 0UL;
-	iint->atomic_flags = 0;
 	iint->ima_file_status = INTEGRITY_UNKNOWN;
 	iint->ima_mmap_status = INTEGRITY_UNKNOWN;
 	iint->ima_bprm_status = INTEGRITY_UNKNOWN;
 	iint->ima_read_status = INTEGRITY_UNKNOWN;
 	iint->evm_status = INTEGRITY_UNKNOWN;
 	iint->measured_pcrs = 0;
-	mutex_init(&iint->mutex);
 }
 
 static int __init integrity_iintcache_init(void)
@@ -185,7 +182,7 @@ security_initcall(integrity_iintcache_init);
  *
  */
 int integrity_kernel_read(struct file *file, loff_t offset,
-			  void *addr, unsigned long count)
+			  char *addr, unsigned long count)
 {
 	mm_segment_t old_fs;
 	char __user *buf = (char __user *)addr;

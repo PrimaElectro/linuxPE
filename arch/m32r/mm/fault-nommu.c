@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/m32r/mm/fault.c
  *
@@ -23,7 +22,7 @@
 #include <linux/vt_kern.h>              /* For unblank_screen() */
 
 #include <asm/m32r.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
 #include <asm/hardirq.h>

@@ -33,14 +33,3 @@
 &eth1 {
       status = "disabled";
 };
-
-&switch {
-	reg = <0>;
-
-	ports {
-		port@4 {
-			reg = <4>;
-			label = "wan";
-		};
-	};
-};

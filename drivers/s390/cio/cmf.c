@@ -30,7 +30,7 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/list.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/timex.h>	/* get_tod_clock() */
@@ -1085,9 +1085,15 @@ static ssize_t cmb_show_avg_utilization(struct device *dev,
 		      data.function_pending_time +
 		      data.device_disconnect_time;
 
+	/* shift to avoid long long division */
+	while (-1ul < (data.elapsed_time | utilization)) {
+		utilization >>= 8;
+		data.elapsed_time >>= 8;
+	}
+
 	/* calculate value in 0.1 percent units */
-	t = data.elapsed_time / 1000;
-	u = utilization / t;
+	t = (unsigned long) data.elapsed_time / 1000;
+	u = (unsigned long) utilization / t;
 
 	return sprintf(buf, "%02ld.%01ld%%\n", u/ 10, u - (u/ 10) * 10);
 }
@@ -1383,7 +1389,13 @@ static int __init init_cmf(void)
 		"%s (mode %s)\n", format_string, detect_string);
 	return 0;
 }
-device_initcall(init_cmf);
+module_init(init_cmf);
+
+
+MODULE_AUTHOR("Arnd Bergmann <arndb@de.ibm.com>");
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("channel measurement facility base driver\n"
+		   "Copyright IBM Corp. 2003\n");
 
 EXPORT_SYMBOL_GPL(enable_cmf);
 EXPORT_SYMBOL_GPL(disable_cmf);

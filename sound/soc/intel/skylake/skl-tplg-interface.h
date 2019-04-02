@@ -24,7 +24,6 @@
  * SST types start at higher to avoid any overlapping in future
  */
 #define SKL_CONTROL_TYPE_BYTE_TLV	0x100
-#define SKL_CONTROL_TYPE_MIC_SELECT	0x102
 
 #define HDA_SST_CFG_MAX	900 /* size of copier cfg*/
 #define MAX_IN_QUEUE 8
@@ -83,7 +82,6 @@ enum skl_module_type {
 	SKL_MODULE_TYPE_ALGO,
 	SKL_MODULE_TYPE_BASE_OUTFMT,
 	SKL_MODULE_TYPE_KPB,
-	SKL_MODULE_TYPE_MIC_SELECT,
 };
 
 enum skl_core_affinity {
@@ -157,6 +155,18 @@ struct skl_dfw_algo_data {
 	u32 param_id;
 	u32 max;
 	char params[0];
+} __packed;
+
+#define LIB_NAME_LENGTH	128
+#define HDA_MAX_LIB	16
+
+struct lib_info {
+	char name[LIB_NAME_LENGTH];
+} __packed;
+
+struct skl_dfw_manifest {
+	u32 lib_count;
+	struct lib_info lib[HDA_MAX_LIB];
 } __packed;
 
 enum skl_tkn_dir {

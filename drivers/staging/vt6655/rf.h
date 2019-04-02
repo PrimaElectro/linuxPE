@@ -12,6 +12,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ *
  * File: rf.h
  *
  * Purpose:
@@ -30,7 +35,7 @@
 /*---------------------  Export Definitions -------------------------*/
 /*
  * Baseband RF pair definition in eeprom (Bits 6..0)
- */
+*/
 #define RF_RFMD2959             0x01
 #define RF_MAXIMAG              0x02
 #define RF_AIROHA               0x03
@@ -68,28 +73,28 @@
 
 /*---------------------  Export Functions  --------------------------*/
 
-bool IFRFbWriteEmbedded(struct vnt_private *priv, unsigned long dwData);
-bool RFbSelectChannel(struct vnt_private *priv, unsigned char byRFType, u16 byChannel);
+bool IFRFbWriteEmbedded(struct vnt_private *, unsigned long dwData);
+bool RFbSelectChannel(struct vnt_private *, unsigned char byRFType, u16);
 bool RFbInit(
-	struct vnt_private *priv
+	struct vnt_private *
 );
-bool RFvWriteWakeProgSyn(struct vnt_private *priv, unsigned char byRFType, u16 uChannel);
-bool RFbSetPower(struct vnt_private *priv, unsigned int rate, u16 uCH);
+bool RFvWriteWakeProgSyn(struct vnt_private *, unsigned char byRFType, u16);
+bool RFbSetPower(struct vnt_private *, unsigned int rate, u16);
 bool RFbRawSetPower(
-	struct vnt_private *priv,
+	struct vnt_private *,
 	unsigned char byPwr,
 	unsigned int rate
 );
 
 void
 RFvRSSITodBm(
-	struct vnt_private *priv,
+	struct vnt_private *,
 	unsigned char byCurrRSSI,
 	long    *pldBm
 );
 
 /* {{ RobertYu: 20050104 */
-bool RFbAL7230SelectChannelPostProcess(struct vnt_private *priv, u16 byOldChannel, u16 byNewChannel);
+bool RFbAL7230SelectChannelPostProcess(struct vnt_private *, u16, u16);
 /* }} RobertYu */
 
 #endif /* __RF_H__ */

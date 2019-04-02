@@ -161,10 +161,10 @@ static void pnv_php_detach_device_nodes(struct device_node *parent)
 		pnv_php_detach_device_nodes(dn);
 
 		of_node_put(dn);
-		refcount = kref_read(&dn->kobj.kref);
+		refcount = atomic_read(&dn->kobj.kref.refcount);
 		if (refcount != 1)
-			pr_warn("Invalid refcount %d on <%pOF>\n",
-				refcount, dn);
+			pr_warn("Invalid refcount %d on <%s>\n",
+				refcount, of_node_full_name(dn));
 
 		of_detach_node(dn);
 	}
@@ -723,8 +723,7 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 	if (sts & PCI_EXP_SLTSTA_DLLSC) {
 		pcie_capability_read_word(pdev, PCI_EXP_LNKSTA, &lsts);
 		added = !!(lsts & PCI_EXP_LNKSTA_DLLLA);
-	} else if (!(php_slot->flags & PNV_PHP_FLAG_BROKEN_PDC) &&
-		   (sts & PCI_EXP_SLTSTA_PDC)) {
+	} else if (sts & PCI_EXP_SLTSTA_PDC) {
 		ret = pnv_pci_get_presence_state(php_slot->id, &presence);
 		if (ret) {
 			dev_warn(&pdev->dev, "PCI slot [%s] error %d getting presence (0x%04x), to retry the operation.\n",
@@ -775,7 +774,6 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 static void pnv_php_init_irq(struct pnv_php_slot *php_slot, int irq)
 {
 	struct pci_dev *pdev = php_slot->pdev;
-	u32 broken_pdc = 0;
 	u16 sts, ctrl;
 	int ret;
 
@@ -787,18 +785,9 @@ static void pnv_php_init_irq(struct pnv_php_slot *php_slot, int irq)
 		return;
 	}
 
-	/* Check PDC (Presence Detection Change) is broken or not */
-	ret = of_property_read_u32(php_slot->dn, "ibm,slot-broken-pdc",
-				   &broken_pdc);
-	if (!ret && broken_pdc)
-		php_slot->flags |= PNV_PHP_FLAG_BROKEN_PDC;
-
 	/* Clear pending interrupts */
 	pcie_capability_read_word(pdev, PCI_EXP_SLTSTA, &sts);
-	if (php_slot->flags & PNV_PHP_FLAG_BROKEN_PDC)
-		sts |= PCI_EXP_SLTSTA_DLLSC;
-	else
-		sts |= (PCI_EXP_SLTSTA_PDC | PCI_EXP_SLTSTA_DLLSC);
+	sts |= (PCI_EXP_SLTSTA_PDC | PCI_EXP_SLTSTA_DLLSC);
 	pcie_capability_write_word(pdev, PCI_EXP_SLTSTA, sts);
 
 	/* Request the interrupt */
@@ -812,15 +801,9 @@ static void pnv_php_init_irq(struct pnv_php_slot *php_slot, int irq)
 
 	/* Enable the interrupts */
 	pcie_capability_read_word(pdev, PCI_EXP_SLTCTL, &ctrl);
-	if (php_slot->flags & PNV_PHP_FLAG_BROKEN_PDC) {
-		ctrl &= ~PCI_EXP_SLTCTL_PDCE;
-		ctrl |= (PCI_EXP_SLTCTL_HPIE |
-			 PCI_EXP_SLTCTL_DLLSCE);
-	} else {
-		ctrl |= (PCI_EXP_SLTCTL_HPIE |
-			 PCI_EXP_SLTCTL_PDCE |
-			 PCI_EXP_SLTCTL_DLLSCE);
-	}
+	ctrl |= (PCI_EXP_SLTCTL_HPIE |
+		 PCI_EXP_SLTCTL_PDCE |
+		 PCI_EXP_SLTCTL_DLLSCE);
 	pcie_capability_write_word(pdev, PCI_EXP_SLTCTL, ctrl);
 
 	/* The interrupt is initialized successfully when @irq is valid */

@@ -42,7 +42,6 @@
 #include <linux/delay.h>
 #include <linux/hardirq.h>
 #include <linux/workqueue.h>
-#include <linux/ratelimit.h>
 
 #include <xen/xen.h>
 #include <xen/interface/xen.h>
@@ -328,7 +327,7 @@ static void gnttab_handle_deferred(unsigned long unused)
 			if (entry->page) {
 				pr_debug("freeing g.e. %#x (pfn %#lx)\n",
 					 entry->ref, page_to_pfn(entry->page));
-				put_page(entry->page);
+				__free_page(entry->page);
 			} else
 				pr_info("freeing g.e. %#x\n", entry->ref);
 			kfree(entry);
@@ -384,7 +383,7 @@ void gnttab_end_foreign_access(grant_ref_t ref, int readonly,
 	if (gnttab_end_foreign_access_ref(ref, readonly)) {
 		put_free_entry(ref);
 		if (page != 0)
-			put_page(virt_to_page(page));
+			free_page(page);
 	} else
 		gnttab_add_deferred(ref, readonly,
 				    page ? virt_to_page(page) : NULL);
@@ -1073,14 +1072,8 @@ static int gnttab_expand(unsigned int req_entries)
 	cur = nr_grant_frames;
 	extra = ((req_entries + (grefs_per_grant_frame-1)) /
 		 grefs_per_grant_frame);
-	if (cur + extra > gnttab_max_grant_frames()) {
-		pr_warn_ratelimited("xen/grant-table: max_grant_frames reached"
-				    " cur=%u extra=%u limit=%u"
-				    " gnttab_free_count=%u req_entries=%u\n",
-				    cur, extra, gnttab_max_grant_frames(),
-				    gnttab_free_count, req_entries);
+	if (cur + extra > gnttab_max_grant_frames())
 		return -ENOSPC;
-	}
 
 	rc = gnttab_map(cur, cur + extra - 1);
 	if (rc == 0)
@@ -1153,12 +1146,12 @@ EXPORT_SYMBOL_GPL(gnttab_init);
 
 static int __gnttab_init(void)
 {
-	if (!xen_domain())
-		return -ENODEV;
-
 	/* Delay grant-table initialization in the PV on HVM case */
-	if (xen_hvm_domain() && !xen_pvh_domain())
+	if (xen_hvm_domain())
 		return 0;
+
+	if (!xen_pv_domain())
+		return -ENODEV;
 
 	return gnttab_init();
 }

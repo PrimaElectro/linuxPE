@@ -11,7 +11,7 @@ Description:
 		Shows if the lustre module has pinger support.
 		"on" means yes and "off" means no.
 
-What:		/sys/fs/lustre/health_check
+What:		/sys/fs/lustre/health
 Date:		May 2015
 Contact:	"Oleg Drokin" <oleg.drokin@intel.com>
 Description:

@@ -1,11 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/alpha/mm/fault.c
  *
  *  Copyright (C) 1995  Linus Torvalds
  */
 
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <asm/io.h>
@@ -23,7 +22,7 @@
 #include <linux/mman.h>
 #include <linux/smp.h>
 #include <linux/interrupt.h>
-#include <linux/extable.h>
+#include <linux/module.h>
 #include <linux/uaccess.h>
 
 extern void die_if_kernel(char *,struct pt_regs *,long, unsigned long *);
@@ -78,7 +77,7 @@ __load_new_mm_context(struct mm_struct *next_mm)
 /* Macro for exception fixup code to access integer registers.  */
 #define dpf_reg(r)							\
 	(((unsigned long *)regs)[(r) <= 8 ? (r) : (r) <= 15 ? (r)-16 :	\
-				 (r) <= 18 ? (r)+10 : (r)-10])
+				 (r) <= 18 ? (r)+8 : (r)-10])
 
 asmlinkage void
 do_page_fault(unsigned long address, unsigned long mmcsr,

@@ -9,6 +9,4 @@
 
 #include <linux/nmi.h>
 
-extern void arch_touch_nmi_watchdog(void);
-
 #endif

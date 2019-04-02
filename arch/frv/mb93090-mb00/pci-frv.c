@@ -147,7 +147,7 @@ static void __init pcibios_allocate_resources(int pass)
 static void __init pcibios_assign_resources(void)
 {
 	struct pci_dev *dev = NULL;
-	int idx, err;
+	int idx;
 	struct resource *r;
 
 	for_each_pci_dev(dev) {
@@ -172,13 +172,8 @@ static void __init pcibios_assign_resources(void)
 			 *  the BIOS forgot to do so or because we have decided the old
 			 *  address was unusable for some reason.
 			 */
-			if (!r->start && r->end) {
-				err = pci_assign_resource(dev, idx);
-				if (err)
-					dev_err(&dev->dev,
-						"Failed to assign new address to %d\n",
-						idx);
-			}
+			if (!r->start && r->end)
+				pci_assign_resource(dev, idx);
 		}
 	}
 }

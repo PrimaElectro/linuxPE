@@ -1,13 +1,15 @@
-# SPDX-License-Identifier: GPL-2.0
+CC := $(CROSS_COMPILE)gcc
 CFLAGS := $(CFLAGS) -Wall -D_GNU_SOURCE
-LDLIBS := $(LDLIBS) -lm
+LDFLAGS := $(LDFLAGS) -lm
 
-ifeq (,$(filter $(ARCH),x86))
-TEST_GEN_FILES := msr aperf
-endif
+TARGETS := msr aperf
 
-TEST_PROGS := run.sh
+TEST_PROGS := $(TARGETS) run.sh
 
-include ../lib.mk
+.PHONY: all clean
+all: $(TARGETS)
 
-$(TEST_GEN_FILES): $(HEADERS)
+$(TARGETS): $(HEADERS)
+
+clean:
+	rm -f $(TARGETS)

@@ -23,10 +23,7 @@ struct cls_cgroup_head {
 	struct tcf_exts		exts;
 	struct tcf_ematch_tree	ematches;
 	struct tcf_proto	*tp;
-	union {
-		struct work_struct	work;
-		struct rcu_head		rcu;
-	};
+	struct rcu_head		rcu;
 };
 
 static int cls_cgroup_classify(struct sk_buff *skb, const struct tcf_proto *tp,
@@ -46,9 +43,9 @@ static int cls_cgroup_classify(struct sk_buff *skb, const struct tcf_proto *tp,
 	return tcf_exts_exec(skb, &head->exts, res);
 }
 
-static void *cls_cgroup_get(struct tcf_proto *tp, u32 handle)
+static unsigned long cls_cgroup_get(struct tcf_proto *tp, u32 handle)
 {
-	return NULL;
+	return 0UL;
 }
 
 static int cls_cgroup_init(struct tcf_proto *tp)
@@ -60,42 +57,27 @@ static const struct nla_policy cgroup_policy[TCA_CGROUP_MAX + 1] = {
 	[TCA_CGROUP_EMATCHES]	= { .type = NLA_NESTED },
 };
 
-static void __cls_cgroup_destroy(struct cls_cgroup_head *head)
-{
-	tcf_exts_destroy(&head->exts);
-	tcf_em_tree_destroy(&head->ematches);
-	tcf_exts_put_net(&head->exts);
-	kfree(head);
-}
-
-static void cls_cgroup_destroy_work(struct work_struct *work)
-{
-	struct cls_cgroup_head *head = container_of(work,
-						    struct cls_cgroup_head,
-						    work);
-	rtnl_lock();
-	__cls_cgroup_destroy(head);
-	rtnl_unlock();
-}
-
 static void cls_cgroup_destroy_rcu(struct rcu_head *root)
 {
 	struct cls_cgroup_head *head = container_of(root,
 						    struct cls_cgroup_head,
 						    rcu);
 
-	INIT_WORK(&head->work, cls_cgroup_destroy_work);
-	tcf_queue_work(&head->work);
+	tcf_exts_destroy(&head->exts);
+	tcf_em_tree_destroy(&head->ematches);
+	kfree(head);
 }
 
 static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 			     struct tcf_proto *tp, unsigned long base,
 			     u32 handle, struct nlattr **tca,
-			     void **arg, bool ovr)
+			     unsigned long *arg, bool ovr)
 {
 	struct nlattr *tb[TCA_CGROUP_MAX + 1];
 	struct cls_cgroup_head *head = rtnl_dereference(tp->root);
 	struct cls_cgroup_head *new;
+	struct tcf_ematch_tree t;
+	struct tcf_exts e;
 	int err;
 
 	if (!tca[TCA_OPTIONS])
@@ -117,23 +99,31 @@ static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 	new->handle = handle;
 	new->tp = tp;
 	err = nla_parse_nested(tb, TCA_CGROUP_MAX, tca[TCA_OPTIONS],
-			       cgroup_policy, NULL);
+			       cgroup_policy);
 	if (err < 0)
 		goto errout;
 
-	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &new->exts, ovr);
+	err = tcf_exts_init(&e, TCA_CGROUP_ACT, TCA_CGROUP_POLICE);
 	if (err < 0)
 		goto errout;
+	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &e, ovr);
+	if (err < 0) {
+		tcf_exts_destroy(&e);
+		goto errout;
+	}
 
-	err = tcf_em_tree_validate(tp, tb[TCA_CGROUP_EMATCHES], &new->ematches);
-	if (err < 0)
+	err = tcf_em_tree_validate(tp, tb[TCA_CGROUP_EMATCHES], &t);
+	if (err < 0) {
+		tcf_exts_destroy(&e);
 		goto errout;
+	}
+
+	tcf_exts_change(tp, &new->exts, &e);
+	tcf_em_tree_change(tp, &new->ematches, &t);
 
 	rcu_assign_pointer(tp->root, new);
-	if (head) {
-		tcf_exts_get_net(&head->exts);
+	if (head)
 		call_rcu(&head->rcu, cls_cgroup_destroy_rcu);
-	}
 	return 0;
 errout:
 	tcf_exts_destroy(&new->exts);
@@ -141,20 +131,20 @@ errout:
 	return err;
 }
 
-static void cls_cgroup_destroy(struct tcf_proto *tp)
+static bool cls_cgroup_destroy(struct tcf_proto *tp, bool force)
 {
 	struct cls_cgroup_head *head = rtnl_dereference(tp->root);
 
+	if (!force)
+		return false;
 	/* Head can still be NULL due to cls_cgroup_init(). */
-	if (head) {
-		if (tcf_exts_get_net(&head->exts))
-			call_rcu(&head->rcu, cls_cgroup_destroy_rcu);
-		else
-			__cls_cgroup_destroy(head);
-	}
+	if (head)
+		call_rcu(&head->rcu, cls_cgroup_destroy_rcu);
+
+	return true;
 }
 
-static int cls_cgroup_delete(struct tcf_proto *tp, void *arg, bool *last)
+static int cls_cgroup_delete(struct tcf_proto *tp, unsigned long arg)
 {
 	return -EOPNOTSUPP;
 }
@@ -166,7 +156,7 @@ static void cls_cgroup_walk(struct tcf_proto *tp, struct tcf_walker *arg)
 	if (arg->count < arg->skip)
 		goto skip;
 
-	if (arg->fn(tp, head, arg) < 0) {
+	if (arg->fn(tp, (unsigned long) head, arg) < 0) {
 		arg->stop = 1;
 		return;
 	}
@@ -174,7 +164,7 @@ skip:
 	arg->count++;
 }
 
-static int cls_cgroup_dump(struct net *net, struct tcf_proto *tp, void *fh,
+static int cls_cgroup_dump(struct net *net, struct tcf_proto *tp, unsigned long fh,
 			   struct sk_buff *skb, struct tcmsg *t)
 {
 	struct cls_cgroup_head *head = rtnl_dereference(tp->root);

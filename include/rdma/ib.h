@@ -35,7 +35,6 @@
 
 #include <linux/types.h>
 #include <linux/sched.h>
-#include <linux/cred.h>
 
 struct ib_addr {
 	union {
@@ -100,7 +99,7 @@ struct sockaddr_ib {
  */
 static inline bool ib_safe_file_access(struct file *filp)
 {
-	return filp->f_cred == current_cred() && !uaccess_kernel();
+	return filp->f_cred == current_cred() && segment_eq(get_fs(), USER_DS);
 }
 
 #endif /* _RDMA_IB_H */

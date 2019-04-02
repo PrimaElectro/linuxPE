@@ -907,7 +907,6 @@ static int vim2m_open(struct file *file)
 	if (hdl->error) {
 		rc = hdl->error;
 		v4l2_ctrl_handler_free(hdl);
-		kfree(ctx);
 		goto open_unlock;
 	}
 	ctx->fh.ctrl_handler = hdl;
@@ -929,7 +928,6 @@ static int vim2m_open(struct file *file)
 		rc = PTR_ERR(ctx->fh.m2m_ctx);
 
 		v4l2_ctrl_handler_free(hdl);
-		v4l2_fh_exit(&ctx->fh);
 		kfree(ctx);
 		goto open_unlock;
 	}
@@ -974,7 +972,7 @@ static const struct v4l2_file_operations vim2m_fops = {
 	.mmap		= v4l2_m2m_fop_mmap,
 };
 
-static const struct video_device vim2m_videodev = {
+static struct video_device vim2m_videodev = {
 	.name		= MEM2MEM_NAME,
 	.vfl_dir	= VFL_DIR_M2M,
 	.fops		= &vim2m_fops,
@@ -983,7 +981,7 @@ static const struct video_device vim2m_videodev = {
 	.release	= video_device_release_empty,
 };
 
-static const struct v4l2_m2m_ops m2m_ops = {
+static struct v4l2_m2m_ops m2m_ops = {
 	.device_run	= device_run,
 	.job_ready	= job_ready,
 	.job_abort	= job_abort,

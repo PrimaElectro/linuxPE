@@ -1064,10 +1064,11 @@ iso_stream_init(
 
 	/* knows about ITD vs SITD */
 	if (dev->speed == USB_SPEED_HIGH) {
-		unsigned multi = usb_endpoint_maxp_mult(&urb->ep->desc);
+		unsigned multi = hb_mult(maxp);
 
 		stream->highspeed = 1;
 
+		maxp = max_packet(maxp);
 		buf1 |= maxp;
 		maxp *= multi;
 
@@ -1105,7 +1106,7 @@ iso_stream_init(
 		addr |= epnum << 8;
 		addr |= dev->devnum;
 		stream->ps.usecs = HS_USECS_ISO(maxp);
-		think_time = dev->tt->think_time;
+		think_time = dev->tt ? dev->tt->think_time : 0;
 		stream->ps.tt_usecs = NS_TO_US(think_time + usb_calc_bus_time(
 				dev->speed, is_input, 1, maxp));
 		hs_transfers = max(1u, (maxp + 187) / 188);

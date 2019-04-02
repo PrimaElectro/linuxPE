@@ -888,7 +888,10 @@ mmc_spi_data_do(struct mmc_spi_host *host, struct mmc_command *cmd,
 	u32			clock_rate;
 	unsigned long		timeout;
 
-	direction = mmc_get_dma_dir(data);
+	if (data->flags & MMC_DATA_READ)
+		direction = DMA_FROM_DEVICE;
+	else
+		direction = DMA_TO_DEVICE;
 	mmc_spi_setup_data_message(host, multiple, direction);
 	t = &host->t;
 
@@ -1447,7 +1450,6 @@ static int mmc_spi_probe(struct spi_device *spi)
 		mmc->caps &= ~MMC_CAP_NEEDS_POLL;
 		mmc_gpiod_request_cd_irq(mmc);
 	}
-	mmc_detect_change(mmc, 0);
 
 	if (host->pdata && host->pdata->flags & MMC_SPI_USE_RO_GPIO) {
 		has_ro = true;

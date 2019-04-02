@@ -11,7 +11,6 @@
  */
 
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
 #include <linux/kernel.h>
 #include <linux/signal.h>
 #include <linux/export.h>
@@ -20,7 +19,7 @@
 
 #include <asm/traps.h>
 #include <asm/sections.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 static DEFINE_SPINLOCK(die_lock);
 

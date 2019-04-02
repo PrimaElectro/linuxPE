@@ -26,6 +26,7 @@
 #include <net/nfc/nci.h>
 #include <net/nfc/nci_core.h>
 #include <linux/spi/spi.h>
+#include <linux/gpio.h>
 #include "nfcmrvl.h"
 
 #define SPI_WAIT_HANDSHAKE	1
@@ -95,9 +96,10 @@ static int nfcmrvl_spi_nci_send(struct nfcmrvl_private *priv,
 	/* Send the SPI packet */
 	err = nci_spi_send(drv_data->nci_spi, &drv_data->handshake_completion,
 			   skb);
-	if (err)
+	if (err != 0) {
 		nfc_err(priv->dev, "spi_send failed %d", err);
-
+		kfree_skb(skb);
+	}
 	return err;
 }
 

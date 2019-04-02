@@ -52,9 +52,8 @@
 #include <net/udplite.h>
 #include <net/xfrm.h>
 #include <net/compat.h>
-#include <net/seg6.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 struct ip6_ra_chain *ip6_ra_chain;
 DEFINE_RWLOCK(ip6_ra_lock);
@@ -242,6 +241,7 @@ static int do_ipv6_setsockopt(struct sock *sk, int level, int optname,
 			pktopt = xchg(&np->pktoptions, NULL);
 			kfree_skb(pktopt);
 
+			sk->sk_destruct = inet_sock_destruct;
 			/*
 			 * ... and add it to the refcnt debug socks count
 			 * in the new family. -acme
@@ -390,12 +390,6 @@ static int do_ipv6_setsockopt(struct sock *sk, int level, int optname,
 	case IPV6_DSTOPTS:
 	{
 		struct ipv6_txoptions *opt;
-		struct ipv6_opt_hdr *new = NULL;
-
-		/* hop-by-hop / destination options are privileged option */
-		retv = -EPERM;
-		if (optname != IPV6_RTHDR && !ns_capable(net->user_ns, CAP_NET_RAW))
-			break;
 
 		/* remove any sticky options header with a zero option
 		 * length, per RFC3542.
@@ -407,22 +401,17 @@ static int do_ipv6_setsockopt(struct sock *sk, int level, int optname,
 		else if (optlen < sizeof(struct ipv6_opt_hdr) ||
 			 optlen & 0x7 || optlen > 8 * 255)
 			goto e_inval;
-		else {
-			new = memdup_user(optval, optlen);
-			if (IS_ERR(new)) {
-				retv = PTR_ERR(new);
-				break;
-			}
-			if (unlikely(ipv6_optlen(new) > optlen)) {
-				kfree(new);
-				goto e_inval;
-			}
-		}
+
+		/* hop-by-hop / destination options are privileged option */
+		retv = -EPERM;
+		if (optname != IPV6_RTHDR && !ns_capable(net->user_ns, CAP_NET_RAW))
+			break;
 
 		opt = rcu_dereference_protected(np->opt,
 						lockdep_sock_is_held(sk));
-		opt = ipv6_renew_options(sk, opt, optname, new);
-		kfree(new);
+		opt = ipv6_renew_options(sk, opt, optname,
+					 (struct ipv6_opt_hdr __user *)optval,
+					 optlen);
 		if (IS_ERR(opt)) {
 			retv = PTR_ERR(opt);
 			break;
@@ -441,15 +430,6 @@ static int do_ipv6_setsockopt(struct sock *sk, int level, int optname,
 
 				break;
 #endif
-			case IPV6_SRCRT_TYPE_4:
-			{
-				struct ipv6_sr_hdr *srh = (struct ipv6_sr_hdr *)
-							  opt->srcrt;
-
-				if (!seg6_validate_srh(srh, optlen))
-					goto sticky_done;
-				break;
-			}
 			default:
 				goto sticky_done;
 			}
@@ -515,7 +495,7 @@ sticky_done:
 			break;
 
 		memset(opt, 0, sizeof(*opt));
-		refcount_set(&opt->refcnt, 1);
+		atomic_set(&opt->refcnt, 1);
 		opt->tot_len = sizeof(*opt) + optlen;
 		retv = -EFAULT;
 		if (copy_from_user(opt+1, optval, optlen))
@@ -745,9 +725,14 @@ done:
 			retv = -ENOBUFS;
 			break;
 		}
-		gsf = memdup_user(optval, optlen);
-		if (IS_ERR(gsf)) {
-			retv = PTR_ERR(gsf);
+		gsf = kmalloc(optlen, GFP_KERNEL);
+		if (!gsf) {
+			retv = -ENOBUFS;
+			break;
+		}
+		retv = -EFAULT;
+		if (copy_from_user(gsf, optval, optlen)) {
+			kfree(gsf);
 			break;
 		}
 		/* numsrc >= (4G-140)/128 overflow in 32 bits */
@@ -890,10 +875,6 @@ pref_skip_coa:
 	case IPV6_AUTOFLOWLABEL:
 		np->autoflowlabel = valbool;
 		np->autoflowlabel_set = 1;
-		retv = 0;
-		break;
-	case IPV6_RECVFRAGSIZE:
-		np->rxopt.bits.recvfragsize = valbool;
 		retv = 0;
 		break;
 	}
@@ -1329,10 +1310,6 @@ static int do_ipv6_getsockopt(struct sock *sk, int level, int optname,
 
 	case IPV6_AUTOFLOWLABEL:
 		val = ip6_autoflowlabel(sock_net(sk), np);
-		break;
-
-	case IPV6_RECVFRAGSIZE:
-		val = np->rxopt.bits.recvfragsize;
 		break;
 
 	default:

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef MPOA_CACHES_H
 #define MPOA_CACHES_H
 
@@ -7,7 +6,6 @@
 #include <linux/atm.h>
 #include <linux/atmdev.h>
 #include <linux/atmmpc.h>
-#include <linux/refcount.h>
 
 struct mpoa_client;
 
@@ -27,7 +25,7 @@ typedef struct in_cache_entry {
 	struct   atm_vcc *shortcut;
 	uint8_t  MPS_ctrl_ATM_addr[ATM_ESA_LEN];
 	struct   in_ctrl_info ctrl_info;
-	refcount_t use;
+	atomic_t use;
 } in_cache_entry;
 
 struct in_cache_ops{
@@ -60,7 +58,7 @@ typedef struct eg_cache_entry{
 	uint16_t             entry_state;
 	__be32             latest_ip_addr;    /* The src IP address of the last packet */
 	struct eg_ctrl_info  ctrl_info;
-	refcount_t             use;
+	atomic_t             use;
 } eg_cache_entry;
 
 struct eg_cache_ops{

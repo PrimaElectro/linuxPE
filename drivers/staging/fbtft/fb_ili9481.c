@@ -27,7 +27,7 @@
 #define WIDTH		320
 #define HEIGHT		480
 
-static const s16 default_init_sequence[] = {
+static int default_init_sequence[] = {
 	/* SLP_OUT - Sleep out */
 	-1, MIPI_DCS_EXIT_SLEEP_MODE,
 	-2, 50,

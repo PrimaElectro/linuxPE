@@ -319,17 +319,18 @@ int vmw_otables_setup(struct vmw_private *dev_priv)
 	int ret;
 
 	if (dev_priv->has_dx) {
-		*otables = kmemdup(dx_tables, sizeof(dx_tables), GFP_KERNEL);
-		if (!(*otables))
+		*otables = kmalloc(sizeof(dx_tables), GFP_KERNEL);
+		if (*otables == NULL)
 			return -ENOMEM;
 
+		memcpy(*otables, dx_tables, sizeof(dx_tables));
 		dev_priv->otable_batch.num_otables = ARRAY_SIZE(dx_tables);
 	} else {
-		*otables = kmemdup(pre_dx_tables, sizeof(pre_dx_tables),
-				   GFP_KERNEL);
-		if (!(*otables))
+		*otables = kmalloc(sizeof(pre_dx_tables), GFP_KERNEL);
+		if (*otables == NULL)
 			return -ENOMEM;
 
+		memcpy(*otables, pre_dx_tables, sizeof(pre_dx_tables));
 		dev_priv->otable_batch.num_otables = ARRAY_SIZE(pre_dx_tables);
 	}
 
@@ -407,7 +408,7 @@ struct vmw_mob *vmw_mob_create(unsigned long data_pages)
 {
 	struct vmw_mob *mob = kzalloc(sizeof(*mob), GFP_KERNEL);
 
-	if (unlikely(!mob))
+	if (unlikely(mob == NULL))
 		return NULL;
 
 	mob->num_pages = vmw_mob_calculate_pt_pages(data_pages);

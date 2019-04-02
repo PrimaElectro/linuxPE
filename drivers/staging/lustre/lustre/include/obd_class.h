@@ -32,12 +32,13 @@
 #ifndef __CLASS_OBD_H
 #define __CLASS_OBD_H
 
-#include <obd_support.h>
-#include <lustre_import.h>
-#include <lustre_net.h>
-#include <obd.h>
-#include <lustre_lib.h>
-#include <lprocfs_status.h>
+#include "obd_support.h"
+#include "lustre_import.h"
+#include "lustre_net.h"
+#include "obd.h"
+#include "lustre_lib.h"
+#include "lustre/lustre_idl.h"
+#include "lprocfs_status.h"
 
 #define OBD_STATFS_NODELAY      0x0001  /* requests should be send without delay
 					 * and resends for avoid deadlocks
@@ -45,7 +46,14 @@
 #define OBD_STATFS_FROM_CACHE   0x0002  /* the statfs callback should not update
 					 * obd_osfs_age
 					 */
-#define OBD_STATFS_FOR_MDT0	0x0004	/* The statfs is only for retrieving
+#define OBD_STATFS_PTLRPCD      0x0004  /* requests will be sent via ptlrpcd
+					 * instead of a specific set. This
+					 * means that we cannot rely on the set
+					 * interpret routine to be called.
+					 * lov_statfs_fini() must thus be called
+					 * by the request interpret routine
+					 */
+#define OBD_STATFS_FOR_MDT0	0x0008	/* The statfs is only for retrieving
 					 * information from MDT0.
 					 */
 
@@ -92,41 +100,15 @@ int obd_get_request_slot(struct client_obd *cli);
 void obd_put_request_slot(struct client_obd *cli);
 __u32 obd_get_max_rpcs_in_flight(struct client_obd *cli);
 int obd_set_max_rpcs_in_flight(struct client_obd *cli, __u32 max);
-int obd_set_max_mod_rpcs_in_flight(struct client_obd *cli, u16 max);
-int obd_mod_rpc_stats_seq_show(struct client_obd *cli, struct seq_file *seq);
-
-u16 obd_get_mod_rpc_slot(struct client_obd *cli, u32 opc,
-			 struct lookup_intent *it);
-void obd_put_mod_rpc_slot(struct client_obd *cli, u32 opc,
-			  struct lookup_intent *it, u16 tag);
 
 struct llog_handle;
 struct llog_rec_hdr;
 typedef int (*llog_cb_t)(const struct lu_env *, struct llog_handle *,
 			 struct llog_rec_hdr *, void *);
-
 /* obd_config.c */
-char *lustre_cfg_string(struct lustre_cfg *lcfg, u32 index);
 int class_process_config(struct lustre_cfg *lcfg);
 int class_process_proc_param(char *prefix, struct lprocfs_vars *lvars,
 			     struct lustre_cfg *lcfg, void *data);
-
-/* For interoperability */
-struct cfg_interop_param {
-	char *old_param;
-	char *new_param;
-};
-
-int class_find_param(char *buf, char *key, char **valp);
-struct cfg_interop_param *class_find_old_param(const char *param,
-					       struct cfg_interop_param *ptr);
-int class_get_next_param(char **params, char *copy);
-int class_parse_nid(char *buf, lnet_nid_t *nid, char **endh);
-int class_parse_nid_quiet(char *buf, lnet_nid_t *nid, char **endh);
-int class_parse_net(char *buf, u32 *net, char **endh);
-int class_match_nid(char *buf, char *key, lnet_nid_t nid);
-int class_match_net(char *buf, char *key, u32 net);
-
 struct obd_device *class_incref(struct obd_device *obd,
 				const char *scope, const void *source);
 void class_decref(struct obd_device *obd,
@@ -193,13 +175,10 @@ struct lustre_profile {
 	char	    *lp_profile;
 	char	    *lp_dt;
 	char	    *lp_md;
-	int			lp_refs;
-	bool			lp_list_deleted;
 };
 
 struct lustre_profile *class_get_profile(const char *prof);
 void class_del_profile(const char *prof);
-void class_put_profile(struct lustre_profile *lprof);
 void class_del_profiles(void);
 
 #if LUSTRE_TRACKS_LOCK_EXP_REFS
@@ -290,8 +269,10 @@ static inline int lprocfs_climp_check(struct obd_device *obd)
 struct inode;
 struct lu_attr;
 struct obdo;
+void obdo_refresh_inode(struct inode *dst, const struct obdo *src, u32 valid);
 
 void obdo_to_ioobj(const struct obdo *oa, struct obd_ioobj *ioobj);
+void md_from_obdo(struct md_op_data *op_data, const struct obdo *oa, u32 valid);
 
 #define OBT(dev)	(dev)->obd_type
 #define OBP(dev, op)    (dev)->obd_type->typ_dt_ops->op
@@ -436,14 +417,16 @@ static inline int class_devno_max(void)
 
 static inline int obd_get_info(const struct lu_env *env,
 			       struct obd_export *exp, __u32 keylen,
-			       void *key, __u32 *vallen, void *val)
+			       void *key, __u32 *vallen, void *val,
+			       struct lov_stripe_md *lsm)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, get_info);
 	EXP_COUNTER_INCREMENT(exp, get_info);
 
-	rc = OBP(exp->exp_obd, get_info)(env, exp, keylen, key, vallen, val);
+	rc = OBP(exp->exp_obd, get_info)(env, exp, keylen, key, vallen, val,
+					 lsm);
 	return rc;
 }
 
@@ -522,7 +505,8 @@ static inline int obd_setup(struct obd_device *obd, struct lustre_cfg *cfg)
 	return rc;
 }
 
-static inline int obd_precleanup(struct obd_device *obd)
+static inline int obd_precleanup(struct obd_device *obd,
+				 enum obd_cleanup_stage cleanup_stage)
 {
 	int rc;
 	DECLARE_LU_VARS(ldt, d);
@@ -533,18 +517,20 @@ static inline int obd_precleanup(struct obd_device *obd)
 	ldt = obd->obd_type->typ_lu;
 	d = obd->obd_lu_dev;
 	if (ldt && d) {
-		struct lu_env env;
+		if (cleanup_stage == OBD_CLEANUP_EXPORTS) {
+			struct lu_env env;
 
-		rc = lu_env_init(&env, ldt->ldt_ctx_tags);
-		if (!rc) {
-			ldt->ldt_ops->ldto_device_fini(&env, d);
-			lu_env_fini(&env);
+			rc = lu_env_init(&env, ldt->ldt_ctx_tags);
+			if (rc == 0) {
+				ldt->ldt_ops->ldto_device_fini(&env, d);
+				lu_env_fini(&env);
+			}
 		}
 	}
 	OBD_CHECK_DT_OP(obd, precleanup, 0);
 	OBD_COUNTER_INCREMENT(obd, precleanup);
 
-	rc = OBP(obd, precleanup)(obd);
+	rc = OBP(obd, precleanup)(obd, cleanup_stage);
 	return rc;
 }
 
@@ -626,51 +612,181 @@ obd_process_config(struct obd_device *obd, int datalen, void *data)
 	return rc;
 }
 
+/* Pack an in-memory MD struct for storage on disk.
+ * Returns +ve size of packed MD (0 for free), or -ve error.
+ *
+ * If @disk_tgt == NULL, MD size is returned (max size if @mem_src == NULL).
+ * If @*disk_tgt != NULL and @mem_src == NULL, @*disk_tgt will be freed.
+ * If @*disk_tgt == NULL, it will be allocated
+ */
+static inline int obd_packmd(struct obd_export *exp,
+			     struct lov_mds_md **disk_tgt,
+			     struct lov_stripe_md *mem_src)
+{
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, packmd);
+	EXP_COUNTER_INCREMENT(exp, packmd);
+
+	rc = OBP(exp->exp_obd, packmd)(exp, disk_tgt, mem_src);
+	return rc;
+}
+
+static inline int obd_size_diskmd(struct obd_export *exp,
+				  struct lov_stripe_md *mem_src)
+{
+	return obd_packmd(exp, NULL, mem_src);
+}
+
+static inline int obd_free_diskmd(struct obd_export *exp,
+				  struct lov_mds_md **disk_tgt)
+{
+	LASSERT(disk_tgt);
+	LASSERT(*disk_tgt);
+	/*
+	 * LU-2590, for caller's convenience, *disk_tgt could be host
+	 * endianness, it needs swab to LE if necessary, while just
+	 * lov_mds_md header needs it for figuring out how much memory
+	 * needs to be freed.
+	 */
+	if ((cpu_to_le32(LOV_MAGIC) != LOV_MAGIC) &&
+	    (((*disk_tgt)->lmm_magic == LOV_MAGIC_V1) ||
+	     ((*disk_tgt)->lmm_magic == LOV_MAGIC_V3)))
+		lustre_swab_lov_mds_md(*disk_tgt);
+	return obd_packmd(exp, disk_tgt, NULL);
+}
+
+/* Unpack an MD struct from disk to in-memory format.
+ * Returns +ve size of unpacked MD (0 for free), or -ve error.
+ *
+ * If @mem_tgt == NULL, MD size is returned (max size if @disk_src == NULL).
+ * If @*mem_tgt != NULL and @disk_src == NULL, @*mem_tgt will be freed.
+ * If @*mem_tgt == NULL, it will be allocated
+ */
+static inline int obd_unpackmd(struct obd_export *exp,
+			       struct lov_stripe_md **mem_tgt,
+			       struct lov_mds_md *disk_src,
+			       int disk_len)
+{
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, unpackmd);
+	EXP_COUNTER_INCREMENT(exp, unpackmd);
+
+	rc = OBP(exp->exp_obd, unpackmd)(exp, mem_tgt, disk_src, disk_len);
+	return rc;
+}
+
+static inline int obd_free_memmd(struct obd_export *exp,
+				 struct lov_stripe_md **mem_tgt)
+{
+	int rc;
+
+	LASSERT(mem_tgt);
+	LASSERT(*mem_tgt);
+	rc = obd_unpackmd(exp, mem_tgt, NULL, 0);
+	*mem_tgt = NULL;
+	return rc;
+}
+
 static inline int obd_create(const struct lu_env *env, struct obd_export *exp,
-			     struct obdo *obdo)
+			     struct obdo *obdo, struct obd_trans_info *oti)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, create);
 	EXP_COUNTER_INCREMENT(exp, create);
 
-	rc = OBP(exp->exp_obd, create)(env, exp, obdo);
+	rc = OBP(exp->exp_obd, create)(env, exp, obdo, oti);
 	return rc;
 }
 
 static inline int obd_destroy(const struct lu_env *env, struct obd_export *exp,
-			      struct obdo *obdo)
+			      struct obdo *obdo, struct obd_trans_info *oti)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, destroy);
 	EXP_COUNTER_INCREMENT(exp, destroy);
 
-	rc = OBP(exp->exp_obd, destroy)(env, exp, obdo);
+	rc = OBP(exp->exp_obd, destroy)(env, exp, obdo, oti);
 	return rc;
 }
 
 static inline int obd_getattr(const struct lu_env *env, struct obd_export *exp,
-			      struct obdo *oa)
+			      struct obd_info *oinfo)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, getattr);
 	EXP_COUNTER_INCREMENT(exp, getattr);
 
-	rc = OBP(exp->exp_obd, getattr)(env, exp, oa);
+	rc = OBP(exp->exp_obd, getattr)(env, exp, oinfo);
+	return rc;
+}
+
+static inline int obd_getattr_async(struct obd_export *exp,
+				    struct obd_info *oinfo,
+				    struct ptlrpc_request_set *set)
+{
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, getattr_async);
+	EXP_COUNTER_INCREMENT(exp, getattr_async);
+
+	rc = OBP(exp->exp_obd, getattr_async)(exp, oinfo, set);
 	return rc;
 }
 
 static inline int obd_setattr(const struct lu_env *env, struct obd_export *exp,
-			      struct obdo *oa)
+			      struct obd_info *oinfo,
+			      struct obd_trans_info *oti)
 {
 	int rc;
 
 	EXP_CHECK_DT_OP(exp, setattr);
 	EXP_COUNTER_INCREMENT(exp, setattr);
 
-	rc = OBP(exp->exp_obd, setattr)(env, exp, oa);
+	rc = OBP(exp->exp_obd, setattr)(env, exp, oinfo, oti);
+	return rc;
+}
+
+/* This performs all the requests set init/wait/destroy actions. */
+static inline int obd_setattr_rqset(struct obd_export *exp,
+				    struct obd_info *oinfo,
+				    struct obd_trans_info *oti)
+{
+	struct ptlrpc_request_set *set = NULL;
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, setattr_async);
+	EXP_COUNTER_INCREMENT(exp, setattr_async);
+
+	set =  ptlrpc_prep_set();
+	if (!set)
+		return -ENOMEM;
+
+	rc = OBP(exp->exp_obd, setattr_async)(exp, oinfo, oti, set);
+	if (rc == 0)
+		rc = ptlrpc_set_wait(set);
+	ptlrpc_set_destroy(set);
+	return rc;
+}
+
+/* This adds all the requests into @set if @set != NULL, otherwise
+ * all requests are sent asynchronously without waiting for response.
+ */
+static inline int obd_setattr_async(struct obd_export *exp,
+				    struct obd_info *oinfo,
+				    struct obd_trans_info *oti,
+				    struct ptlrpc_request_set *set)
+{
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, setattr_async);
+	EXP_COUNTER_INCREMENT(exp, setattr_async);
+
+	rc = OBP(exp->exp_obd, setattr_async)(exp, oinfo, oti, set);
 	return rc;
 }
 
@@ -937,16 +1053,15 @@ static inline int obd_statfs_rqset(struct obd_export *exp,
 				   __u32 flags)
 {
 	struct ptlrpc_request_set *set = NULL;
-	struct obd_info oinfo = {
-		.oi_osfs = osfs,
-		.oi_flags = flags,
-	};
+	struct obd_info oinfo = { };
 	int rc = 0;
 
-	set = ptlrpc_prep_set();
+	set =  ptlrpc_prep_set();
 	if (!set)
 		return -ENOMEM;
 
+	oinfo.oi_osfs = osfs;
+	oinfo.oi_flags = flags;
 	rc = obd_statfs_async(exp, &oinfo, max_age, set);
 	if (rc == 0)
 		rc = ptlrpc_set_wait(set);
@@ -997,7 +1112,8 @@ static inline int obd_preprw(const struct lu_env *env, int cmd,
 			     struct obd_export *exp, struct obdo *oa,
 			     int objcount, struct obd_ioobj *obj,
 			     struct niobuf_remote *remote, int *pages,
-			     struct niobuf_local *local)
+			     struct niobuf_local *local,
+			     struct obd_trans_info *oti)
 {
 	int rc;
 
@@ -1005,7 +1121,7 @@ static inline int obd_preprw(const struct lu_env *env, int cmd,
 	EXP_COUNTER_INCREMENT(exp, preprw);
 
 	rc = OBP(exp->exp_obd, preprw)(env, cmd, exp, oa, objcount, obj, remote,
-				       pages, local);
+				       pages, local, oti);
 	return rc;
 }
 
@@ -1013,13 +1129,14 @@ static inline int obd_commitrw(const struct lu_env *env, int cmd,
 			       struct obd_export *exp, struct obdo *oa,
 			       int objcount, struct obd_ioobj *obj,
 			       struct niobuf_remote *rnb, int pages,
-			       struct niobuf_local *local, int rc)
+			       struct niobuf_local *local,
+			       struct obd_trans_info *oti, int rc)
 {
 	EXP_CHECK_DT_OP(exp, commitrw);
 	EXP_COUNTER_INCREMENT(exp, commitrw);
 
 	rc = OBP(exp->exp_obd, commitrw)(env, cmd, exp, oa, objcount, obj,
-					 rnb, pages, local, rc);
+					 rnb, pages, local, oti, rc);
 	return rc;
 }
 
@@ -1100,6 +1217,18 @@ static inline int obd_notify_observer(struct obd_device *observer,
 		rc2 = 0;
 
 	return rc1 ? rc1 : rc2;
+}
+
+static inline int obd_quotacheck(struct obd_export *exp,
+				 struct obd_quotactl *oqctl)
+{
+	int rc;
+
+	EXP_CHECK_DT_OP(exp, quotacheck);
+	EXP_COUNTER_INCREMENT(exp, quotacheck);
+
+	rc = OBP(exp->exp_obd, quotacheck)(exp->exp_obd, exp, oqctl);
+	return rc;
 }
 
 static inline int obd_quotactl(struct obd_export *exp,
@@ -1217,9 +1346,21 @@ static inline int md_create(struct obd_export *exp, struct md_op_data *op_data,
 	return rc;
 }
 
+static inline int md_done_writing(struct obd_export *exp,
+				  struct md_op_data *op_data,
+				  struct md_open_data *mod)
+{
+	int rc;
+
+	EXP_CHECK_MD_OP(exp, done_writing);
+	EXP_MD_COUNTER_INCREMENT(exp, done_writing);
+	rc = MDP(exp->exp_obd, done_writing)(exp, op_data, mod);
+	return rc;
+}
+
 static inline int md_enqueue(struct obd_export *exp,
 			     struct ldlm_enqueue_info *einfo,
-			     const union ldlm_policy_data *policy,
+			     const ldlm_policy_data_t *policy,
 			     struct lookup_intent *it,
 			     struct md_op_data *op_data,
 			     struct lustre_handle *lockh,
@@ -1287,14 +1428,16 @@ static inline int md_rename(struct obd_export *exp, struct md_op_data *op_data,
 }
 
 static inline int md_setattr(struct obd_export *exp, struct md_op_data *op_data,
-			     void *ea, size_t ealen,
-			     struct ptlrpc_request **request)
+			     void *ea, size_t ealen, void *ea2, size_t ea2len,
+			     struct ptlrpc_request **request,
+			     struct md_open_data **mod)
 {
 	int rc;
 
 	EXP_CHECK_MD_OP(exp, setattr);
 	EXP_MD_COUNTER_INCREMENT(exp, setattr);
-	rc = MDP(exp->exp_obd, setattr)(exp, op_data, ea, ealen, request);
+	rc = MDP(exp->exp_obd, setattr)(exp, op_data, ea, ealen,
+					ea2, ea2len, request, mod);
 	return rc;
 }
 
@@ -1418,7 +1561,7 @@ static inline int md_set_lock_data(struct obd_export *exp,
 
 static inline int md_cancel_unused(struct obd_export *exp,
 				   const struct lu_fid *fid,
-				   union ldlm_policy_data *policy,
+				   ldlm_policy_data_t *policy,
 				   enum ldlm_mode mode,
 				   enum ldlm_cancel_flags flags,
 				   void *opaque)
@@ -1436,7 +1579,7 @@ static inline int md_cancel_unused(struct obd_export *exp,
 static inline enum ldlm_mode md_lock_match(struct obd_export *exp, __u64 flags,
 					   const struct lu_fid *fid,
 					   enum ldlm_type type,
-					   union ldlm_policy_data *policy,
+					   ldlm_policy_data_t *policy,
 					   enum ldlm_mode mode,
 					   struct lustre_handle *lockh)
 {
@@ -1446,22 +1589,25 @@ static inline enum ldlm_mode md_lock_match(struct obd_export *exp, __u64 flags,
 					     policy, mode, lockh);
 }
 
-static inline int md_init_ea_size(struct obd_export *exp, u32 easize,
-				  u32 def_asize)
+static inline int md_init_ea_size(struct obd_export *exp, int easize,
+				  int def_asize, int cookiesize,
+				  int def_cookiesize)
 {
 	EXP_CHECK_MD_OP(exp, init_ea_size);
 	EXP_MD_COUNTER_INCREMENT(exp, init_ea_size);
-	return MDP(exp->exp_obd, init_ea_size)(exp, easize, def_asize);
+	return MDP(exp->exp_obd, init_ea_size)(exp, easize, def_asize,
+					       cookiesize, def_cookiesize);
 }
 
 static inline int md_intent_getattr_async(struct obd_export *exp,
-					  struct md_enqueue_info *minfo)
+					  struct md_enqueue_info *minfo,
+					  struct ldlm_enqueue_info *einfo)
 {
 	int rc;
 
 	EXP_CHECK_MD_OP(exp, intent_getattr_async);
 	EXP_MD_COUNTER_INCREMENT(exp, intent_getattr_async);
-	rc = MDP(exp->exp_obd, intent_getattr_async)(exp, minfo);
+	rc = MDP(exp->exp_obd, intent_getattr_async)(exp, minfo, einfo);
 	return rc;
 }
 
@@ -1487,24 +1633,6 @@ static inline int md_get_fid_from_lsm(struct obd_export *exp,
 	EXP_CHECK_MD_OP(exp, get_fid_from_lsm);
 	EXP_MD_COUNTER_INCREMENT(exp, get_fid_from_lsm);
 	rc = MDP(exp->exp_obd, get_fid_from_lsm)(exp, lsm, name, namelen, fid);
-	return rc;
-}
-
-/* Unpack an MD struct from disk to in-memory format.
- * Returns +ve size of unpacked MD (0 for free), or -ve error.
- *
- * If *plsm != NULL and lmm == NULL then *lsm will be freed.
- * If *plsm == NULL then it will be allocated.
- */
-static inline int md_unpackmd(struct obd_export *exp,
-			      struct lmv_stripe_md **plsm,
-			      const union lmv_mds_md *lmm, size_t lmm_size)
-{
-	int rc;
-
-	EXP_CHECK_MD_OP(exp, unpackmd);
-	EXP_MD_COUNTER_INCREMENT(exp, unpackmd);
-	rc = MDP(exp->exp_obd, unpackmd)(exp, plsm, lmm, lmm_size);
 	return rc;
 }
 
@@ -1576,8 +1704,5 @@ struct root_squash_info {
 	struct list_head	rsi_nosquash_nids;
 	struct rw_semaphore	rsi_sem;
 };
-
-/* linux-module.c */
-int obd_ioctl_getdata(char **buf, int *len, void __user *arg);
 
 #endif /* __LINUX_OBD_CLASS_H */

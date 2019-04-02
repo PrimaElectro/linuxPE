@@ -253,7 +253,6 @@ static void efuse_read_phymap_from_txpktbuf(
 			u8 lenc[2];
 			u16 lenbak, aaabak;
 			u16 aaa;
-
 			lenc[0] = usb_read8(adapter, REG_PKTBUF_DBG_DATA_L);
 			lenc[1] = usb_read8(adapter, REG_PKTBUF_DBG_DATA_L+1);
 
@@ -563,14 +562,13 @@ static bool hal_EfusePgPacketWrite2ByteHeader(struct adapter *pAdapter, u8 efuse
 			}
 
 			if ((tmp_header & 0x0F) == 0x0F) {	/* word_en PG fail */
-				if (repeatcnt++ > EFUSE_REPEAT_THRESHOLD_)
+				if (repeatcnt++ > EFUSE_REPEAT_THRESHOLD_) {
 					return false;
-
+				}
 				efuse_addr++;
 				continue;
 			} else if (pg_header != tmp_header) {	/* offset PG fail */
 				struct pgpkt	fixPkt;
-
 				fixPkt.offset = ((pg_header_temp & 0xE0) >> 5) | ((tmp_header & 0xF0) >> 1);
 				fixPkt.word_en = tmp_header & 0x0F;
 				fixPkt.word_cnts = Efuse_CalculateWordCnts(fixPkt.word_en);
@@ -613,7 +611,6 @@ static bool hal_EfusePgPacketWrite1ByteHeader(struct adapter *pAdapter, u8 efuse
 		bRet = true;
 	} else {
 		struct pgpkt	fixPkt;
-
 		fixPkt.offset = (tmp_header>>4) & 0x0F;
 		fixPkt.word_en = tmp_header & 0x0F;
 		fixPkt.word_cnts = Efuse_CalculateWordCnts(fixPkt.word_en);
@@ -822,7 +819,6 @@ bool Efuse_PgPacketWrite(struct adapter *pAdapter, u8 offset, u8 word_en, u8 *pD
 u8 Efuse_CalculateWordCnts(u8 word_en)
 {
 	u8 word_cnts = 0;
-
 	if (!(word_en & BIT(0)))
 		word_cnts++; /*  0 : write enable */
 	if (!(word_en & BIT(1)))

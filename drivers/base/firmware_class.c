@@ -7,8 +7,6 @@
  *
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/capability.h>
 #include <linux/device.h>
 #include <linux/module.h>
@@ -93,11 +91,10 @@ static inline bool fw_is_builtin_firmware(const struct firmware *fw)
 }
 #endif
 
-enum fw_status {
-	FW_STATUS_UNKNOWN,
+enum {
 	FW_STATUS_LOADING,
 	FW_STATUS_DONE,
-	FW_STATUS_ABORTED,
+	FW_STATUS_ABORT,
 };
 
 static int loading_timeout = 60;	/* In seconds */
@@ -106,79 +103,6 @@ static inline long firmware_loading_timeout(void)
 {
 	return loading_timeout > 0 ? loading_timeout * HZ : MAX_JIFFY_OFFSET;
 }
-
-/*
- * Concurrent request_firmware() for the same firmware need to be
- * serialized.  struct fw_state is simple state machine which hold the
- * state of the firmware loading.
- */
-struct fw_state {
-	struct completion completion;
-	enum fw_status status;
-};
-
-static void fw_state_init(struct fw_state *fw_st)
-{
-	init_completion(&fw_st->completion);
-	fw_st->status = FW_STATUS_UNKNOWN;
-}
-
-static inline bool __fw_state_is_done(enum fw_status status)
-{
-	return status == FW_STATUS_DONE || status == FW_STATUS_ABORTED;
-}
-
-static int __fw_state_wait_common(struct fw_state *fw_st, long timeout)
-{
-	long ret;
-
-	ret = wait_for_completion_killable_timeout(&fw_st->completion, timeout);
-	if (ret != 0 && fw_st->status == FW_STATUS_ABORTED)
-		return -ENOENT;
-	if (!ret)
-		return -ETIMEDOUT;
-
-	return ret < 0 ? ret : 0;
-}
-
-static void __fw_state_set(struct fw_state *fw_st,
-			   enum fw_status status)
-{
-	WRITE_ONCE(fw_st->status, status);
-
-	if (status == FW_STATUS_DONE || status == FW_STATUS_ABORTED)
-		complete_all(&fw_st->completion);
-}
-
-#define fw_state_start(fw_st)					\
-	__fw_state_set(fw_st, FW_STATUS_LOADING)
-#define fw_state_done(fw_st)					\
-	__fw_state_set(fw_st, FW_STATUS_DONE)
-#define fw_state_aborted(fw_st)					\
-	__fw_state_set(fw_st, FW_STATUS_ABORTED)
-#define fw_state_wait(fw_st)					\
-	__fw_state_wait_common(fw_st, MAX_SCHEDULE_TIMEOUT)
-
-static int __fw_state_check(struct fw_state *fw_st, enum fw_status status)
-{
-	return fw_st->status == status;
-}
-
-#define fw_state_is_aborted(fw_st)				\
-	__fw_state_check(fw_st, FW_STATUS_ABORTED)
-
-#ifdef CONFIG_FW_LOADER_USER_HELPER
-
-#define fw_state_aborted(fw_st)					\
-	__fw_state_set(fw_st, FW_STATUS_ABORTED)
-#define fw_state_is_done(fw_st)					\
-	__fw_state_check(fw_st, FW_STATUS_DONE)
-#define fw_state_is_loading(fw_st)				\
-	__fw_state_check(fw_st, FW_STATUS_LOADING)
-#define fw_state_wait_timeout(fw_st, timeout)			\
-	__fw_state_wait_common(fw_st, timeout)
-
-#endif /* CONFIG_FW_LOADER_USER_HELPER */
 
 /* firmware behavior options */
 #define FW_OPT_UEVENT	(1U << 0)
@@ -221,8 +145,9 @@ struct firmware_cache {
 struct firmware_buf {
 	struct kref ref;
 	struct list_head list;
+	struct completion completion;
 	struct firmware_cache *fwc;
-	struct fw_state fw_st;
+	unsigned long status;
 	void *data;
 	size_t size;
 	size_t allocated_size;
@@ -280,7 +205,7 @@ static struct firmware_buf *__allocate_fw_buf(const char *fw_name,
 	buf->fwc = fwc;
 	buf->data = dbuf;
 	buf->allocated_size = size;
-	fw_state_init(&buf->fw_st);
+	init_completion(&buf->completion);
 #ifdef CONFIG_FW_LOADER_USER_HELPER
 	INIT_LIST_HEAD(&buf->pending_list);
 #endif
@@ -301,7 +226,6 @@ static struct firmware_buf *__fw_lookup_buf(const char *fw_name)
 	return NULL;
 }
 
-/* Returns 1 for batching firmware requests with the same name */
 static int fw_lookup_and_allocate_buf(const char *fw_name,
 				      struct firmware_cache *fwc,
 				      struct firmware_buf **buf, void *dbuf,
@@ -315,7 +239,6 @@ static int fw_lookup_and_allocate_buf(const char *fw_name,
 		kref_get(&tmp->ref);
 		spin_unlock(&fwc->lock);
 		*buf = tmp;
-		pr_debug("batched request - sharing the same struct firmware_buf and lookup for multiple requests\n");
 		return 1;
 	}
 	tmp = __allocate_fw_buf(fw_name, fwc, dbuf, size);
@@ -382,6 +305,15 @@ static const char * const fw_path[] = {
 module_param_string(path, fw_path_para, sizeof(fw_path_para), 0644);
 MODULE_PARM_DESC(path, "customized firmware image search path with a higher priority than default path");
 
+static void fw_finish_direct_load(struct device *device,
+				  struct firmware_buf *buf)
+{
+	mutex_lock(&fw_lock);
+	set_bit(FW_STATUS_DONE, &buf->status);
+	complete_all(&buf->completion);
+	mutex_unlock(&fw_lock);
+}
+
 static int
 fw_get_filesystem_firmware(struct device *device, struct firmware_buf *buf)
 {
@@ -428,7 +360,7 @@ fw_get_filesystem_firmware(struct device *device, struct firmware_buf *buf)
 		}
 		dev_dbg(device, "direct-loading %s\n", buf->fw_id);
 		buf->size = size;
-		fw_state_done(&buf->fw_st);
+		fw_finish_direct_load(device, buf);
 		break;
 	}
 	__putname(path);
@@ -523,44 +455,6 @@ static int fw_add_devm_name(struct device *dev, const char *name)
 }
 #endif
 
-static int assign_firmware_buf(struct firmware *fw, struct device *device,
-			       unsigned int opt_flags)
-{
-	struct firmware_buf *buf = fw->priv;
-
-	mutex_lock(&fw_lock);
-	if (!buf->size || fw_state_is_aborted(&buf->fw_st)) {
-		mutex_unlock(&fw_lock);
-		return -ENOENT;
-	}
-
-	/*
-	 * add firmware name into devres list so that we can auto cache
-	 * and uncache firmware for device.
-	 *
-	 * device may has been deleted already, but the problem
-	 * should be fixed in devres or driver core.
-	 */
-	/* don't cache firmware handled without uevent */
-	if (device && (opt_flags & FW_OPT_UEVENT) &&
-	    !(opt_flags & FW_OPT_NOCACHE))
-		fw_add_devm_name(device, buf->fw_id);
-
-	/*
-	 * After caching firmware image is started, let it piggyback
-	 * on request firmware.
-	 */
-	if (!(opt_flags & FW_OPT_NOCACHE) &&
-	    buf->fwc->state == FW_LOADER_START_CACHE) {
-		if (fw_cache_piggyback_on_request(buf->fw_id))
-			kref_get(&buf->ref);
-	}
-
-	/* pass the pages buffer to driver at the last minute */
-	fw_set_page_data(buf, fw);
-	mutex_unlock(&fw_lock);
-	return 0;
-}
 
 /*
  * user-mode helper code
@@ -584,11 +478,12 @@ static void __fw_load_abort(struct firmware_buf *buf)
 	 * There is a small window in which user can write to 'loading'
 	 * between loading done and disappearance of 'loading'
 	 */
-	if (fw_state_is_done(&buf->fw_st))
+	if (test_bit(FW_STATUS_DONE, &buf->status))
 		return;
 
 	list_del_init(&buf->pending_list);
-	fw_state_aborted(&buf->fw_st);
+	set_bit(FW_STATUS_ABORT, &buf->status);
+	complete_all(&buf->completion);
 }
 
 static void fw_load_abort(struct firmware_priv *fw_priv)
@@ -596,22 +491,32 @@ static void fw_load_abort(struct firmware_priv *fw_priv)
 	struct firmware_buf *buf = fw_priv->buf;
 
 	__fw_load_abort(buf);
+
+	/* avoid user action after loading abort */
+	fw_priv->buf = NULL;
 }
+
+#define is_fw_load_aborted(buf)	\
+	test_bit(FW_STATUS_ABORT, &(buf)->status)
 
 static LIST_HEAD(pending_fw_head);
 
-static void kill_pending_fw_fallback_reqs(bool only_kill_custom)
+/* reboot notifier for avoid deadlock with usermode_lock */
+static int fw_shutdown_notify(struct notifier_block *unused1,
+			      unsigned long unused2, void *unused3)
 {
-	struct firmware_buf *buf;
-	struct firmware_buf *next;
-
 	mutex_lock(&fw_lock);
-	list_for_each_entry_safe(buf, next, &pending_fw_head, pending_list) {
-		if (!buf->need_uevent || !only_kill_custom)
-			 __fw_load_abort(buf);
-	}
+	while (!list_empty(&pending_fw_head))
+		__fw_load_abort(list_first_entry(&pending_fw_head,
+					       struct firmware_buf,
+					       pending_list));
 	mutex_unlock(&fw_lock);
+	return NOTIFY_DONE;
 }
+
+static struct notifier_block fw_shutdown_nb = {
+	.notifier_call = fw_shutdown_notify,
+};
 
 static ssize_t timeout_show(struct class *class, struct class_attribute *attr,
 			    char *buf)
@@ -641,13 +546,11 @@ static ssize_t timeout_store(struct class *class, struct class_attribute *attr,
 
 	return count;
 }
-static CLASS_ATTR_RW(timeout);
 
-static struct attribute *firmware_class_attrs[] = {
-	&class_attr_timeout.attr,
-	NULL,
+static struct class_attribute firmware_class_attrs[] = {
+	__ATTR_RW(timeout),
+	__ATTR_NULL
 };
-ATTRIBUTE_GROUPS(firmware_class);
 
 static void fw_dev_release(struct device *dev)
 {
@@ -682,7 +585,7 @@ static int firmware_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 static struct class firmware_class = {
 	.name		= "firmware",
-	.class_groups	= firmware_class_groups,
+	.class_attrs	= firmware_class_attrs,
 	.dev_uevent	= firmware_uevent,
 	.dev_release	= fw_dev_release,
 };
@@ -695,7 +598,7 @@ static ssize_t firmware_loading_show(struct device *dev,
 
 	mutex_lock(&fw_lock);
 	if (fw_priv->buf)
-		loading = fw_state_is_loading(&fw_priv->buf->fw_st);
+		loading = test_bit(FW_STATUS_LOADING, &fw_priv->buf->status);
 	mutex_unlock(&fw_lock);
 
 	return sprintf(buf, "%d\n", loading);
@@ -744,25 +647,28 @@ static ssize_t firmware_loading_store(struct device *dev,
 
 	mutex_lock(&fw_lock);
 	fw_buf = fw_priv->buf;
-	if (fw_state_is_aborted(&fw_buf->fw_st))
+	if (!fw_buf)
 		goto out;
 
 	switch (loading) {
 	case 1:
 		/* discarding any previous partial load */
-		if (!fw_state_is_done(&fw_buf->fw_st)) {
+		if (!test_bit(FW_STATUS_DONE, &fw_buf->status)) {
 			for (i = 0; i < fw_buf->nr_pages; i++)
 				__free_page(fw_buf->pages[i]);
 			vfree(fw_buf->pages);
 			fw_buf->pages = NULL;
 			fw_buf->page_array_size = 0;
 			fw_buf->nr_pages = 0;
-			fw_state_start(&fw_buf->fw_st);
+			set_bit(FW_STATUS_LOADING, &fw_buf->status);
 		}
 		break;
 	case 0:
-		if (fw_state_is_loading(&fw_buf->fw_st)) {
+		if (test_bit(FW_STATUS_LOADING, &fw_buf->status)) {
 			int rc;
+
+			set_bit(FW_STATUS_DONE, &fw_buf->status);
+			clear_bit(FW_STATUS_LOADING, &fw_buf->status);
 
 			/*
 			 * Several loading requests may be pending on
@@ -785,11 +691,10 @@ static ssize_t firmware_loading_store(struct device *dev,
 			 */
 			list_del_init(&fw_buf->pending_list);
 			if (rc) {
-				fw_state_aborted(&fw_buf->fw_st);
+				set_bit(FW_STATUS_ABORT, &fw_buf->status);
 				written = rc;
-			} else {
-				fw_state_done(&fw_buf->fw_st);
 			}
+			complete_all(&fw_buf->completion);
 			break;
 		}
 		/* fallthrough */
@@ -850,7 +755,7 @@ static ssize_t firmware_data_read(struct file *filp, struct kobject *kobj,
 
 	mutex_lock(&fw_lock);
 	buf = fw_priv->buf;
-	if (!buf || fw_state_is_done(&buf->fw_st)) {
+	if (!buf || test_bit(FW_STATUS_DONE, &buf->status)) {
 		ret_count = -ENODEV;
 		goto out;
 	}
@@ -937,7 +842,7 @@ static ssize_t firmware_data_write(struct file *filp, struct kobject *kobj,
 
 	mutex_lock(&fw_lock);
 	buf = fw_priv->buf;
-	if (!buf || fw_state_is_done(&buf->fw_st)) {
+	if (!buf || test_bit(FW_STATUS_DONE, &buf->status)) {
 		retval = -ENODEV;
 		goto out;
 	}
@@ -1050,19 +955,20 @@ static int _request_firmware_load(struct firmware_priv *fw_priv,
 		timeout = MAX_JIFFY_OFFSET;
 	}
 
-	retval = fw_state_wait_timeout(&buf->fw_st, timeout);
-	if (retval < 0) {
+	timeout = wait_for_completion_interruptible_timeout(&buf->completion,
+			timeout);
+	if (timeout == -ERESTARTSYS || !timeout) {
+		retval = timeout;
 		mutex_lock(&fw_lock);
 		fw_load_abort(fw_priv);
 		mutex_unlock(&fw_lock);
+	} else if (timeout > 0) {
+		retval = 0;
 	}
 
-	if (fw_state_is_aborted(&buf->fw_st)) {
-		if (retval == -ERESTARTSYS)
-			retval = -EINTR;
-		else
-			retval = -EAGAIN;
-	} else if (buf->is_paged_buf && !buf->data)
+	if (is_fw_load_aborted(buf))
+		retval = -EAGAIN;
+	else if (buf->is_paged_buf && !buf->data)
 		retval = -ENOMEM;
 
 	device_del(f_dev);
@@ -1073,58 +979,71 @@ err_put_dev:
 
 static int fw_load_from_user_helper(struct firmware *firmware,
 				    const char *name, struct device *device,
-				    unsigned int opt_flags)
+				    unsigned int opt_flags, long timeout)
 {
 	struct firmware_priv *fw_priv;
-	long timeout;
-	int ret;
-
-	timeout = firmware_loading_timeout();
-	if (opt_flags & FW_OPT_NOWAIT) {
-		timeout = usermodehelper_read_lock_wait(timeout);
-		if (!timeout) {
-			dev_dbg(device, "firmware: %s loading timed out\n",
-				name);
-			return -EBUSY;
-		}
-	} else {
-		ret = usermodehelper_read_trylock();
-		if (WARN_ON(ret)) {
-			dev_err(device, "firmware: %s will not be loaded\n",
-				name);
-			return ret;
-		}
-	}
 
 	fw_priv = fw_create_instance(firmware, name, device, opt_flags);
-	if (IS_ERR(fw_priv)) {
-		ret = PTR_ERR(fw_priv);
-		goto out_unlock;
-	}
+	if (IS_ERR(fw_priv))
+		return PTR_ERR(fw_priv);
 
 	fw_priv->buf = firmware->priv;
-	ret = _request_firmware_load(fw_priv, opt_flags, timeout);
-
-	if (!ret)
-		ret = assign_firmware_buf(firmware, device, opt_flags);
-
-out_unlock:
-	usermodehelper_read_unlock();
-
-	return ret;
+	return _request_firmware_load(fw_priv, opt_flags, timeout);
 }
+
+#ifdef CONFIG_PM_SLEEP
+/* kill pending requests without uevent to avoid blocking suspend */
+static void kill_requests_without_uevent(void)
+{
+	struct firmware_buf *buf;
+	struct firmware_buf *next;
+
+	mutex_lock(&fw_lock);
+	list_for_each_entry_safe(buf, next, &pending_fw_head, pending_list) {
+		if (!buf->need_uevent)
+			 __fw_load_abort(buf);
+	}
+	mutex_unlock(&fw_lock);
+}
+#endif
 
 #else /* CONFIG_FW_LOADER_USER_HELPER */
 static inline int
 fw_load_from_user_helper(struct firmware *firmware, const char *name,
-			 struct device *device, unsigned int opt_flags)
+			 struct device *device, unsigned int opt_flags,
+			 long timeout)
 {
 	return -ENOENT;
 }
 
-static inline void kill_pending_fw_fallback_reqs(bool only_kill_custom) { }
+/* No abort during direct loading */
+#define is_fw_load_aborted(buf) false
+
+#ifdef CONFIG_PM_SLEEP
+static inline void kill_requests_without_uevent(void) { }
+#endif
 
 #endif /* CONFIG_FW_LOADER_USER_HELPER */
+
+
+/* wait until the shared firmware_buf becomes ready (or error) */
+static int sync_cached_firmware_buf(struct firmware_buf *buf)
+{
+	int ret = 0;
+
+	mutex_lock(&fw_lock);
+	while (!test_bit(FW_STATUS_DONE, &buf->status)) {
+		if (is_fw_load_aborted(buf)) {
+			ret = -ENOENT;
+			break;
+		}
+		mutex_unlock(&fw_lock);
+		ret = wait_for_completion_interruptible(&buf->completion);
+		mutex_lock(&fw_lock);
+	}
+	mutex_unlock(&fw_lock);
+	return ret;
+}
 
 /* prepare firmware and firmware_buf structs;
  * return 0 if a firmware is already assigned, 1 if need to load one,
@@ -1159,7 +1078,7 @@ _request_firmware_prepare(struct firmware **firmware_p, const char *name,
 	firmware->priv = buf;
 
 	if (ret > 0) {
-		ret = fw_state_wait(&buf->fw_st);
+		ret = sync_cached_firmware_buf(buf);
 		if (!ret) {
 			fw_set_page_data(buf, firmware);
 			return 0; /* assigned */
@@ -1171,26 +1090,43 @@ _request_firmware_prepare(struct firmware **firmware_p, const char *name,
 	return 1; /* need to load */
 }
 
-/*
- * Batched requests need only one wake, we need to do this step last due to the
- * fallback mechanism. The buf is protected with kref_get(), and it won't be
- * released until the last user calls release_firmware().
- *
- * Failed batched requests are possible as well, in such cases we just share
- * the struct firmware_buf and won't release it until all requests are woken
- * and have gone through this same path.
- */
-static void fw_abort_batch_reqs(struct firmware *fw)
+static int assign_firmware_buf(struct firmware *fw, struct device *device,
+			       unsigned int opt_flags)
 {
-	struct firmware_buf *buf;
+	struct firmware_buf *buf = fw->priv;
 
-	/* Loaded directly? */
-	if (!fw || !fw->priv)
-		return;
+	mutex_lock(&fw_lock);
+	if (!buf->size || is_fw_load_aborted(buf)) {
+		mutex_unlock(&fw_lock);
+		return -ENOENT;
+	}
 
-	buf = fw->priv;
-	if (!fw_state_is_aborted(&buf->fw_st))
-		fw_state_aborted(&buf->fw_st);
+	/*
+	 * add firmware name into devres list so that we can auto cache
+	 * and uncache firmware for device.
+	 *
+	 * device may has been deleted already, but the problem
+	 * should be fixed in devres or driver core.
+	 */
+	/* don't cache firmware handled without uevent */
+	if (device && (opt_flags & FW_OPT_UEVENT) &&
+	    !(opt_flags & FW_OPT_NOCACHE))
+		fw_add_devm_name(device, buf->fw_id);
+
+	/*
+	 * After caching firmware image is started, let it piggyback
+	 * on request firmware.
+	 */
+	if (!(opt_flags & FW_OPT_NOCACHE) &&
+	    buf->fwc->state == FW_LOADER_START_CACHE) {
+		if (fw_cache_piggyback_on_request(buf->fw_id))
+			kref_get(&buf->ref);
+	}
+
+	/* pass the pages buffer to driver at the last minute */
+	fw_set_page_data(buf, fw);
+	mutex_unlock(&fw_lock);
+	return 0;
 }
 
 /* called from request_firmware() and request_firmware_work_func() */
@@ -1200,6 +1136,7 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 		  unsigned int opt_flags)
 {
 	struct firmware *fw = NULL;
+	long timeout;
 	int ret;
 
 	if (!firmware_p)
@@ -1214,6 +1151,25 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 	if (ret <= 0) /* error or already assigned */
 		goto out;
 
+	ret = 0;
+	timeout = firmware_loading_timeout();
+	if (opt_flags & FW_OPT_NOWAIT) {
+		timeout = usermodehelper_read_lock_wait(timeout);
+		if (!timeout) {
+			dev_dbg(device, "firmware: %s loading timed out\n",
+				name);
+			ret = -EBUSY;
+			goto out;
+		}
+	} else {
+		ret = usermodehelper_read_trylock();
+		if (WARN_ON(ret)) {
+			dev_err(device, "firmware: %s will not be loaded\n",
+				name);
+			goto out;
+		}
+	}
+
 	ret = fw_get_filesystem_firmware(device, fw->priv);
 	if (ret) {
 		if (!(opt_flags & FW_OPT_NO_WARN))
@@ -1223,14 +1179,17 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 		if (opt_flags & FW_OPT_USERHELPER) {
 			dev_warn(device, "Falling back to user helper\n");
 			ret = fw_load_from_user_helper(fw, name, device,
-						       opt_flags);
+						       opt_flags, timeout);
 		}
-	} else
+	}
+
+	if (!ret)
 		ret = assign_firmware_buf(fw, device, opt_flags);
+
+	usermodehelper_read_unlock();
 
  out:
 	if (ret < 0) {
-		fw_abort_batch_reqs(fw);
 		release_firmware(fw);
 		fw = NULL;
 	}
@@ -1387,9 +1346,9 @@ static void request_firmware_work_func(struct work_struct *work)
  *
  *	Asynchronous variant of request_firmware() for user contexts:
  *		- sleep for as small periods as possible since it may
- *		  increase kernel boot time of built-in device drivers
- *		  requesting firmware in their ->probe() methods, if
- *		  @gfp is GFP_KERNEL.
+ *		increase kernel boot time of built-in device drivers
+ *		requesting firmware in their ->probe() methods, if
+ *		@gfp is GFP_KERNEL.
  *
  *		- can't sleep at all if @gfp is GFP_ATOMIC.
  **/
@@ -1731,11 +1690,7 @@ static int fw_pm_notify(struct notifier_block *notify_block,
 	case PM_HIBERNATION_PREPARE:
 	case PM_SUSPEND_PREPARE:
 	case PM_RESTORE_PREPARE:
-		/*
-		 * kill pending fallback requests with a custom fallback
-		 * to avoid stalling suspend.
-		 */
-		kill_pending_fw_fallback_reqs(true);
+		kill_requests_without_uevent();
 		device_cache_fw_images();
 		break;
 
@@ -1794,27 +1749,11 @@ static void __init fw_cache_init(void)
 #endif
 }
 
-static int fw_shutdown_notify(struct notifier_block *unused1,
-			      unsigned long unused2, void *unused3)
-{
-	/*
-	 * Kill all pending fallback requests to avoid both stalling shutdown,
-	 * and avoid a deadlock with the usermode_lock.
-	 */
-	kill_pending_fw_fallback_reqs(false);
-
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block fw_shutdown_nb = {
-	.notifier_call = fw_shutdown_notify,
-};
-
 static int __init firmware_class_init(void)
 {
 	fw_cache_init();
-	register_reboot_notifier(&fw_shutdown_nb);
 #ifdef CONFIG_FW_LOADER_USER_HELPER
+	register_reboot_notifier(&fw_shutdown_nb);
 	return class_register(&firmware_class);
 #else
 	return 0;
@@ -1827,8 +1766,8 @@ static void __exit firmware_class_exit(void)
 	unregister_syscore_ops(&fw_syscore_ops);
 	unregister_pm_notifier(&fw_cache.pm_notify);
 #endif
-	unregister_reboot_notifier(&fw_shutdown_nb);
 #ifdef CONFIG_FW_LOADER_USER_HELPER
+	unregister_reboot_notifier(&fw_shutdown_nb);
 	class_unregister(&firmware_class);
 #endif
 }

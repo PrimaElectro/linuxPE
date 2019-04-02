@@ -313,9 +313,6 @@ static int search_roland_implicit_fb(struct usb_device *dev, int ifnum,
 	return 0;
 }
 
-/* Setup an implicit feedback endpoint from a quirk. Returns 0 if no quirk
- * applies. Returns 1 if a quirk was found.
- */
 static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 					 struct usb_device *dev,
 					 struct usb_interface_descriptor *altsd,
@@ -394,7 +391,7 @@ add_sync_ep:
 
 	subs->data_endpoint->sync_master = subs->sync_endpoint;
 
-	return 1;
+	return 0;
 }
 
 static int set_sync_endpoint(struct snd_usb_substream *subs,
@@ -432,10 +429,6 @@ static int set_sync_endpoint(struct snd_usb_substream *subs,
 	err = set_sync_ep_implicit_fb_quirk(subs, dev, altsd, attr);
 	if (err < 0)
 		return err;
-
-	/* endpoint set by quirk */
-	if (err > 0)
-		return 0;
 
 	if (altsd->bNumEndpoints < 2)
 		return 0;
@@ -832,18 +825,17 @@ static int snd_usb_pcm_prepare(struct snd_pcm_substream *substream)
 	if (ret < 0)
 		goto unlock;
 
+	iface = usb_ifnum_to_if(subs->dev, subs->cur_audiofmt->iface);
+	alts = &iface->altsetting[subs->cur_audiofmt->altset_idx];
+	ret = snd_usb_init_sample_rate(subs->stream->chip,
+				       subs->cur_audiofmt->iface,
+				       alts,
+				       subs->cur_audiofmt,
+				       subs->cur_rate);
+	if (ret < 0)
+		goto unlock;
+
 	if (subs->need_setup_ep) {
-
-		iface = usb_ifnum_to_if(subs->dev, subs->cur_audiofmt->iface);
-		alts = &iface->altsetting[subs->cur_audiofmt->altset_idx];
-		ret = snd_usb_init_sample_rate(subs->stream->chip,
-					       subs->cur_audiofmt->iface,
-					       alts,
-					       subs->cur_audiofmt,
-					       subs->cur_rate);
-		if (ret < 0)
-			goto unlock;
-
 		ret = configure_endpoint(subs);
 		if (ret < 0)
 			goto unlock;
@@ -873,7 +865,7 @@ static int snd_usb_pcm_prepare(struct snd_pcm_substream *substream)
 	return ret;
 }
 
-static const struct snd_pcm_hardware snd_usb_hardware =
+static struct snd_pcm_hardware snd_usb_hardware =
 {
 	.info =			SNDRV_PCM_INFO_MMAP |
 				SNDRV_PCM_INFO_MMAP_VALID |
@@ -1318,7 +1310,7 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 		if (bytes % (runtime->sample_bits >> 3) != 0) {
 			int oldbytes = bytes;
 			bytes = frames * stride;
-			dev_warn_ratelimited(&subs->dev->dev,
+			dev_warn(&subs->dev->dev,
 				 "Corrected urb data len. %d->%d\n",
 							oldbytes, bytes);
 		}
@@ -1706,7 +1698,7 @@ static int snd_usb_substream_capture_trigger(struct snd_pcm_substream *substream
 	return -EINVAL;
 }
 
-static const struct snd_pcm_ops snd_usb_playback_ops = {
+static struct snd_pcm_ops snd_usb_playback_ops = {
 	.open =		snd_usb_playback_open,
 	.close =	snd_usb_playback_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -1719,7 +1711,7 @@ static const struct snd_pcm_ops snd_usb_playback_ops = {
 	.mmap =		snd_pcm_lib_mmap_vmalloc,
 };
 
-static const struct snd_pcm_ops snd_usb_capture_ops = {
+static struct snd_pcm_ops snd_usb_capture_ops = {
 	.open =		snd_usb_capture_open,
 	.close =	snd_usb_capture_close,
 	.ioctl =	snd_pcm_lib_ioctl,

@@ -38,7 +38,6 @@
 #include <linux/syscalls.h>
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
-#include <linux/sched/task.h>
 
 #define pid_hashfn(nr, ns)	\
 	hash_long((unsigned long)nr + (unsigned long)ns, pidhash_shift)
@@ -69,7 +68,9 @@ static inline int mk_pid(struct pid_namespace *pid_ns,
  * the scheme scales to up to 4 million PIDs, runtime.
  */
 struct pid_namespace init_pid_ns = {
-	.kref = KREF_INIT(2),
+	.kref = {
+		.refcount       = ATOMIC_INIT(2),
+	},
 	.pidmap = {
 		[ 0 ... PIDMAP_ENTRIES-1] = { ATOMIC_INIT(BITS_PER_PAGE), NULL }
 	},
@@ -321,10 +322,8 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	}
 
 	if (unlikely(is_child_reaper(pid))) {
-		if (pid_ns_prepare_proc(ns)) {
-			disable_pid_allocation(ns);
+		if (pid_ns_prepare_proc(ns))
 			goto out_free;
-		}
 	}
 
 	get_pid_ns(ns);
@@ -572,10 +571,16 @@ struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
  */
 void __init pidhash_init(void)
 {
+	unsigned int i, pidhash_size;
+
 	pid_hash = alloc_large_system_hash("PID", sizeof(*pid_hash), 0, 18,
-					   HASH_EARLY | HASH_SMALL | HASH_ZERO,
+					   HASH_EARLY | HASH_SMALL,
 					   &pidhash_shift, NULL,
 					   0, 4096);
+	pidhash_size = 1U << pidhash_shift;
+
+	for (i = 0; i < pidhash_size; i++)
+		INIT_HLIST_HEAD(&pid_hash[i]);
 }
 
 void __init pidmap_init(void)

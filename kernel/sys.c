@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/kernel/sys.c
  *
@@ -50,24 +49,15 @@
 #include <linux/binfmts.h>
 
 #include <linux/sched.h>
-#include <linux/sched/autogroup.h>
-#include <linux/sched/loadavg.h>
-#include <linux/sched/stat.h>
-#include <linux/sched/mm.h>
-#include <linux/sched/coredump.h>
-#include <linux/sched/task.h>
-#include <linux/sched/cputime.h>
 #include <linux/rcupdate.h>
 #include <linux/uidgid.h>
 #include <linux/cred.h>
-
-#include <linux/nospec.h>
 
 #include <linux/kmsg_dump.h>
 /* Move somewhere else to avoid recompiling? */
 #include <generated/utsrelease.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/unistd.h>
 
@@ -889,17 +879,17 @@ SYSCALL_DEFINE0(getegid)
 	return from_kgid_munged(current_user_ns(), current_egid());
 }
 
-static void do_sys_times(struct tms *tms)
+void do_sys_times(struct tms *tms)
 {
-	u64 tgutime, tgstime, cutime, cstime;
+	cputime_t tgutime, tgstime, cutime, cstime;
 
 	thread_group_cputime_adjusted(current, &tgutime, &tgstime);
 	cutime = current->signal->cutime;
 	cstime = current->signal->cstime;
-	tms->tms_utime = nsec_to_clock_t(tgutime);
-	tms->tms_stime = nsec_to_clock_t(tgstime);
-	tms->tms_cutime = nsec_to_clock_t(cutime);
-	tms->tms_cstime = nsec_to_clock_t(cstime);
+	tms->tms_utime = cputime_to_clock_t(tgutime);
+	tms->tms_stime = cputime_to_clock_t(tgstime);
+	tms->tms_cutime = cputime_to_clock_t(cutime);
+	tms->tms_cstime = cputime_to_clock_t(cstime);
 }
 
 SYSCALL_DEFINE1(times, struct tms __user *, tbuf)
@@ -914,32 +904,6 @@ SYSCALL_DEFINE1(times, struct tms __user *, tbuf)
 	force_successful_syscall_return();
 	return (long) jiffies_64_to_clock_t(get_jiffies_64());
 }
-
-#ifdef CONFIG_COMPAT
-static compat_clock_t clock_t_to_compat_clock_t(clock_t x)
-{
-	return compat_jiffies_to_clock_t(clock_t_to_jiffies(x));
-}
-
-COMPAT_SYSCALL_DEFINE1(times, struct compat_tms __user *, tbuf)
-{
-	if (tbuf) {
-		struct tms tms;
-		struct compat_tms tmp;
-
-		do_sys_times(&tms);
-		/* Convert our struct tms to the compat version. */
-		tmp.tms_utime = clock_t_to_compat_clock_t(tms.tms_utime);
-		tmp.tms_stime = clock_t_to_compat_clock_t(tms.tms_stime);
-		tmp.tms_cutime = clock_t_to_compat_clock_t(tms.tms_cutime);
-		tmp.tms_cstime = clock_t_to_compat_clock_t(tms.tms_cstime);
-		if (copy_to_user(tbuf, &tmp, sizeof(tmp)))
-			return -EFAULT;
-	}
-	force_successful_syscall_return();
-	return compat_jiffies_to_clock_t(jiffies);
-}
-#endif
 
 /*
  * This needs some heavy checking ...
@@ -1176,19 +1140,18 @@ static int override_release(char __user *release, size_t len)
 
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
-	struct new_utsname tmp;
+	int errno = 0;
 
 	down_read(&uts_sem);
-	memcpy(&tmp, utsname(), sizeof(tmp));
+	if (copy_to_user(name, utsname(), sizeof *name))
+		errno = -EFAULT;
 	up_read(&uts_sem);
-	if (copy_to_user(name, &tmp, sizeof(tmp)))
-		return -EFAULT;
 
-	if (override_release(name->release, sizeof(name->release)))
-		return -EFAULT;
-	if (override_architecture(name))
-		return -EFAULT;
-	return 0;
+	if (!errno && override_release(name->release, sizeof(name->release)))
+		errno = -EFAULT;
+	if (!errno && override_architecture(name))
+		errno = -EFAULT;
+	return errno;
 }
 
 #ifdef __ARCH_WANT_SYS_OLD_UNAME
@@ -1197,46 +1160,55 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
  */
 SYSCALL_DEFINE1(uname, struct old_utsname __user *, name)
 {
-	struct old_utsname tmp;
+	int error = 0;
 
 	if (!name)
 		return -EFAULT;
 
 	down_read(&uts_sem);
-	memcpy(&tmp, utsname(), sizeof(tmp));
+	if (copy_to_user(name, utsname(), sizeof(*name)))
+		error = -EFAULT;
 	up_read(&uts_sem);
-	if (copy_to_user(name, &tmp, sizeof(tmp)))
-		return -EFAULT;
 
-	if (override_release(name->release, sizeof(name->release)))
-		return -EFAULT;
-	if (override_architecture(name))
-		return -EFAULT;
-	return 0;
+	if (!error && override_release(name->release, sizeof(name->release)))
+		error = -EFAULT;
+	if (!error && override_architecture(name))
+		error = -EFAULT;
+	return error;
 }
 
 SYSCALL_DEFINE1(olduname, struct oldold_utsname __user *, name)
 {
-	struct oldold_utsname tmp = {};
+	int error;
 
 	if (!name)
 		return -EFAULT;
+	if (!access_ok(VERIFY_WRITE, name, sizeof(struct oldold_utsname)))
+		return -EFAULT;
 
 	down_read(&uts_sem);
-	memcpy(&tmp.sysname, &utsname()->sysname, __OLD_UTS_LEN);
-	memcpy(&tmp.nodename, &utsname()->nodename, __OLD_UTS_LEN);
-	memcpy(&tmp.release, &utsname()->release, __OLD_UTS_LEN);
-	memcpy(&tmp.version, &utsname()->version, __OLD_UTS_LEN);
-	memcpy(&tmp.machine, &utsname()->machine, __OLD_UTS_LEN);
+	error = __copy_to_user(&name->sysname, &utsname()->sysname,
+			       __OLD_UTS_LEN);
+	error |= __put_user(0, name->sysname + __OLD_UTS_LEN);
+	error |= __copy_to_user(&name->nodename, &utsname()->nodename,
+				__OLD_UTS_LEN);
+	error |= __put_user(0, name->nodename + __OLD_UTS_LEN);
+	error |= __copy_to_user(&name->release, &utsname()->release,
+				__OLD_UTS_LEN);
+	error |= __put_user(0, name->release + __OLD_UTS_LEN);
+	error |= __copy_to_user(&name->version, &utsname()->version,
+				__OLD_UTS_LEN);
+	error |= __put_user(0, name->version + __OLD_UTS_LEN);
+	error |= __copy_to_user(&name->machine, &utsname()->machine,
+				__OLD_UTS_LEN);
+	error |= __put_user(0, name->machine + __OLD_UTS_LEN);
 	up_read(&uts_sem);
-	if (copy_to_user(name, &tmp, sizeof(tmp)))
-		return -EFAULT;
 
-	if (override_architecture(name))
-		return -EFAULT;
-	if (override_release(name->release, sizeof(name->release)))
-		return -EFAULT;
-	return 0;
+	if (!error && override_architecture(name))
+		error = -EFAULT;
+	if (!error && override_release(name->release, sizeof(name->release)))
+		error = -EFAULT;
+	return error ? -EFAULT : 0;
 }
 #endif
 
@@ -1250,18 +1222,17 @@ SYSCALL_DEFINE2(sethostname, char __user *, name, int, len)
 
 	if (len < 0 || len > __NEW_UTS_LEN)
 		return -EINVAL;
+	down_write(&uts_sem);
 	errno = -EFAULT;
 	if (!copy_from_user(tmp, name, len)) {
-		struct new_utsname *u;
+		struct new_utsname *u = utsname();
 
-		down_write(&uts_sem);
-		u = utsname();
 		memcpy(u->nodename, tmp, len);
 		memset(u->nodename + len, 0, sizeof(u->nodename) - len);
 		errno = 0;
 		uts_proc_notify(UTS_PROC_HOSTNAME);
-		up_write(&uts_sem);
 	}
+	up_write(&uts_sem);
 	return errno;
 }
 
@@ -1269,9 +1240,8 @@ SYSCALL_DEFINE2(sethostname, char __user *, name, int, len)
 
 SYSCALL_DEFINE2(gethostname, char __user *, name, int, len)
 {
-	int i;
+	int i, errno;
 	struct new_utsname *u;
-	char tmp[__NEW_UTS_LEN + 1];
 
 	if (len < 0)
 		return -EINVAL;
@@ -1280,11 +1250,11 @@ SYSCALL_DEFINE2(gethostname, char __user *, name, int, len)
 	i = 1 + strlen(u->nodename);
 	if (i > len)
 		i = len;
-	memcpy(tmp, u->nodename, i);
+	errno = 0;
+	if (copy_to_user(name, u->nodename, i))
+		errno = -EFAULT;
 	up_read(&uts_sem);
-	if (copy_to_user(name, tmp, i))
-		return -EFAULT;
-	return 0;
+	return errno;
 }
 
 #endif
@@ -1303,18 +1273,17 @@ SYSCALL_DEFINE2(setdomainname, char __user *, name, int, len)
 	if (len < 0 || len > __NEW_UTS_LEN)
 		return -EINVAL;
 
+	down_write(&uts_sem);
 	errno = -EFAULT;
 	if (!copy_from_user(tmp, name, len)) {
-		struct new_utsname *u;
+		struct new_utsname *u = utsname();
 
-		down_write(&uts_sem);
-		u = utsname();
 		memcpy(u->domainname, tmp, len);
 		memset(u->domainname + len, 0, sizeof(u->domainname) - len);
 		errno = 0;
 		uts_proc_notify(UTS_PROC_DOMAINNAME);
-		up_write(&uts_sem);
 	}
+	up_write(&uts_sem);
 	return errno;
 }
 
@@ -1330,54 +1299,6 @@ SYSCALL_DEFINE2(getrlimit, unsigned int, resource, struct rlimit __user *, rlim)
 	return ret;
 }
 
-#ifdef CONFIG_COMPAT
-
-COMPAT_SYSCALL_DEFINE2(setrlimit, unsigned int, resource,
-		       struct compat_rlimit __user *, rlim)
-{
-	struct rlimit r;
-	struct compat_rlimit r32;
-
-	if (copy_from_user(&r32, rlim, sizeof(struct compat_rlimit)))
-		return -EFAULT;
-
-	if (r32.rlim_cur == COMPAT_RLIM_INFINITY)
-		r.rlim_cur = RLIM_INFINITY;
-	else
-		r.rlim_cur = r32.rlim_cur;
-	if (r32.rlim_max == COMPAT_RLIM_INFINITY)
-		r.rlim_max = RLIM_INFINITY;
-	else
-		r.rlim_max = r32.rlim_max;
-	return do_prlimit(current, resource, &r, NULL);
-}
-
-COMPAT_SYSCALL_DEFINE2(getrlimit, unsigned int, resource,
-		       struct compat_rlimit __user *, rlim)
-{
-	struct rlimit r;
-	int ret;
-
-	ret = do_prlimit(current, resource, NULL, &r);
-	if (!ret) {
-		struct compat_rlimit r32;
-		if (r.rlim_cur > COMPAT_RLIM_INFINITY)
-			r32.rlim_cur = COMPAT_RLIM_INFINITY;
-		else
-			r32.rlim_cur = r.rlim_cur;
-		if (r.rlim_max > COMPAT_RLIM_INFINITY)
-			r32.rlim_max = COMPAT_RLIM_INFINITY;
-		else
-			r32.rlim_max = r.rlim_max;
-
-		if (copy_to_user(rlim, &r32, sizeof(struct compat_rlimit)))
-			return -EFAULT;
-	}
-	return ret;
-}
-
-#endif
-
 #ifdef __ARCH_WANT_SYS_OLD_GETRLIMIT
 
 /*
@@ -1390,7 +1311,6 @@ SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
 	if (resource >= RLIM_NLIMITS)
 		return -EINVAL;
 
-	resource = array_index_nospec(resource, RLIM_NLIMITS);
 	task_lock(current->group_leader);
 	x = current->signal->rlim[resource];
 	task_unlock(current->group_leader);
@@ -1400,31 +1320,6 @@ SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
 		x.rlim_max = 0x7FFFFFFF;
 	return copy_to_user(rlim, &x, sizeof(x)) ? -EFAULT : 0;
 }
-
-#ifdef CONFIG_COMPAT
-COMPAT_SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
-		       struct compat_rlimit __user *, rlim)
-{
-	struct rlimit r;
-
-	if (resource >= RLIM_NLIMITS)
-		return -EINVAL;
-
-	resource = array_index_nospec(resource, RLIM_NLIMITS);
-	task_lock(current->group_leader);
-	r = current->signal->rlim[resource];
-	task_unlock(current->group_leader);
-	if (r.rlim_cur > 0x7FFFFFFF)
-		r.rlim_cur = 0x7FFFFFFF;
-	if (r.rlim_max > 0x7FFFFFFF)
-		r.rlim_max = 0x7FFFFFFF;
-
-	if (put_user(r.rlim_cur, &rlim->rlim_cur) ||
-	    put_user(r.rlim_max, &rlim->rlim_max))
-		return -EFAULT;
-	return 0;
-}
-#endif
 
 #endif
 
@@ -1494,7 +1389,8 @@ int do_prlimit(struct task_struct *tsk, unsigned int resource,
 				!capable(CAP_SYS_RESOURCE))
 			retval = -EPERM;
 		if (!retval)
-			retval = security_task_setrlimit(tsk, resource, new_rlim);
+			retval = security_task_setrlimit(tsk->group_leader,
+					resource, new_rlim);
 		if (resource == RLIMIT_CPU && new_rlim->rlim_cur == 0) {
 			/*
 			 * The caller is asking for an immediate RLIMIT_CPU
@@ -1520,8 +1416,7 @@ int do_prlimit(struct task_struct *tsk, unsigned int resource,
 	 * applications, so we live with it
 	 */
 	 if (!retval && new_rlim && resource == RLIMIT_CPU &&
-	     new_rlim->rlim_cur != RLIM_INFINITY &&
-	     IS_ENABLED(CONFIG_POSIX_TIMERS))
+			 new_rlim->rlim_cur != RLIM_INFINITY)
 		update_rlimit_cpu(tsk, new_rlim->rlim_cur);
 out:
 	read_unlock(&tasklist_lock);
@@ -1529,26 +1424,25 @@ out:
 }
 
 /* rcu lock must be held */
-static int check_prlimit_permission(struct task_struct *task,
-				    unsigned int flags)
+static int check_prlimit_permission(struct task_struct *task)
 {
 	const struct cred *cred = current_cred(), *tcred;
-	bool id_match;
 
 	if (current == task)
 		return 0;
 
 	tcred = __task_cred(task);
-	id_match = (uid_eq(cred->uid, tcred->euid) &&
-		    uid_eq(cred->uid, tcred->suid) &&
-		    uid_eq(cred->uid, tcred->uid)  &&
-		    gid_eq(cred->gid, tcred->egid) &&
-		    gid_eq(cred->gid, tcred->sgid) &&
-		    gid_eq(cred->gid, tcred->gid));
-	if (!id_match && !ns_capable(tcred->user_ns, CAP_SYS_RESOURCE))
-		return -EPERM;
+	if (uid_eq(cred->uid, tcred->euid) &&
+	    uid_eq(cred->uid, tcred->suid) &&
+	    uid_eq(cred->uid, tcred->uid)  &&
+	    gid_eq(cred->gid, tcred->egid) &&
+	    gid_eq(cred->gid, tcred->sgid) &&
+	    gid_eq(cred->gid, tcred->gid))
+		return 0;
+	if (ns_capable(tcred->user_ns, CAP_SYS_RESOURCE))
+		return 0;
 
-	return security_task_prlimit(cred, tcred, flags);
+	return -EPERM;
 }
 
 SYSCALL_DEFINE4(prlimit64, pid_t, pid, unsigned int, resource,
@@ -1558,17 +1452,12 @@ SYSCALL_DEFINE4(prlimit64, pid_t, pid, unsigned int, resource,
 	struct rlimit64 old64, new64;
 	struct rlimit old, new;
 	struct task_struct *tsk;
-	unsigned int checkflags = 0;
 	int ret;
-
-	if (old_rlim)
-		checkflags |= LSM_PRLIMIT_READ;
 
 	if (new_rlim) {
 		if (copy_from_user(&new64, new_rlim, sizeof(new64)))
 			return -EFAULT;
 		rlim64_to_rlim(&new64, &new);
-		checkflags |= LSM_PRLIMIT_WRITE;
 	}
 
 	rcu_read_lock();
@@ -1577,7 +1466,7 @@ SYSCALL_DEFINE4(prlimit64, pid_t, pid, unsigned int, resource,
 		rcu_read_unlock();
 		return -ESRCH;
 	}
-	ret = check_prlimit_permission(tsk, checkflags);
+	ret = check_prlimit_permission(tsk);
 	if (ret) {
 		rcu_read_unlock();
 		return ret;
@@ -1650,11 +1539,11 @@ static void accumulate_thread_rusage(struct task_struct *t, struct rusage *r)
 	r->ru_oublock += task_io_get_oublock(t);
 }
 
-void getrusage(struct task_struct *p, int who, struct rusage *r)
+static void k_getrusage(struct task_struct *p, int who, struct rusage *r)
 {
 	struct task_struct *t;
 	unsigned long flags;
-	u64 tgutime, tgstime, utime, stime;
+	cputime_t tgutime, tgstime, utime, stime;
 	unsigned long maxrss = 0;
 
 	memset((char *)r, 0, sizeof (*r));
@@ -1710,8 +1599,8 @@ void getrusage(struct task_struct *p, int who, struct rusage *r)
 	unlock_task_sighand(p, &flags);
 
 out:
-	r->ru_utime = ns_to_timeval(utime);
-	r->ru_stime = ns_to_timeval(stime);
+	cputime_to_timeval(utime, &r->ru_utime);
+	cputime_to_timeval(stime, &r->ru_stime);
 
 	if (who != RUSAGE_CHILDREN) {
 		struct mm_struct *mm = get_task_mm(p);
@@ -1724,16 +1613,20 @@ out:
 	r->ru_maxrss = maxrss * (PAGE_SIZE / 1024); /* convert pages to KBs */
 }
 
-SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
+int getrusage(struct task_struct *p, int who, struct rusage __user *ru)
 {
 	struct rusage r;
 
+	k_getrusage(p, who, &r);
+	return copy_to_user(ru, &r, sizeof(r)) ? -EFAULT : 0;
+}
+
+SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
+{
 	if (who != RUSAGE_SELF && who != RUSAGE_CHILDREN &&
 	    who != RUSAGE_THREAD)
 		return -EINVAL;
-
-	getrusage(current, who, &r);
-	return copy_to_user(ru, &r, sizeof(r)) ? -EFAULT : 0;
+	return getrusage(current, who, ru);
 }
 
 #ifdef CONFIG_COMPAT
@@ -1745,7 +1638,7 @@ COMPAT_SYSCALL_DEFINE2(getrusage, int, who, struct compat_rusage __user *, ru)
 	    who != RUSAGE_THREAD)
 		return -EINVAL;
 
-	getrusage(current, who, &r);
+	k_getrusage(current, who, &r);
 	return put_compat_rusage(&r, ru);
 }
 #endif
@@ -1802,6 +1695,16 @@ static int prctl_set_mm_exe_file(struct mm_struct *mm, unsigned int fd)
 		up_read(&mm->mmap_sem);
 		fput(exe_file);
 	}
+
+	/*
+	 * The symlink can be changed only once, just to disallow arbitrary
+	 * transitions malicious software might bring in. This means one
+	 * could make a snapshot over all processes running and monitor
+	 * /proc/pid/exe changes to notice unusual activity if needed.
+	 */
+	err = -EPERM;
+	if (test_and_set_bit(MMF_EXE_FILE_CHANGED, &mm->flags))
+		goto exit;
 
 	err = 0;
 	/* set the new file, lockless */
@@ -1896,11 +1799,15 @@ static int validate_prctl_map(struct prctl_mm_map *prctl_map)
 
 	/*
 	 * Finally, make sure the caller has the rights to
-	 * change /proc/pid/exe link: only local sys admin should
+	 * change /proc/pid/exe link: only local root should
 	 * be allowed to.
 	 */
 	if (prctl_map->exe_fd != (u32)-1) {
-		if (!ns_capable(current_user_ns(), CAP_SYS_ADMIN))
+		struct user_namespace *ns = current_user_ns();
+		const struct cred *cred = current_cred();
+
+		if (!uid_eq(cred->uid, make_kuid(ns, 0)) ||
+		    !gid_eq(cred->gid, make_kgid(ns, 0)))
 			goto out;
 	}
 
@@ -2165,35 +2072,6 @@ static int prctl_get_tid_address(struct task_struct *me, int __user **tid_addr)
 }
 #endif
 
-static int propagate_has_child_subreaper(struct task_struct *p, void *data)
-{
-	/*
-	 * If task has has_child_subreaper - all its decendants
-	 * already have these flag too and new decendants will
-	 * inherit it on fork, skip them.
-	 *
-	 * If we've found child_reaper - skip descendants in
-	 * it's subtree as they will never get out pidns.
-	 */
-	if (p->signal->has_child_subreaper ||
-	    is_child_reaper(task_pid(p)))
-		return 0;
-
-	p->signal->has_child_subreaper = 1;
-	return 1;
-}
-
-int __weak arch_prctl_spec_ctrl_get(struct task_struct *t, unsigned long which)
-{
-	return -EINVAL;
-}
-
-int __weak arch_prctl_spec_ctrl_set(struct task_struct *t, unsigned long which,
-				    unsigned long ctrl)
-{
-	return -EINVAL;
-}
-
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2345,10 +2223,6 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		break;
 	case PR_SET_CHILD_SUBREAPER:
 		me->signal->is_child_subreaper = !!arg2;
-		if (!arg2)
-			break;
-
-		walk_process_tree(me, propagate_has_child_subreaper, NULL);
 		break;
 	case PR_GET_CHILD_SUBREAPER:
 		error = put_user(me->signal->is_child_subreaper,
@@ -2367,7 +2241,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	case PR_GET_THP_DISABLE:
 		if (arg2 || arg3 || arg4 || arg5)
 			return -EINVAL;
-		error = !!test_bit(MMF_DISABLE_THP, &me->mm->flags);
+		error = !!(me->mm->def_flags & VM_NOHUGEPAGE);
 		break;
 	case PR_SET_THP_DISABLE:
 		if (arg3 || arg4 || arg5)
@@ -2375,9 +2249,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		if (down_write_killable(&me->mm->mmap_sem))
 			return -EINTR;
 		if (arg2)
-			set_bit(MMF_DISABLE_THP, &me->mm->flags);
+			me->mm->def_flags |= VM_NOHUGEPAGE;
 		else
-			clear_bit(MMF_DISABLE_THP, &me->mm->flags);
+			me->mm->def_flags &= ~VM_NOHUGEPAGE;
 		up_write(&me->mm->mmap_sem);
 		break;
 	case PR_MPX_ENABLE_MANAGEMENT:
@@ -2395,16 +2269,6 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		break;
 	case PR_GET_FP_MODE:
 		error = GET_FP_MODE(me);
-		break;
-	case PR_GET_SPECULATION_CTRL:
-		if (arg3 || arg4 || arg5)
-			return -EINVAL;
-		error = arch_prctl_spec_ctrl_get(me, arg2);
-		break;
-	case PR_SET_SPECULATION_CTRL:
-		if (arg4 || arg5)
-			return -EINVAL;
-		error = arch_prctl_spec_ctrl_set(me, arg2, arg3);
 		break;
 	default:
 		error = -EINVAL;

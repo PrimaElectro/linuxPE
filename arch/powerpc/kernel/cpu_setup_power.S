@@ -28,10 +28,8 @@ _GLOBAL(__setup_cpu_power7)
 	beqlr
 	li	r0,0
 	mtspr	SPRN_LPID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr	r3,SPRN_LPCR
-	li	r4,(LPCR_LPES1 >> LPCR_LPES_SH)
-	bl	__init_LPCR_ISA206
+	bl	__init_LPCR
 	bl	__init_tlb_power7
 	mtlr	r11
 	blr
@@ -43,10 +41,8 @@ _GLOBAL(__restore_cpu_power7)
 	beqlr
 	li	r0,0
 	mtspr	SPRN_LPID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr	r3,SPRN_LPCR
-	li	r4,(LPCR_LPES1 >> LPCR_LPES_SH)
-	bl	__init_LPCR_ISA206
+	bl	__init_LPCR
 	bl	__init_tlb_power7
 	mtlr	r11
 	blr
@@ -61,11 +57,9 @@ _GLOBAL(__setup_cpu_power8)
 	beqlr
 	li	r0,0
 	mtspr	SPRN_LPID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr	r3,SPRN_LPCR
 	ori	r3, r3, LPCR_PECEDH
-	li	r4,0 /* LPES = 0 */
-	bl	__init_LPCR_ISA206
+	bl	__init_LPCR
 	bl	__init_HFSCR
 	bl	__init_tlb_power8
 	bl	__init_PMU_HV
@@ -84,11 +78,9 @@ _GLOBAL(__restore_cpu_power8)
 	beqlr
 	li	r0,0
 	mtspr	SPRN_LPID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr   r3,SPRN_LPCR
 	ori	r3, r3, LPCR_PECEDH
-	li	r4,0 /* LPES = 0 */
-	bl	__init_LPCR_ISA206
+	bl	__init_LPCR
 	bl	__init_HFSCR
 	bl	__init_tlb_power8
 	bl	__init_PMU_HV
@@ -104,17 +96,14 @@ _GLOBAL(__setup_cpu_power9)
 	mtlr	r11
 	beqlr
 	li	r0,0
-	mtspr	SPRN_PSSCR,r0
 	mtspr	SPRN_LPID,r0
 	mtspr	SPRN_PID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr	r3,SPRN_LPCR
-	LOAD_REG_IMMEDIATE(r4, LPCR_PECEDH | LPCR_PECE_HVEE | LPCR_HVICE  | LPCR_HEIC)
+	LOAD_REG_IMMEDIATE(r4, LPCR_PECEDH | LPCR_PECE_HVEE | LPCR_HVICE)
 	or	r3, r3, r4
 	LOAD_REG_IMMEDIATE(r4, LPCR_UPRT | LPCR_HR)
 	andc	r3, r3, r4
-	li	r4,0 /* LPES = 0 */
-	bl	__init_LPCR_ISA300
+	bl	__init_LPCR
 	bl	__init_HFSCR
 	bl	__init_tlb_power9
 	bl	__init_PMU_HV
@@ -130,17 +119,14 @@ _GLOBAL(__restore_cpu_power9)
 	mtlr	r11
 	beqlr
 	li	r0,0
-	mtspr	SPRN_PSSCR,r0
 	mtspr	SPRN_LPID,r0
 	mtspr	SPRN_PID,r0
-	mtspr	SPRN_PCR,r0
 	mfspr   r3,SPRN_LPCR
-	LOAD_REG_IMMEDIATE(r4, LPCR_PECEDH | LPCR_PECE_HVEE | LPCR_HVICE | LPCR_HEIC)
+	LOAD_REG_IMMEDIATE(r4, LPCR_PECEDH | LPCR_PECE_HVEE | LPCR_HVICE)
 	or	r3, r3, r4
 	LOAD_REG_IMMEDIATE(r4, LPCR_UPRT | LPCR_HR)
 	andc	r3, r3, r4
-	li	r4,0 /* LPES = 0 */
-	bl	__init_LPCR_ISA300
+	bl	__init_LPCR
 	bl	__init_HFSCR
 	bl	__init_tlb_power9
 	bl	__init_PMU_HV
@@ -158,9 +144,9 @@ __init_hvmode_206:
 	std	r5,CPU_SPEC_FEATURES(r4)
 	blr
 
-__init_LPCR_ISA206:
+__init_LPCR:
 	/* Setup a sane LPCR:
-	 *   Called with initial LPCR in R3 and desired LPES 2-bit value in R4
+	 *   Called with initial LPCR in R3
 	 *
 	 *   LPES = 0b01 (HSRR0/1 used for 0x500)
 	 *   PECE = 0b111
@@ -171,18 +157,16 @@ __init_LPCR_ISA206:
 	 *
 	 * Other bits untouched for now
 	 */
-	li	r5,0x10
-	rldimi	r3,r5, LPCR_VRMASD_SH, 64-LPCR_VRMASD_SH-5
-
-	/* POWER9 has no VRMASD */
-__init_LPCR_ISA300:
-	rldimi	r3,r4, LPCR_LPES_SH, 64-LPCR_LPES_SH-2
+	li	r5,1
+	rldimi	r3,r5, LPCR_LPES_SH, 64-LPCR_LPES_SH-2
 	ori	r3,r3,(LPCR_PECE0|LPCR_PECE1|LPCR_PECE2)
 	li	r5,4
 	rldimi	r3,r5, LPCR_DPFD_SH, 64-LPCR_DPFD_SH-3
 	clrrdi	r3,r3,1		/* clear HDICE */
 	li	r5,4
 	rldimi	r3,r5, LPCR_VC_SH, 0
+	li	r5,0x10
+	rldimi	r3,r5, LPCR_VRMASD_SH, 64-LPCR_VRMASD_SH-5
 	mtspr	SPRN_LPCR,r3
 	isync
 	blr
@@ -196,7 +180,7 @@ __init_FSCR:
 __init_HFSCR:
 	mfspr	r3,SPRN_HFSCR
 	ori	r3,r3,HFSCR_TAR|HFSCR_TM|HFSCR_BHRB|HFSCR_PM|\
-		      HFSCR_DSCR|HFSCR_VECVSX|HFSCR_FP|HFSCR_EBB|HFSCR_MSGP
+		      HFSCR_DSCR|HFSCR_VECVSX|HFSCR_FP|HFSCR_EBB
 	mtspr	SPRN_HFSCR,r3
 	blr
 
@@ -226,20 +210,13 @@ __init_tlb_power8:
 	ptesync
 1:	blr
 
-/*
- * Flush the TLB in hash mode. Hash must flush with RIC=2 once for process
- * and one for partition scope to clear process and partition table entries.
- */
 __init_tlb_power9:
-	li	r6,POWER9_TLB_SETS_HASH - 1
+	li	r6,POWER9_TLB_SETS_HASH
 	mtctr	r6
 	li	r7,0xc00	/* IS field = 0b11 */
-	li	r8,0
 	ptesync
-	PPC_TLBIEL(7, 8, 2, 1, 0)
-	PPC_TLBIEL(7, 8, 2, 0, 0)
-2:	addi	r7,r7,0x1000
-	PPC_TLBIEL(7, 8, 0, 0, 0)
+2:	tlbiel	r7
+	addi	r7,r7,0x1000
 	bdnz	2b
 	ptesync
 1:	blr

@@ -12,13 +12,10 @@
 #include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/mfd/syscon.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/poll.h>
-#include <linux/regmap.h>
 #include <linux/sched.h>
 #include <linux/timer.h>
 
@@ -63,8 +60,7 @@
 struct bt_bmc {
 	struct device		dev;
 	struct miscdevice	miscdev;
-	struct regmap		*map;
-	int			offset;
+	void __iomem		*base;
 	int			irq;
 	wait_queue_head_t	queue;
 	struct timer_list	poll_timer;
@@ -73,29 +69,14 @@ struct bt_bmc {
 
 static atomic_t open_count = ATOMIC_INIT(0);
 
-static const struct regmap_config bt_regmap_cfg = {
-	.reg_bits = 32,
-	.val_bits = 32,
-	.reg_stride = 4,
-};
-
 static u8 bt_inb(struct bt_bmc *bt_bmc, int reg)
 {
-	uint32_t val = 0;
-	int rc;
-
-	rc = regmap_read(bt_bmc->map, bt_bmc->offset + reg, &val);
-	WARN(rc != 0, "regmap_read() failed: %d\n", rc);
-
-	return rc == 0 ? (u8) val : 0;
+	return ioread8(bt_bmc->base + reg);
 }
 
 static void bt_outb(struct bt_bmc *bt_bmc, u8 data, int reg)
 {
-	int rc;
-
-	rc = regmap_write(bt_bmc->map, bt_bmc->offset + reg, data);
-	WARN(rc != 0, "regmap_write() failed: %d\n", rc);
+	iowrite8(data, bt_bmc->base + reg);
 }
 
 static void clr_rd_ptr(struct bt_bmc *bt_bmc)
@@ -386,18 +367,14 @@ static irqreturn_t bt_bmc_irq(int irq, void *arg)
 {
 	struct bt_bmc *bt_bmc = arg;
 	u32 reg;
-	int rc;
 
-	rc = regmap_read(bt_bmc->map, bt_bmc->offset + BT_CR2, &reg);
-	if (rc)
-		return IRQ_NONE;
-
+	reg = ioread32(bt_bmc->base + BT_CR2);
 	reg &= BT_CR2_IRQ_H2B | BT_CR2_IRQ_HBUSY;
 	if (!reg)
 		return IRQ_NONE;
 
 	/* ack pending IRQs */
-	regmap_write(bt_bmc->map, bt_bmc->offset + BT_CR2, reg);
+	iowrite32(reg, bt_bmc->base + BT_CR2);
 
 	wake_up(&bt_bmc->queue);
 	return IRQ_HANDLED;
@@ -407,6 +384,7 @@ static int bt_bmc_config_irq(struct bt_bmc *bt_bmc,
 			     struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	u32 reg;
 	int rc;
 
 	bt_bmc->irq = platform_get_irq(pdev, 0);
@@ -427,17 +405,18 @@ static int bt_bmc_config_irq(struct bt_bmc *bt_bmc,
 	 * will be cleared (along with B2H) when we can write the next
 	 * message to the BT buffer
 	 */
-	rc = regmap_update_bits(bt_bmc->map, bt_bmc->offset + BT_CR1,
-				(BT_CR1_IRQ_H2B | BT_CR1_IRQ_HBUSY),
-				(BT_CR1_IRQ_H2B | BT_CR1_IRQ_HBUSY));
+	reg = ioread32(bt_bmc->base + BT_CR1);
+	reg |= BT_CR1_IRQ_H2B | BT_CR1_IRQ_HBUSY;
+	iowrite32(reg, bt_bmc->base + BT_CR1);
 
-	return rc;
+	return 0;
 }
 
 static int bt_bmc_probe(struct platform_device *pdev)
 {
 	struct bt_bmc *bt_bmc;
 	struct device *dev;
+	struct resource *res;
 	int rc;
 
 	if (!pdev || !pdev->dev.of_node)
@@ -452,27 +431,10 @@ static int bt_bmc_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, bt_bmc);
 
-	bt_bmc->map = syscon_node_to_regmap(pdev->dev.parent->of_node);
-	if (IS_ERR(bt_bmc->map)) {
-		struct resource *res;
-		void __iomem *base;
-
-		/*
-		 * Assume it's not the MFD-based devicetree description, in
-		 * which case generate a regmap ourselves
-		 */
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		base = devm_ioremap_resource(&pdev->dev, res);
-		if (IS_ERR(base))
-			return PTR_ERR(base);
-
-		bt_bmc->map = devm_regmap_init_mmio(dev, base, &bt_regmap_cfg);
-		bt_bmc->offset = 0;
-	} else {
-		rc = of_property_read_u32(dev->of_node, "reg", &bt_bmc->offset);
-		if (rc)
-			return rc;
-	}
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	bt_bmc->base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(bt_bmc->base))
+		return PTR_ERR(bt_bmc->base);
 
 	mutex_init(&bt_bmc->mutex);
 	init_waitqueue_head(&bt_bmc->queue);
@@ -499,12 +461,12 @@ static int bt_bmc_probe(struct platform_device *pdev)
 		add_timer(&bt_bmc->poll_timer);
 	}
 
-	regmap_write(bt_bmc->map, bt_bmc->offset + BT_CR0,
-		     (BT_IO_BASE << BT_CR0_IO_BASE) |
-		     (BT_IRQ << BT_CR0_IRQ) |
-		     BT_CR0_EN_CLR_SLV_RDP |
-		     BT_CR0_EN_CLR_SLV_WRP |
-		     BT_CR0_ENABLE_IBT);
+	iowrite32((BT_IO_BASE << BT_CR0_IO_BASE) |
+		  (BT_IRQ << BT_CR0_IRQ) |
+		  BT_CR0_EN_CLR_SLV_RDP |
+		  BT_CR0_EN_CLR_SLV_WRP |
+		  BT_CR0_ENABLE_IBT,
+		  bt_bmc->base + BT_CR0);
 
 	clr_b_busy(bt_bmc);
 
@@ -523,7 +485,6 @@ static int bt_bmc_remove(struct platform_device *pdev)
 
 static const struct of_device_id bt_bmc_match[] = {
 	{ .compatible = "aspeed,ast2400-ibt-bmc" },
-	{ .compatible = "aspeed,ast2500-ibt-bmc" },
 	{ },
 };
 

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 1999 Cort Dougan <cort@cs.nmt.edu>
  */
@@ -9,7 +8,9 @@
 
 struct pt_regs;
 
-#if defined(CONFIG_DEBUGGER) || defined(CONFIG_KEXEC_CORE)
+extern struct dentry *powerpc_debugfs_root;
+
+#if defined(CONFIG_DEBUGGER) || defined(CONFIG_KEXEC)
 
 extern int (*__debugger)(struct pt_regs *regs);
 extern int (*__debugger_ipi)(struct pt_regs *regs);

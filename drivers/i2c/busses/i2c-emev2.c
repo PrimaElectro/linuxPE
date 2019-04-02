@@ -347,7 +347,7 @@ static int em_i2c_unreg_slave(struct i2c_client *slave)
 	return 0;
 }
 
-static const struct i2c_algorithm em_i2c_algo = {
+static struct i2c_algorithm em_i2c_algo = {
 	.master_xfer = em_i2c_xfer,
 	.functionality = em_i2c_func,
 	.reg_slave      = em_i2c_reg_slave,
@@ -375,9 +375,7 @@ static int em_i2c_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->sclk))
 		return PTR_ERR(priv->sclk);
 
-	ret = clk_prepare_enable(priv->sclk);
-	if (ret)
-		return ret;
+	clk_prepare_enable(priv->sclk);
 
 	priv->adap.timeout = msecs_to_jiffies(100);
 	priv->adap.retries = 5;

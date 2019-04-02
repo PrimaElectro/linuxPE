@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /* ld script to make s390 Linux kernel
  * Written by Martin Schwidefsky (schwidefsky@de.ibm.com)
  */
@@ -32,14 +31,8 @@ SECTIONS
 {
 	. = 0x00000000;
 	.text : {
-		/* Text and read-only data */
+	_text = .;		/* Text and read-only data */
 		HEAD_TEXT
-		/*
-		 * E.g. perf doesn't like symbols starting at address zero,
-		 * therefore skip the initial PSW and channel program located
-		 * at address zero and let _text start at 0x200.
-		 */
-	_text = 0x200;
 		TEXT_TEXT
 		SCHED_TEXT
 		CPUIDLE_TEXT
@@ -51,7 +44,6 @@ SECTIONS
 		*(.gnu.warning)
 	} :text = 0x0700
 
-	. = ALIGN(PAGE_SIZE);
 	_etext = .;		/* End of text section */
 
 	NOTES :text :note
@@ -70,9 +62,11 @@ SECTIONS
 
 	. = ALIGN(PAGE_SIZE);
 	__start_ro_after_init = .;
+	__start_data_ro_after_init = .;
 	.data..ro_after_init : {
 		 *(.data..ro_after_init)
 	}
+	__end_data_ro_after_init = .;
 	EXCEPTION_TABLE(16)
 	. = ALIGN(PAGE_SIZE);
 	__end_ro_after_init = .;
@@ -85,13 +79,7 @@ SECTIONS
 	. = ALIGN(PAGE_SIZE);	/* Init code and data */
 	__init_begin = .;
 
-	. = ALIGN(PAGE_SIZE);
-	.init.text : AT(ADDR(.init.text) - LOAD_OFFSET) {
-		VMLINUX_SYMBOL(_sinittext) = . ;
-		INIT_TEXT
-		. = ALIGN(PAGE_SIZE);
-		VMLINUX_SYMBOL(_einittext) = . ;
-	}
+	INIT_TEXT_SECTION(PAGE_SIZE)
 
 	/*
 	 * .exit.text is discarded at runtime, not link time,
@@ -103,43 +91,6 @@ SECTIONS
 
 	.exit.data : {
 		EXIT_DATA
-	}
-
-	/*
-	 * struct alt_inst entries. From the header (alternative.h):
-	 * "Alternative instructions for different CPU types or capabilities"
-	 * Think locking instructions on spinlocks.
-	 * Note, that it is a part of __init region.
-	 */
-	. = ALIGN(8);
-	.altinstructions : {
-		__alt_instructions = .;
-		*(.altinstructions)
-		__alt_instructions_end = .;
-	}
-
-	/*
-	 * And here are the replacement instructions. The linker sticks
-	 * them as binary blobs. The .altinstructions has enough data to
-	 * get the address and the length of them to patch the kernel safely.
-	 * Note, that it is a part of __init region.
-	 */
-	.altinstr_replacement : {
-		*(.altinstr_replacement)
-	}
-
-	/*
-	 * Table with the patch locations to undo expolines
-	*/
-	.nospec_call_table : {
-		__nospec_call_start = . ;
-		*(.s390_indirect*)
-		__nospec_call_end = . ;
-	}
-	.nospec_return_table : {
-		__nospec_return_start = . ;
-		*(.s390_return*)
-		__nospec_return_end = . ;
 	}
 
 	/* early.c uses stsi, which requires page aligned data. */

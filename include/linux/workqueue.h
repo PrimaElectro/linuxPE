@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * workqueue.h --- work queue handling for Linux.
  */
@@ -107,9 +106,9 @@ struct work_struct {
 #endif
 };
 
-#define WORK_DATA_INIT()	ATOMIC_LONG_INIT((unsigned long)WORK_STRUCT_NO_POOL)
+#define WORK_DATA_INIT()	ATOMIC_LONG_INIT(WORK_STRUCT_NO_POOL)
 #define WORK_DATA_STATIC_INIT()	\
-	ATOMIC_LONG_INIT((unsigned long)(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC))
+	ATOMIC_LONG_INIT(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC)
 
 struct delayed_work {
 	struct work_struct work;
@@ -120,30 +119,18 @@ struct delayed_work {
 	int cpu;
 };
 
-/**
- * struct workqueue_attrs - A struct for workqueue attributes.
+/*
+ * A struct for workqueue attributes.  This can be used to change
+ * attributes of an unbound workqueue.
  *
- * This can be used to change attributes of an unbound workqueue.
+ * Unlike other fields, ->no_numa isn't a property of a worker_pool.  It
+ * only modifies how apply_workqueue_attrs() select pools and thus doesn't
+ * participate in pool hash calculations or equality comparisons.
  */
 struct workqueue_attrs {
-	/**
-	 * @nice: nice level
-	 */
-	int nice;
-
-	/**
-	 * @cpumask: allowed CPUs
-	 */
-	cpumask_var_t cpumask;
-
-	/**
-	 * @no_numa: disable NUMA affinity
-	 *
-	 * Unlike other fields, ``no_numa`` isn't a property of a worker_pool. It
-	 * only modifies how :c:func:`apply_workqueue_attrs` select pools and thus
-	 * doesn't participate in pool hash calculations or equality comparisons.
-	 */
-	bool no_numa;
+	int			nice;		/* nice level */
+	cpumask_var_t		cpumask;	/* allowed CPUs */
+	bool			no_numa;	/* disable NUMA affinity */
 };
 
 static inline struct delayed_work *to_delayed_work(struct work_struct *work)
@@ -285,7 +272,7 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 
 /*
  * Workqueue flags and constants.  For details, please refer to
- * Documentation/core-api/workqueue.rst.
+ * Documentation/workqueue.txt.
  */
 enum {
 	WQ_UNBOUND		= 1 << 1, /* not bound to any cpu */
@@ -384,8 +371,7 @@ __alloc_workqueue_key(const char *fmt, unsigned int flags, int max_active,
  * @args...: args for @fmt
  *
  * Allocate a workqueue with the specified parameters.  For detailed
- * information on WQ_* flags, please refer to
- * Documentation/core-api/workqueue.rst.
+ * information on WQ_* flags, please refer to Documentation/workqueue.txt.
  *
  * The __lock_name macro dance is to guarantee that single lock_class_key
  * doesn't end up with different namesm, which isn't allowed by lockdep.
@@ -467,7 +453,6 @@ extern bool cancel_delayed_work_sync(struct delayed_work *dwork);
 
 extern void workqueue_set_max_active(struct workqueue_struct *wq,
 				     int max_active);
-extern struct work_struct *current_work(void);
 extern bool current_is_workqueue_rescuer(void);
 extern bool workqueue_congested(int cpu, struct workqueue_struct *wq);
 extern unsigned int work_busy(struct work_struct *work);
@@ -607,18 +592,21 @@ static inline bool schedule_delayed_work(struct delayed_work *dwork,
 	return queue_delayed_work(system_wq, dwork, delay);
 }
 
+/**
+ * keventd_up - is workqueue initialized yet?
+ */
+static inline bool keventd_up(void)
+{
+	return system_wq != NULL;
+}
+
 #ifndef CONFIG_SMP
 static inline long work_on_cpu(int cpu, long (*fn)(void *), void *arg)
 {
 	return fn(arg);
 }
-static inline long work_on_cpu_safe(int cpu, long (*fn)(void *), void *arg)
-{
-	return fn(arg);
-}
 #else
 long work_on_cpu(int cpu, long (*fn)(void *), void *arg);
-long work_on_cpu_safe(int cpu, long (*fn)(void *), void *arg);
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_FREEZER
@@ -645,8 +633,5 @@ int workqueue_prepare_cpu(unsigned int cpu);
 int workqueue_online_cpu(unsigned int cpu);
 int workqueue_offline_cpu(unsigned int cpu);
 #endif
-
-int __init workqueue_init_early(void);
-int __init workqueue_init(void);
 
 #endif

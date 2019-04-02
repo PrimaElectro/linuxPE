@@ -1147,7 +1147,9 @@ static int setup_elsa_common(struct IsdnCard *card)
 	init_arcofi(cs);
 #endif
 	setup_isac(cs);
-	setup_timer(&cs->hw.elsa.tl, (void *)elsa_led_handler, (long)cs);
+	cs->hw.elsa.tl.function = (void *) elsa_led_handler;
+	cs->hw.elsa.tl.data = (long) cs;
+	init_timer(&cs->hw.elsa.tl);
 	/* Teste Timer */
 	if (cs->hw.elsa.timer) {
 		byteout(cs->hw.elsa.trig, 0xff);

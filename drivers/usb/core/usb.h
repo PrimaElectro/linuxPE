@@ -1,8 +1,3 @@
-/*
- * Released under the GPLv2 only.
- * SPDX-License-Identifier: GPL-2.0
- */
-
 #include <linux/pm.h>
 #include <linux/acpi.h>
 

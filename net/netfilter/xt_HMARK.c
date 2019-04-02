@@ -84,7 +84,7 @@ hmark_ct_set_htuple(const struct sk_buff *skb, struct hmark_tuple *t,
 	struct nf_conntrack_tuple *otuple;
 	struct nf_conntrack_tuple *rtuple;
 
-	if (ct == NULL)
+	if (ct == NULL || nf_ct_is_untracked(ct))
 		return -1;
 
 	otuple = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;

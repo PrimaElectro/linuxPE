@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * H8S interrupt contoller driver
  *
@@ -74,7 +73,7 @@ static __init int irq_map(struct irq_domain *h, unsigned int virq,
        return 0;
 }
 
-static const struct irq_domain_ops irq_ops = {
+static struct irq_domain_ops irq_ops = {
        .map    = irq_map,
        .xlate  = irq_domain_xlate_onecell,
 };

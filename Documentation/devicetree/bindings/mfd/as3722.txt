@@ -122,7 +122,8 @@ Following are properties of regulator subnode.
 
 Power-off:
 =========
-AS3722 supports the system power off by turning off all its rails.
+AS3722 supports the system power off by turning off all its rail. This
+is provided through pm_power_off.
 The device node should have the following properties to enable this
 functionality
 ams,system-power-controller: Boolean, to enable the power off functionality

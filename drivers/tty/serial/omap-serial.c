@@ -1234,60 +1234,6 @@ out:
 
 #ifdef CONFIG_SERIAL_OMAP_CONSOLE
 
-#ifdef CONFIG_SERIAL_EARLYCON
-static unsigned int omap_serial_early_in(struct uart_port *port, int offset)
-{
-	offset <<= port->regshift;
-	return readw(port->membase + offset);
-}
-
-static void omap_serial_early_out(struct uart_port *port, int offset,
-				  int value)
-{
-	offset <<= port->regshift;
-	writew(value, port->membase + offset);
-}
-
-static void omap_serial_early_putc(struct uart_port *port, int c)
-{
-	unsigned int status;
-
-	for (;;) {
-		status = omap_serial_early_in(port, UART_LSR);
-		if ((status & BOTH_EMPTY) == BOTH_EMPTY)
-			break;
-		cpu_relax();
-	}
-	omap_serial_early_out(port, UART_TX, c);
-}
-
-static void early_omap_serial_write(struct console *console, const char *s,
-				    unsigned int count)
-{
-	struct earlycon_device *device = console->data;
-	struct uart_port *port = &device->port;
-
-	uart_console_write(port, s, count, omap_serial_early_putc);
-}
-
-static int __init early_omap_serial_setup(struct earlycon_device *device,
-					  const char *options)
-{
-	struct uart_port *port = &device->port;
-
-	if (!(device->port.membase || device->port.iobase))
-		return -ENODEV;
-
-	port->regshift = 2;
-	device->con->write = early_omap_serial_write;
-	return 0;
-}
-
-OF_EARLYCON_DECLARE(omapserial, "ti,omap2-uart", early_omap_serial_setup);
-OF_EARLYCON_DECLARE(omapserial, "ti,omap3-uart", early_omap_serial_setup);
-OF_EARLYCON_DECLARE(omapserial, "ti,omap4-uart", early_omap_serial_setup);
-#endif /* CONFIG_SERIAL_EARLYCON */
-
 static struct uart_omap_port *serial_omap_console_ports[OMAP_MAX_HSUART_PORTS];
 
 static struct uart_driver serial_omap_reg;
@@ -1311,13 +1257,10 @@ serial_omap_console_write(struct console *co, const char *s,
 
 	pm_runtime_get_sync(up->dev);
 
-	local_irq_save(flags);
-	if (up->port.sysrq)
-		locked = 0;
-	else if (oops_in_progress)
-		locked = spin_trylock(&up->port.lock);
+	if (up->port.sysrq || oops_in_progress)
+		locked = spin_trylock_irqsave(&up->port.lock, flags);
 	else
-		spin_lock(&up->port.lock);
+		spin_lock_irqsave(&up->port.lock, flags);
 
 	/*
 	 * First save the IER then disable the interrupts
@@ -1346,8 +1289,7 @@ serial_omap_console_write(struct console *co, const char *s,
 	pm_runtime_mark_last_busy(up->dev);
 	pm_runtime_put_autosuspend(up->dev);
 	if (locked)
-		spin_unlock(&up->port.lock);
-	local_irq_restore(flags);
+		spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static int __init
@@ -1449,7 +1391,7 @@ serial_omap_config_rs485(struct uart_port *port, struct serial_rs485 *rs485)
 	return 0;
 }
 
-static const struct uart_ops serial_omap_pops = {
+static struct uart_ops serial_omap_pops = {
 	.tx_empty	= serial_omap_tx_empty,
 	.set_mctrl	= serial_omap_set_mctrl,
 	.get_mctrl	= serial_omap_get_mctrl,
@@ -1596,9 +1538,6 @@ static struct omap_uart_port_info *of_get_uart_port_info(struct device *dev)
 
 	of_property_read_u32(dev->of_node, "clock-frequency",
 					 &omap_up_info->uartclk);
-
-	omap_up_info->flags = UPF_BOOT_AUTOCONF;
-
 	return omap_up_info;
 }
 

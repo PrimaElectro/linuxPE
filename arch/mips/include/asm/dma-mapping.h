@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_DMA_MAPPING_H
 #define _ASM_DMA_MAPPING_H
 
@@ -10,11 +9,14 @@
 #include <dma-coherence.h>
 #endif
 
-extern const struct dma_map_ops *mips_dma_map_ops;
+extern struct dma_map_ops *mips_dma_map_ops;
 
-static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
+static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 {
-	return mips_dma_map_ops;
+	if (dev && dev->archdata.dma_ops)
+		return dev->archdata.dma_ops;
+	else
+		return mips_dma_map_ops;
 }
 
 static inline bool dma_capable(struct device *dev, dma_addr_t addr, size_t size)

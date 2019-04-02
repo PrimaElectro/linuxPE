@@ -25,6 +25,7 @@
 
 #include <drm/drm_mm.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/rbtree.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>

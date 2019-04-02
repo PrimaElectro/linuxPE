@@ -45,6 +45,7 @@
 #include "sunxi-common-regulators.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	model = "Yones TopTech BS1078 v2 Tablet";
@@ -91,9 +92,10 @@
 
 &pio {
 	mmc0_cd_pin_bs1078v2: mmc0_cd_pin@0 {
-		pins = "PA8";
-		function = "gpio_in";
-		bias-pull-up;
+		allwinner,pins = "PA8";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 };
 
@@ -108,7 +110,7 @@
 };
 
 &mmc0_pins_a {
-	bias-pull-up;
+	allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 };
 
 &p2wi {

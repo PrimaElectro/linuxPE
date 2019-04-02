@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2017, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -627,5 +627,4 @@ acpi_trace_point(acpi_trace_event_type type, u8 begin, u8 *aml, char *pathname)
 }
 
 ACPI_EXPORT_SYMBOL(acpi_trace_point)
-
 #endif

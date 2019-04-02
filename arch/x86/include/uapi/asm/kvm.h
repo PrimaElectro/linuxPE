@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #ifndef _ASM_X86_KVM_H
 #define _ASM_X86_KVM_H
 
@@ -9,9 +8,6 @@
 
 #include <linux/types.h>
 #include <linux/ioctl.h>
-
-#define KVM_PIO_PAGE_OFFSET 1
-#define KVM_COALESCED_MMIO_PAGE_OFFSET 2
 
 #define DE_VECTOR 0
 #define DB_VECTOR 1
@@ -360,6 +356,5 @@ struct kvm_sync_regs {
 
 #define KVM_X86_QUIRK_LINT0_REENABLED	(1 << 0)
 #define KVM_X86_QUIRK_CD_NW_CLEARED	(1 << 1)
-#define KVM_X86_QUIRK_LAPIC_MMIO_HOLE	(1 << 2)
 
 #endif /* _ASM_X86_KVM_H */

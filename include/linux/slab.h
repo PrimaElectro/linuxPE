@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Written by Mark Hemment, 1996 (markhe@nextd.demon.co.uk).
  *
@@ -29,7 +28,7 @@
 #define SLAB_STORE_USER		0x00010000UL	/* DEBUG: Store the last owner for bug hunting */
 #define SLAB_PANIC		0x00040000UL	/* Panic if kmem_cache_create() fails */
 /*
- * SLAB_TYPESAFE_BY_RCU - **WARNING** READ THIS!
+ * SLAB_DESTROY_BY_RCU - **WARNING** READ THIS!
  *
  * This delays freeing the SLAB page by a grace period, it does _NOT_
  * delay object freeing. This means that if you do kmem_cache_free()
@@ -62,10 +61,8 @@
  *
  * rcu_read_lock before reading the address, then rcu_read_unlock after
  * taking the spinlock within the structure expected at that address.
- *
- * Note that SLAB_TYPESAFE_BY_RCU was originally named SLAB_DESTROY_BY_RCU.
  */
-#define SLAB_TYPESAFE_BY_RCU	0x00080000UL	/* Defer freeing slabs to RCU */
+#define SLAB_DESTROY_BY_RCU	0x00080000UL	/* Defer freeing slabs to RCU */
 #define SLAB_MEM_SPREAD		0x00100000UL	/* Spread some memory over cpuset */
 #define SLAB_TRACE		0x00200000UL	/* Trace allocations and frees */
 
@@ -78,6 +75,12 @@
 
 #define SLAB_NOLEAKTRACE	0x00800000UL	/* Avoid kmemleak tracing */
 
+/* Don't track use of uninitialized memory */
+#ifdef CONFIG_KMEMCHECK
+# define SLAB_NOTRACK		0x01000000UL
+#else
+# define SLAB_NOTRACK		0x00000000UL
+#endif
 #ifdef CONFIG_FAILSLAB
 # define SLAB_FAILSLAB		0x02000000UL	/* Fault injection mark */
 #else
@@ -466,8 +469,7 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
  *
  * %__GFP_NOWARN - If allocation fails, don't issue any warnings.
  *
- * %__GFP_RETRY_MAYFAIL - Try really hard to succeed the allocation but fail
- *   eventually.
+ * %__GFP_REPEAT - If allocation fails initially, try once more before failing.
  *
  * There are other flags available as well, but these are not intended
  * for general use, and so are not documented here. For a full list of
@@ -543,49 +545,22 @@ struct memcg_cache_array {
  * array to be accessed without taking any locks, on relocation we free the old
  * version only after a grace period.
  *
- * Root and child caches hold different metadata.
+ * Child caches will hold extra metadata needed for its operation. Fields are:
  *
- * @root_cache:	Common to root and child caches.  NULL for root, pointer to
- *		the root cache for children.
+ * @memcg: pointer to the memcg this cache belongs to
+ * @root_cache: pointer to the global, root cache, this cache was derived from
  *
- * The following fields are specific to root caches.
- *
- * @memcg_caches: kmemcg ID indexed table of child caches.  This table is
- *		used to index child cachces during allocation and cleared
- *		early during shutdown.
- *
- * @root_caches_node: List node for slab_root_caches list.
- *
- * @children:	List of all child caches.  While the child caches are also
- *		reachable through @memcg_caches, a child cache remains on
- *		this list until it is actually destroyed.
- *
- * The following fields are specific to child caches.
- *
- * @memcg:	Pointer to the memcg this cache belongs to.
- *
- * @children_node: List node for @root_cache->children list.
- *
- * @kmem_caches_node: List node for @memcg->kmem_caches list.
+ * Both root and child caches of the same kind are linked into a list chained
+ * through @list.
  */
 struct memcg_cache_params {
-	struct kmem_cache *root_cache;
+	bool is_root_cache;
+	struct list_head list;
 	union {
-		struct {
-			struct memcg_cache_array __rcu *memcg_caches;
-			struct list_head __root_caches_node;
-			struct list_head children;
-		};
+		struct memcg_cache_array __rcu *memcg_caches;
 		struct {
 			struct mem_cgroup *memcg;
-			struct list_head children_node;
-			struct list_head kmem_caches_node;
-
-			void (*deact_fn)(struct kmem_cache *);
-			union {
-				struct rcu_head deact_rcu_head;
-				struct work_struct deact_work;
-			};
+			struct kmem_cache *root_cache;
 		};
 	};
 };

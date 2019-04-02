@@ -11,15 +11,13 @@
 #include <linux/kernel.h>
 #include <linux/err.h>
 #include <linux/export.h>
-#include <linux/mtd/rawnand.h>
+#include <linux/mtd/nand.h>
 
 static const struct nand_data_interface onfi_sdr_timings[] = {
 	/* Mode 0 */
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 20000,
 			.tALS_min = 50000,
@@ -60,8 +58,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 10000,
 			.tALS_min = 25000,
@@ -102,8 +98,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 10000,
 			.tALS_min = 15000,
@@ -144,8 +138,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 5000,
 			.tALS_min = 10000,
@@ -186,8 +178,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 5000,
 			.tALS_min = 10000,
@@ -228,8 +218,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 	{
 		.type = NAND_SDR_IFACE,
 		.timings.sdr = {
-			.tCCS_min = 500000,
-			.tR_max = 200000000,
 			.tADL_min = 400000,
 			.tALH_min = 5000,
 			.tALS_min = 10000,
@@ -302,22 +290,10 @@ int onfi_init_data_interface(struct nand_chip *chip,
 	*iface = onfi_sdr_timings[timing_mode];
 
 	/*
-	 * Initialize timings that cannot be deduced from timing mode:
+	 * TODO: initialize timings that cannot be deduced from timing mode:
 	 * tR, tPROG, tCCS, ...
 	 * These information are part of the ONFI parameter page.
 	 */
-	if (chip->onfi_version) {
-		struct nand_onfi_params *params = &chip->onfi_params;
-		struct nand_sdr_timings *timings = &iface->timings.sdr;
-
-		/* microseconds -> picoseconds */
-		timings->tPROG_max = 1000000ULL * le16_to_cpu(params->t_prog);
-		timings->tBERS_max = 1000000ULL * le16_to_cpu(params->t_bers);
-		timings->tR_max = 1000000ULL * le16_to_cpu(params->t_r);
-
-		/* nanoseconds -> picoseconds */
-		timings->tCCS_min = 1000UL * le16_to_cpu(params->t_ccs);
-	}
 
 	return 0;
 }

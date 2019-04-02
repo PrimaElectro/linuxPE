@@ -355,12 +355,11 @@ static struct dentry *fuse_lookup(struct inode *dir, struct dentry *entry,
 	struct inode *inode;
 	struct dentry *newent;
 	bool outarg_valid = true;
-	bool locked;
 
-	locked = fuse_lock_inode(dir);
+	fuse_lock_inode(dir);
 	err = fuse_lookup_name(dir->i_sb, get_node_id(dir), &entry->d_name,
 			       &outarg, &inode);
-	fuse_unlock_inode(dir, locked);
+	fuse_unlock_inode(dir);
 	if (err == -ENOENT) {
 		outarg_valid = false;
 		err = 0;
@@ -474,7 +473,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	if (err) {
 		fuse_sync_release(ff, flags);
 	} else {
-		file->private_data = ff;
+		file->private_data = fuse_file_get(ff);
 		fuse_finish_open(inode, file);
 	}
 	return err;
@@ -924,27 +923,31 @@ static int fuse_do_getattr(struct inode *inode, struct kstat *stat,
 	return err;
 }
 
-static int fuse_update_get_attr(struct inode *inode, struct file *file,
-				struct kstat *stat)
+int fuse_update_attributes(struct inode *inode, struct kstat *stat,
+			   struct file *file, bool *refreshed)
 {
 	struct fuse_inode *fi = get_fuse_inode(inode);
-	int err = 0;
+	int err;
+	bool r;
 
 	if (time_before64(fi->i_time, get_jiffies_64())) {
+		r = true;
 		forget_all_cached_acls(inode);
 		err = fuse_do_getattr(inode, stat, file);
-	} else if (stat) {
-		generic_fillattr(inode, stat);
-		stat->mode = fi->orig_i_mode;
-		stat->ino = fi->orig_ino;
+	} else {
+		r = false;
+		err = 0;
+		if (stat) {
+			generic_fillattr(inode, stat);
+			stat->mode = fi->orig_i_mode;
+			stat->ino = fi->orig_ino;
+		}
 	}
 
-	return err;
-}
+	if (refreshed != NULL)
+		*refreshed = r;
 
-int fuse_update_attributes(struct inode *inode, struct file *file)
-{
-	return fuse_update_get_attr(inode, file, NULL);
+	return err;
 }
 
 int fuse_reverse_inval_entry(struct super_block *sb, u64 parent_nodeid,
@@ -1188,7 +1191,7 @@ static int fuse_direntplus_link(struct file *file,
 	struct inode *dir = d_inode(parent);
 	struct fuse_conn *fc;
 	struct inode *inode;
-	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq);
+	DECLARE_SWAIT_QUEUE_HEAD_ONSTACK(wq);
 
 	if (!o->nodeid) {
 		/*
@@ -1333,7 +1336,6 @@ static int fuse_readdir(struct file *file, struct dir_context *ctx)
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct fuse_req *req;
 	u64 attr_version = 0;
-	bool locked;
 
 	if (is_bad_inode(inode))
 		return -EIO;
@@ -1361,9 +1363,9 @@ static int fuse_readdir(struct file *file, struct dir_context *ctx)
 		fuse_read_fill(req, file, ctx->pos, PAGE_SIZE,
 			       FUSE_READDIR);
 	}
-	locked = fuse_lock_inode(inode);
+	fuse_lock_inode(inode);
 	fuse_request_send(fc, req);
-	fuse_unlock_inode(inode, locked);
+	fuse_unlock_inode(inode);
 	nbytes = req->out.args[0].size;
 	err = req->out.h.error;
 	fuse_put_request(fc, req);
@@ -1424,7 +1426,7 @@ static int fuse_dir_open(struct inode *inode, struct file *file)
 
 static int fuse_dir_release(struct inode *inode, struct file *file)
 {
-	fuse_release_common(file, true);
+	fuse_release_common(file, FUSE_RELEASEDIR);
 
 	return 0;
 }
@@ -1631,19 +1633,8 @@ int fuse_do_setattr(struct dentry *dentry, struct iattr *attr,
 		return err;
 
 	if (attr->ia_valid & ATTR_OPEN) {
-		/* This is coming from open(..., ... | O_TRUNC); */
-		WARN_ON(!(attr->ia_valid & ATTR_SIZE));
-		WARN_ON(attr->ia_size != 0);
-		if (fc->atomic_o_trunc) {
-			/*
-			 * No need to send request to userspace, since actual
-			 * truncation has already been done by OPEN.  But still
-			 * need to truncate page cache.
-			 */
-			i_size_write(inode, 0);
-			truncate_pagecache(inode, 0);
+		if (fc->atomic_o_trunc)
 			return 0;
-		}
 		file = NULL;
 	}
 
@@ -1787,16 +1778,16 @@ static int fuse_setattr(struct dentry *entry, struct iattr *attr)
 	return ret;
 }
 
-static int fuse_getattr(const struct path *path, struct kstat *stat,
-			u32 request_mask, unsigned int flags)
+static int fuse_getattr(struct vfsmount *mnt, struct dentry *entry,
+			struct kstat *stat)
 {
-	struct inode *inode = d_inode(path->dentry);
+	struct inode *inode = d_inode(entry);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 
 	if (!fuse_allow_current_process(fc))
 		return -EACCES;
 
-	return fuse_update_get_attr(inode, NULL, stat);
+	return fuse_update_attributes(inode, stat, NULL, NULL);
 }
 
 static const struct inode_operations fuse_dir_inode_operations = {
@@ -1841,6 +1832,7 @@ static const struct inode_operations fuse_common_inode_operations = {
 static const struct inode_operations fuse_symlink_inode_operations = {
 	.setattr	= fuse_setattr,
 	.get_link	= fuse_get_link,
+	.readlink	= generic_readlink,
 	.getattr	= fuse_getattr,
 	.listxattr	= fuse_listxattr,
 };

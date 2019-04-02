@@ -77,7 +77,8 @@ static int _tda10021_writereg (struct tda10021_state* state, u8 reg, u8 data)
 
 	ret = i2c_transfer (state->i2c, &msg, 1);
 	if (ret != 1)
-		printk("DVB: TDA10021(%d): %s, writereg error (reg == 0x%02x, val == 0x%02x, ret == %i)\n",
+		printk("DVB: TDA10021(%d): %s, writereg error "
+			"(reg == 0x%02x, val == 0x%02x, ret == %i)\n",
 			state->frontend.dvb->num, __func__, reg, data, ret);
 
 	msleep(10);
@@ -443,7 +444,7 @@ static void tda10021_release(struct dvb_frontend* fe)
 	kfree(state);
 }
 
-static const struct dvb_frontend_ops tda10021_ops;
+static struct dvb_frontend_ops tda10021_ops;
 
 struct dvb_frontend* tda10021_attach(const struct tda1002x_config* config,
 				     struct i2c_adapter* i2c,
@@ -483,7 +484,7 @@ error:
 	return NULL;
 }
 
-static const struct dvb_frontend_ops tda10021_ops = {
+static struct dvb_frontend_ops tda10021_ops = {
 	.delsys = { SYS_DVBC_ANNEX_A, SYS_DVBC_ANNEX_C },
 	.info = {
 		.name = "Philips TDA10021 DVB-C",

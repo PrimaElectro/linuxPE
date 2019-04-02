@@ -1,9 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __EXTENTMAP__
 #define __EXTENTMAP__
 
 #include <linux/rbtree.h>
-#include <linux/refcount.h>
 
 #define EXTENT_MAP_LAST_BYTE ((u64)-4)
 #define EXTENT_MAP_HOLE ((u64)-3)
@@ -43,7 +41,7 @@ struct extent_map {
 		 */
 		struct map_lookup *map_lookup;
 	};
-	refcount_t refs;
+	atomic_t refs;
 	unsigned int compress_type;
 	struct list_head list;
 };

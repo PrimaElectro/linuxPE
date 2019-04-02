@@ -35,8 +35,6 @@
 #include <linux/mmc/mmc.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
-#include <linux/mmc/slot-gpio.h>
-#include <linux/interrupt.h>
 
 #include <linux/platform_data/mmc-davinci.h>
 
@@ -478,14 +476,18 @@ static int mmc_davinci_start_dma_transfer(struct mmc_davinci_host *host,
 	int ret = 0;
 
 	host->sg_len = dma_map_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
-				  mmc_get_dma_dir(data));
+				((data->flags & MMC_DATA_WRITE)
+				? DMA_TO_DEVICE
+				: DMA_FROM_DEVICE));
 
 	/* no individual DMA segment should need a partial FIFO */
 	for (i = 0; i < host->sg_len; i++) {
 		if (sg_dma_len(data->sg + i) & mask) {
 			dma_unmap_sg(mmc_dev(host->mmc),
-				     data->sg, data->sg_len,
-				     mmc_get_dma_dir(data));
+					data->sg, data->sg_len,
+					(data->flags & MMC_DATA_WRITE)
+					? DMA_TO_DEVICE
+					: DMA_FROM_DEVICE);
 			return -1;
 		}
 	}
@@ -798,7 +800,9 @@ mmc_davinci_xfer_done(struct mmc_davinci_host *host, struct mmc_data *data)
 		davinci_abort_dma(host);
 
 		dma_unmap_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
-			     mmc_get_dma_dir(data));
+			     (data->flags & MMC_DATA_WRITE)
+			     ? DMA_TO_DEVICE
+			     : DMA_FROM_DEVICE);
 		host->do_dma = false;
 	}
 	host->data_dir = DAVINCI_MMC_DATADIR_NONE;
@@ -1025,10 +1029,9 @@ static int mmc_davinci_get_cd(struct mmc_host *mmc)
 	struct platform_device *pdev = to_platform_device(mmc->parent);
 	struct davinci_mmc_config *config = pdev->dev.platform_data;
 
-	if (config && config->get_cd)
-		return config->get_cd(pdev->id);
-
-	return mmc_gpio_get_cd(mmc);
+	if (!config || !config->get_cd)
+		return -ENOSYS;
+	return config->get_cd(pdev->id);
 }
 
 static int mmc_davinci_get_ro(struct mmc_host *mmc)
@@ -1036,10 +1039,9 @@ static int mmc_davinci_get_ro(struct mmc_host *mmc)
 	struct platform_device *pdev = to_platform_device(mmc->parent);
 	struct davinci_mmc_config *config = pdev->dev.platform_data;
 
-	if (config && config->get_ro)
-		return config->get_ro(pdev->id);
-
-	return mmc_gpio_get_ro(mmc);
+	if (!config || !config->get_ro)
+		return -ENOSYS;
+	return config->get_ro(pdev->id);
 }
 
 static void mmc_davinci_enable_sdio_irq(struct mmc_host *mmc, int enable)
@@ -1062,7 +1064,7 @@ static void mmc_davinci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	}
 }
 
-static const struct mmc_host_ops mmc_davinci_ops = {
+static struct mmc_host_ops mmc_davinci_ops = {
 	.request	= mmc_davinci_request,
 	.set_ios	= mmc_davinci_set_ios,
 	.get_cd		= mmc_davinci_get_cd,
@@ -1157,59 +1159,61 @@ static const struct of_device_id davinci_mmc_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, davinci_mmc_dt_ids);
 
-static int mmc_davinci_parse_pdata(struct mmc_host *mmc)
+static struct davinci_mmc_config
+	*mmc_parse_pdata(struct platform_device *pdev)
 {
-	struct platform_device *pdev = to_platform_device(mmc->parent);
+	struct device_node *np;
 	struct davinci_mmc_config *pdata = pdev->dev.platform_data;
-	struct mmc_davinci_host *host;
-	int ret;
+	const struct of_device_id *match =
+		of_match_device(davinci_mmc_dt_ids, &pdev->dev);
+	u32 data;
 
-	if (!pdata)
-		return -EINVAL;
+	np = pdev->dev.of_node;
+	if (!np)
+		return pdata;
 
-	host = mmc_priv(mmc);
-	if (!host)
-		return -EINVAL;
+	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		dev_err(&pdev->dev, "Failed to allocate memory for struct davinci_mmc_config\n");
+		goto nodata;
+	}
 
-	if (pdata && pdata->nr_sg)
-		host->nr_sg = pdata->nr_sg - 1;
+	if (match)
+		pdev->id_entry = match->data;
 
-	if (pdata && (pdata->wires == 4 || pdata->wires == 0))
-		mmc->caps |= MMC_CAP_4_BIT_DATA;
+	if (of_property_read_u32(np, "max-frequency", &pdata->max_freq))
+		dev_info(&pdev->dev, "'max-frequency' property not specified, defaulting to 25MHz\n");
 
-	if (pdata && (pdata->wires == 8))
-		mmc->caps |= (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA);
-
-	mmc->f_min = 312500;
-	mmc->f_max = 25000000;
-	if (pdata && pdata->max_freq)
-		mmc->f_max = pdata->max_freq;
-	if (pdata && pdata->caps)
-		mmc->caps |= pdata->caps;
-
-	/* Register a cd gpio, if there is not one, enable polling */
-	ret = mmc_gpiod_request_cd(mmc, "cd", 0, false, 0, NULL);
-	if (ret == -EPROBE_DEFER)
-		return ret;
-	else if (ret)
-		mmc->caps |= MMC_CAP_NEEDS_POLL;
-
-	ret = mmc_gpiod_request_ro(mmc, "wp", 0, false, 0, NULL);
-	if (ret == -EPROBE_DEFER)
-		return ret;
-
-	return 0;
+	of_property_read_u32(np, "bus-width", &data);
+	switch (data) {
+	case 1:
+	case 4:
+	case 8:
+		pdata->wires = data;
+		break;
+	default:
+		pdata->wires = 1;
+		dev_info(&pdev->dev, "Unsupported buswidth, defaulting to 1 bit\n");
+	}
+nodata:
+	return pdata;
 }
 
 static int __init davinci_mmcsd_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *match;
+	struct davinci_mmc_config *pdata = NULL;
 	struct mmc_davinci_host *host = NULL;
 	struct mmc_host *mmc = NULL;
 	struct resource *r, *mem = NULL;
 	int ret, irq;
 	size_t mem_size;
 	const struct platform_device_id *id_entry;
+
+	pdata = mmc_parse_pdata(pdev);
+	if (pdata == NULL) {
+		dev_err(&pdev->dev, "Couldn't get platform data\n");
+		return -ENOENT;
+	}
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r)
@@ -1249,27 +1253,13 @@ static int __init davinci_mmcsd_probe(struct platform_device *pdev)
 
 	host->mmc_input_clk = clk_get_rate(host->clk);
 
-	match = of_match_device(davinci_mmc_dt_ids, &pdev->dev);
-	if (match) {
-		pdev->id_entry = match->data;
-		ret = mmc_of_parse(mmc);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"could not parse of data: %d\n", ret);
-			goto parse_fail;
-		}
-	} else {
-		ret = mmc_davinci_parse_pdata(mmc);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"could not parse platform data: %d\n", ret);
-			goto parse_fail;
-	}	}
+	init_mmcsd_host(host);
+
+	if (pdata->nr_sg)
+		host->nr_sg = pdata->nr_sg - 1;
 
 	if (host->nr_sg > MAX_NR_SG || !host->nr_sg)
 		host->nr_sg = MAX_NR_SG;
-
-	init_mmcsd_host(host);
 
 	host->use_dma = use_dma;
 	host->mmc_irq = irq;
@@ -1283,13 +1273,27 @@ static int __init davinci_mmcsd_probe(struct platform_device *pdev)
 			host->use_dma = 0;
 	}
 
+	/* REVISIT:  someday, support IRQ-driven card detection.  */
+	mmc->caps |= MMC_CAP_NEEDS_POLL;
 	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY;
+
+	if (pdata && (pdata->wires == 4 || pdata->wires == 0))
+		mmc->caps |= MMC_CAP_4_BIT_DATA;
+
+	if (pdata && (pdata->wires == 8))
+		mmc->caps |= (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA);
 
 	id_entry = platform_get_device_id(pdev);
 	if (id_entry)
 		host->version = id_entry->driver_data;
 
 	mmc->ops = &mmc_davinci_ops;
+	mmc->f_min = 312500;
+	mmc->f_max = 25000000;
+	if (pdata && pdata->max_freq)
+		mmc->f_max = pdata->max_freq;
+	if (pdata && pdata->caps)
+		mmc->caps |= pdata->caps;
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
 
 	/* With no iommu coalescing pages, each phys_seg is a hw_seg.
@@ -1350,7 +1354,6 @@ mmc_add_host_fail:
 	mmc_davinci_cpufreq_deregister(host);
 cpu_freq_fail:
 	davinci_release_dma_channels(host);
-parse_fail:
 dma_probe_defer:
 	clk_disable_unprepare(host->clk);
 clk_prepare_enable_fail:

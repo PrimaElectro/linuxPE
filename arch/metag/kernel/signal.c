@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  Copyright (C) 1991,1992  Linus Torvalds
  *  Copyright (C) 2005-2012  Imagination Technologies Ltd.
@@ -8,7 +7,6 @@
  */
 
 #include <linux/sched.h>
-#include <linux/sched/task_stack.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
 #include <linux/kernel.h>

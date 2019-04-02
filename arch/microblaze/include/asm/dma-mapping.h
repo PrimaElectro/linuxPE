@@ -28,15 +28,17 @@
 #include <asm/io.h>
 #include <asm/cacheflush.h>
 
+#define DMA_ERROR_CODE		(~(dma_addr_t)0x0)
+
 #define __dma_alloc_coherent(dev, gfp, size, handle)	NULL
 #define __dma_free_coherent(size, addr)		((void)0)
 
 /*
  * Available generic sets of operations
  */
-extern const struct dma_map_ops dma_direct_ops;
+extern struct dma_map_ops dma_direct_ops;
 
-static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
+static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 {
 	return &dma_direct_ops;
 }

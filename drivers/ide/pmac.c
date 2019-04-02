@@ -920,7 +920,6 @@ static u8 pmac_ide_cable_detect(ide_hwif_t *hwif)
 	struct device_node *root = of_find_node_by_path("/");
 	const char *model = of_get_property(root, "model", NULL);
 
-	of_node_put(root);
 	/* Get cable type from device-tree. */
 	if (cable && !strncmp(cable, "80-", 3)) {
 		/* Some drives fail to detect 80c cable in PowerBook */
@@ -1146,8 +1145,8 @@ static int pmac_ide_macio_attach(struct macio_dev *mdev,
 		return -ENOMEM;
 
 	if (macio_resource_count(mdev) == 0) {
-		printk(KERN_WARNING "ide-pmac: no address for %pOF\n",
-				    mdev->ofdev.dev.of_node);
+		printk(KERN_WARNING "ide-pmac: no address for %s\n",
+				    mdev->ofdev.dev.of_node->full_name);
 		rc = -ENXIO;
 		goto out_free_pmif;
 	}
@@ -1155,7 +1154,7 @@ static int pmac_ide_macio_attach(struct macio_dev *mdev,
 	/* Request memory resource for IO ports */
 	if (macio_request_resource(mdev, 0, "ide-pmac (ports)")) {
 		printk(KERN_ERR "ide-pmac: can't request MMIO resource for "
-				"%pOF!\n", mdev->ofdev.dev.of_node);
+				"%s!\n", mdev->ofdev.dev.of_node->full_name);
 		rc = -EBUSY;
 		goto out_free_pmif;
 	}
@@ -1166,8 +1165,8 @@ static int pmac_ide_macio_attach(struct macio_dev *mdev,
 	 * where that happens though...
 	 */
 	if (macio_irq_count(mdev) == 0) {
-		printk(KERN_WARNING "ide-pmac: no intrs for device %pOF, using "
-				    "13\n", mdev->ofdev.dev.of_node);
+		printk(KERN_WARNING "ide-pmac: no intrs for device %s, using "
+				    "13\n", mdev->ofdev.dev.of_node->full_name);
 		irq = irq_create_mapping(NULL, 13);
 	} else
 		irq = macio_irq(mdev, 0);
@@ -1184,8 +1183,8 @@ static int pmac_ide_macio_attach(struct macio_dev *mdev,
 	if (macio_resource_count(mdev) >= 2) {
 		if (macio_request_resource(mdev, 1, "ide-pmac (dma)"))
 			printk(KERN_WARNING "ide-pmac: can't request DMA "
-					    "resource for %pOF!\n",
-					    mdev->ofdev.dev.of_node);
+					    "resource for %s!\n",
+					    mdev->ofdev.dev.of_node->full_name);
 		else
 			pmif->dma_regs = ioremap(macio_resource_start(mdev, 1), 0x1000);
 	} else
@@ -1275,7 +1274,7 @@ static int pmac_ide_pci_attach(struct pci_dev *pdev,
 
 	if (pci_enable_device(pdev)) {
 		printk(KERN_WARNING "ide-pmac: Can't enable PCI device for "
-				    "%pOF\n", np);
+				    "%s\n", np->full_name);
 		rc = -ENXIO;
 		goto out_free_pmif;
 	}
@@ -1283,7 +1282,7 @@ static int pmac_ide_pci_attach(struct pci_dev *pdev,
 			
 	if (pci_request_regions(pdev, "Kauai ATA")) {
 		printk(KERN_ERR "ide-pmac: Cannot obtain PCI resources for "
-				"%pOF\n", np);
+				"%s\n", np->full_name);
 		rc = -ENXIO;
 		goto out_free_pmif;
 	}

@@ -136,8 +136,6 @@ __xfs_dir3_data_check(
 		 */
 		if (be16_to_cpu(dup->freetag) == XFS_DIR2_DATA_FREE_TAG) {
 			XFS_WANT_CORRUPTED_RETURN(mp, lastfree == 0);
-			XFS_WANT_CORRUPTED_RETURN(mp, endp >=
-					p + be16_to_cpu(dup->length));
 			XFS_WANT_CORRUPTED_RETURN(mp,
 				be16_to_cpu(*xfs_dir2_data_unused_tag_p(dup)) ==
 					       (char *)dup - (char *)hdr);
@@ -166,8 +164,6 @@ __xfs_dir3_data_check(
 		XFS_WANT_CORRUPTED_RETURN(mp, dep->namelen != 0);
 		XFS_WANT_CORRUPTED_RETURN(mp,
 			!xfs_dir_ino_validate(mp, be64_to_cpu(dep->inumber)));
-		XFS_WANT_CORRUPTED_RETURN(mp, endp >=
-				p + ops->data_entsize(dep->namelen));
 		XFS_WANT_CORRUPTED_RETURN(mp,
 			be16_to_cpu(*ops->data_entry_tag_p(dep)) ==
 					       (char *)dep - (char *)hdr);
@@ -509,9 +505,8 @@ xfs_dir2_data_freeremove(
  * Given a data block, reconstruct its bestfree map.
  */
 void
-xfs_dir2_data_freescan_int(
-	struct xfs_da_geometry	*geo,
-	const struct xfs_dir_ops *ops,
+xfs_dir2_data_freescan(
+	struct xfs_inode	*dp,
 	struct xfs_dir2_data_hdr *hdr,
 	int			*loghead)
 {
@@ -521,6 +516,7 @@ xfs_dir2_data_freescan_int(
 	struct xfs_dir2_data_free *bf;
 	char			*endp;		/* end of block's data */
 	char			*p;		/* current entry pointer */
+	struct xfs_da_geometry	*geo = dp->i_mount->m_dir_geo;
 
 	ASSERT(hdr->magic == cpu_to_be32(XFS_DIR2_DATA_MAGIC) ||
 	       hdr->magic == cpu_to_be32(XFS_DIR3_DATA_MAGIC) ||
@@ -530,13 +526,13 @@ xfs_dir2_data_freescan_int(
 	/*
 	 * Start by clearing the table.
 	 */
-	bf = ops->data_bestfree_p(hdr);
+	bf = dp->d_ops->data_bestfree_p(hdr);
 	memset(bf, 0, sizeof(*bf) * XFS_DIR2_DATA_FD_COUNT);
 	*loghead = 1;
 	/*
 	 * Set up pointers.
 	 */
-	p = (char *)ops->data_entry_p(hdr);
+	p = (char *)dp->d_ops->data_entry_p(hdr);
 	if (hdr->magic == cpu_to_be32(XFS_DIR2_BLOCK_MAGIC) ||
 	    hdr->magic == cpu_to_be32(XFS_DIR3_BLOCK_MAGIC)) {
 		btp = xfs_dir2_block_tail_p(geo, hdr);
@@ -563,20 +559,10 @@ xfs_dir2_data_freescan_int(
 		else {
 			dep = (xfs_dir2_data_entry_t *)p;
 			ASSERT((char *)dep - (char *)hdr ==
-			       be16_to_cpu(*ops->data_entry_tag_p(dep)));
-			p += ops->data_entsize(dep->namelen);
+			       be16_to_cpu(*dp->d_ops->data_entry_tag_p(dep)));
+			p += dp->d_ops->data_entsize(dep->namelen);
 		}
 	}
-}
-
-void
-xfs_dir2_data_freescan(
-	struct xfs_inode	*dp,
-	struct xfs_dir2_data_hdr *hdr,
-	int			*loghead)
-{
-	return xfs_dir2_data_freescan_int(dp->i_mount->m_dir_geo, dp->d_ops,
-			hdr, loghead);
 }
 
 /*

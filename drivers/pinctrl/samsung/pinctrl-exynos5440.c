@@ -1,8 +1,6 @@
 /*
  * pin-controller/pin-mux/pin-config/gpio-driver for Samsung's EXYNOS5440 SoC.
  *
- * Author: Thomas Abraham <thomas.ab@samsung.com>
- *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
@@ -12,7 +10,7 @@
  * (at your option) any later version.
  */
 
-#include <linux/init.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/slab.h>
@@ -993,6 +991,7 @@ static const struct of_device_id exynos5440_pinctrl_dt_match[] = {
 	{ .compatible = "samsung,exynos5440-pinctrl" },
 	{},
 };
+MODULE_DEVICE_TABLE(of, exynos5440_pinctrl_dt_match);
 
 static struct platform_driver exynos5440_pinctrl_driver = {
 	.probe		= exynos5440_pinctrl_probe,
@@ -1008,3 +1007,13 @@ static int __init exynos5440_pinctrl_drv_register(void)
 	return platform_driver_register(&exynos5440_pinctrl_driver);
 }
 postcore_initcall(exynos5440_pinctrl_drv_register);
+
+static void __exit exynos5440_pinctrl_drv_unregister(void)
+{
+	platform_driver_unregister(&exynos5440_pinctrl_driver);
+}
+module_exit(exynos5440_pinctrl_drv_unregister);
+
+MODULE_AUTHOR("Thomas Abraham <thomas.ab@samsung.com>");
+MODULE_DESCRIPTION("Samsung EXYNOS5440 SoC pinctrl driver");
+MODULE_LICENSE("GPL v2");

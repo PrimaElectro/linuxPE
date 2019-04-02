@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/arch/sh/kernel/irq.c
  *
@@ -17,7 +16,7 @@
 #include <linux/ratelimit.h>
 #include <asm/processor.h>
 #include <asm/machvec.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/thread_info.h>
 #include <cpu/mmu_context.h>
 
@@ -100,7 +99,7 @@ static inline void handle_one_irq(unsigned int irq)
 			"mov	%0, r4		\n"
 			"mov	r15, r8		\n"
 			"jsr	@%1		\n"
-			/* switch to the irq stack */
+			/* swith to the irq stack */
 			" mov	%2, r15		\n"
 			/* restore the stack (ring zero) */
 			"mov	r8, r15		\n"
@@ -148,6 +147,7 @@ void irq_ctx_exit(int cpu)
 	hardirq_ctx[cpu] = NULL;
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 void do_softirq_own_stack(void)
 {
 	struct thread_info *curctx;
@@ -175,6 +175,7 @@ void do_softirq_own_stack(void)
 		  "r5", "r6", "r7", "r8", "r9", "r15", "t", "pr"
 	);
 }
+#endif
 #else
 static inline void handle_one_irq(unsigned int irq)
 {

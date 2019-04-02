@@ -41,7 +41,7 @@
 #include <linux/capability.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/string.h>
 #include <linux/net.h>
@@ -51,7 +51,7 @@
 #include <linux/slab.h>
 #include <net/sock.h>
 #include <net/tcp_states.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/fcntl.h>
 #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
 #include <linux/notifier.h>
@@ -74,7 +74,7 @@ DEFINE_RWLOCK(x25_list_lock);
 
 static const struct proto_ops x25_proto_ops;
 
-static const struct x25_address null_x25_address = {"               "};
+static struct x25_address null_x25_address = {"               "};
 
 #ifdef CONFIG_COMPAT
 struct compat_x25_subscrip_struct {
@@ -352,15 +352,17 @@ static unsigned int x25_new_lci(struct x25_neigh *nb)
 	unsigned int lci = 1;
 	struct sock *sk;
 
-	while ((sk = x25_find_socket(lci, nb)) != NULL) {
+	read_lock_bh(&x25_list_lock);
+
+	while ((sk = __x25_find_socket(lci, nb)) != NULL) {
 		sock_put(sk);
 		if (++lci == 4096) {
 			lci = 0;
 			break;
 		}
-		cond_resched();
 	}
 
+	read_unlock_bh(&x25_list_lock);
 	return lci;
 }
 
@@ -850,8 +852,7 @@ static int x25_wait_for_data(struct sock *sk, long timeout)
 	return rc;
 }
 
-static int x25_accept(struct socket *sock, struct socket *newsock, int flags,
-		      bool kern)
+static int x25_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	struct sock *sk = sock->sk;
 	struct sock *newsk;
@@ -1789,40 +1790,32 @@ void x25_kill_by_neigh(struct x25_neigh *nb)
 
 static int __init x25_init(void)
 {
-	int rc;
+	int rc = proto_register(&x25_proto, 0);
 
-	rc = proto_register(&x25_proto, 0);
-	if (rc)
+	if (rc != 0)
 		goto out;
 
 	rc = sock_register(&x25_family_ops);
-	if (rc)
+	if (rc != 0)
 		goto out_proto;
 
 	dev_add_pack(&x25_packet_type);
 
 	rc = register_netdevice_notifier(&x25_dev_notifier);
-	if (rc)
+	if (rc != 0)
 		goto out_sock;
-
-	rc = x25_register_sysctl();
-	if (rc)
-		goto out_dev;
-
-	rc = x25_proc_init();
-	if (rc)
-		goto out_sysctl;
 
 	pr_info("Linux Version 0.2\n");
 
+	x25_register_sysctl();
+	rc = x25_proc_init();
+	if (rc != 0)
+		goto out_dev;
 out:
 	return rc;
-out_sysctl:
-	x25_unregister_sysctl();
 out_dev:
 	unregister_netdevice_notifier(&x25_dev_notifier);
 out_sock:
-	dev_remove_pack(&x25_packet_type);
 	sock_unregister(AF_X25);
 out_proto:
 	proto_unregister(&x25_proto);

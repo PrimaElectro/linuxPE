@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0
 #
 # Makefile for USB Core files and filesystem
 #
@@ -9,7 +8,7 @@ usbcore-y += devio.o notify.o generic.o quirks.o devices.o
 usbcore-y += port.o
 
 usbcore-$(CONFIG_OF)		+= of.o
-usbcore-$(CONFIG_USB_PCI)		+= hcd-pci.o
+usbcore-$(CONFIG_PCI)		+= hcd-pci.o
 usbcore-$(CONFIG_ACPI)		+= usb-acpi.o
 
 obj-$(CONFIG_USB)		+= usbcore.o

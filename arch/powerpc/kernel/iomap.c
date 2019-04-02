@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * ppc64 "iomap" interface implementation.
  *
@@ -9,7 +8,6 @@
 #include <linux/export.h>
 #include <asm/io.h>
 #include <asm/pci-bridge.h>
-#include <asm/isa-bridge.h>
 
 /*
  * Here comes the ppc64 implementation of the IOMAP 

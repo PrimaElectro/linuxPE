@@ -26,12 +26,6 @@ static bool rpfilter_addr_unicast(const struct in6_addr *addr)
 	return addr_type & IPV6_ADDR_UNICAST;
 }
 
-static bool rpfilter_addr_linklocal(const struct in6_addr *addr)
-{
-	int addr_type = ipv6_addr_type(addr);
-	return addr_type & IPV6_ADDR_LINKLOCAL;
-}
-
 static bool rpfilter_lookup_reverse6(struct net *net, const struct sk_buff *skb,
 				     const struct net_device *dev, u8 flags)
 {
@@ -54,12 +48,10 @@ static bool rpfilter_lookup_reverse6(struct net *net, const struct sk_buff *skb,
 	}
 
 	fl6.flowi6_mark = flags & XT_RPFILTER_VALID_MARK ? skb->mark : 0;
-
-	if (rpfilter_addr_linklocal(&iph->saddr)) {
+	if ((flags & XT_RPFILTER_LOOSE) == 0) {
+		fl6.flowi6_oif = dev->ifindex;
 		lookup_flags |= RT6_LOOKUP_F_IFACE;
-		fl6.flowi6_oif = dev->ifindex;
-	} else if ((flags & XT_RPFILTER_LOOSE) == 0)
-		fl6.flowi6_oif = dev->ifindex;
+	}
 
 	rt = (void *) ip6_route_lookup(net, &fl6, lookup_flags);
 	if (rt->dst.error)
@@ -80,10 +72,10 @@ static bool rpfilter_lookup_reverse6(struct net *net, const struct sk_buff *skb,
 	return ret;
 }
 
-static bool
-rpfilter_is_loopback(const struct sk_buff *skb, const struct net_device *in)
+static bool rpfilter_is_local(const struct sk_buff *skb)
 {
-	return skb->pkt_type == PACKET_LOOPBACK || in->flags & IFF_LOOPBACK;
+	const struct rt6_info *rt = (const void *) skb_dst(skb);
+	return rt && (rt->rt6i_flags & RTF_LOCAL);
 }
 
 static bool rpfilter_mt(const struct sk_buff *skb, struct xt_action_param *par)
@@ -93,7 +85,7 @@ static bool rpfilter_mt(const struct sk_buff *skb, struct xt_action_param *par)
 	struct ipv6hdr *iph;
 	bool invert = info->flags & XT_RPFILTER_INVERT;
 
-	if (rpfilter_is_loopback(skb, xt_in(par)))
+	if (rpfilter_is_local(skb))
 		return true ^ invert;
 
 	iph = ipv6_hdr(skb);
@@ -101,8 +93,7 @@ static bool rpfilter_mt(const struct sk_buff *skb, struct xt_action_param *par)
 	if (unlikely(saddrtype == IPV6_ADDR_ANY))
 		return true ^ invert; /* not routable: forward path will drop it */
 
-	return rpfilter_lookup_reverse6(xt_net(par), skb, xt_in(par),
-					info->flags) ^ invert;
+	return rpfilter_lookup_reverse6(par->net, skb, par->in, info->flags) ^ invert;
 }
 
 static int rpfilter_check(const struct xt_mtchk_param *par)

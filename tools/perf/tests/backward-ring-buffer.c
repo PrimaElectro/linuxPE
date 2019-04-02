@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Test backward bit in event attribute, read ring buffer from end to
  * beginning
@@ -9,7 +8,6 @@
 #include <sys/prctl.h>
 #include "tests.h"
 #include "debug.h"
-#include <errno.h>
 
 #define NR_ITERS 111
 
@@ -76,7 +74,7 @@ static int do_test(struct perf_evlist *evlist, int mmap_pages,
 }
 
 
-int test__backward_ring_buffer(struct test *test __maybe_unused, int subtest __maybe_unused)
+int test__backward_ring_buffer(int subtest __maybe_unused)
 {
 	int ret = TEST_SKIP, err, sample_count = 0, comm_count = 0;
 	char pid[16], sbuf[STRERR_BUFSIZE];
@@ -99,7 +97,7 @@ int test__backward_ring_buffer(struct test *test __maybe_unused, int subtest __m
 
 	evlist = perf_evlist__new();
 	if (!evlist) {
-		pr_debug("Not enough memory to create evlist\n");
+		pr_debug("No enough memory to create evlist\n");
 		return TEST_FAIL;
 	}
 

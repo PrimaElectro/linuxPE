@@ -472,7 +472,7 @@ struct net2272 {
 	unsigned int base_shift;
 	u16 __iomem *base_addr;
 	union {
-#ifdef CONFIG_USB_PCI
+#ifdef CONFIG_PCI
 		struct {
 			void __iomem *plx9054_base_addr;
 			void __iomem *epld_base_addr;

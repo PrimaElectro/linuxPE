@@ -15,7 +15,6 @@
 
 #include <linux/rbtree.h>
 #include <linux/list.h>
-#include <errno.h>
 #include "thread.h"
 #include "event.h"
 #include "machine.h"

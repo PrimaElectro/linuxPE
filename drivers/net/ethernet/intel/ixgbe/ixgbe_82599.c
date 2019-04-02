@@ -331,6 +331,8 @@ static s32 ixgbe_init_phy_ops_82599(struct ixgbe_hw *hw)
 	case ixgbe_phy_tn:
 		phy->ops.check_link = &ixgbe_check_phy_link_tnx;
 		phy->ops.setup_link = &ixgbe_setup_phy_link_tnx;
+		phy->ops.get_firmware_version =
+			     &ixgbe_get_phy_firmware_version_tnx;
 		break;
 	default:
 		break;
@@ -1449,7 +1451,7 @@ do { \
  *  @atr_input: input bitstream to compute the hash on
  *  @input_mask: mask for the input bitstream
  *
- *  This function serves two main purposes.  First it applies the input_mask
+ *  This function serves two main purposes.  First it applys the input_mask
  *  to the atr_input resulting in a cleaned up atr_input data stream.
  *  Secondly it computes the hash and stores it in the bkt_hash field at
  *  the end of the input byte stream.  This way it will be available for
@@ -1589,17 +1591,15 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 
 	switch (ntohs(input_mask->formatted.vlan_id) & 0xEFFF) {
 	case 0x0000:
-		/* mask VLAN ID */
+		/* mask VLAN ID, fall through to mask VLAN priority */
 		fdirm |= IXGBE_FDIRM_VLANID;
-		/* fall through */
 	case 0x0FFF:
 		/* mask VLAN priority */
 		fdirm |= IXGBE_FDIRM_VLANP;
 		break;
 	case 0xE000:
-		/* mask VLAN ID only */
+		/* mask VLAN ID only, fall through */
 		fdirm |= IXGBE_FDIRM_VLANID;
-		/* fall through */
 	case 0xEFFF:
 		/* no VLAN fields masked */
 		break;
@@ -1610,9 +1610,8 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 
 	switch (input_mask->formatted.flex_bytes & 0xFFFF) {
 	case 0x0000:
-		/* Mask Flex Bytes */
+		/* Mask Flex Bytes, fall through */
 		fdirm |= IXGBE_FDIRM_FLEX;
-		/* fall through */
 	case 0xFFFF:
 		break;
 	default:
@@ -2205,7 +2204,6 @@ static const struct ixgbe_mac_operations mac_ops_82599 = {
 	.get_link_capabilities  = &ixgbe_get_link_capabilities_82599,
 	.led_on                 = &ixgbe_led_on_generic,
 	.led_off                = &ixgbe_led_off_generic,
-	.init_led_link_act	= ixgbe_init_led_link_act_generic,
 	.blink_led_start        = &ixgbe_blink_led_start_generic,
 	.blink_led_stop         = &ixgbe_blink_led_stop_generic,
 	.set_rar                = &ixgbe_set_rar_generic,
@@ -2221,7 +2219,6 @@ static const struct ixgbe_mac_operations mac_ops_82599 = {
 	.set_vfta               = &ixgbe_set_vfta_generic,
 	.fc_enable              = &ixgbe_fc_enable_generic,
 	.setup_fc		= ixgbe_setup_fc_generic,
-	.fc_autoneg		= ixgbe_fc_autoneg,
 	.set_fw_drv_ver         = &ixgbe_set_fw_drv_ver_generic,
 	.init_uta_tables        = &ixgbe_init_uta_tables_generic,
 	.setup_sfp              = &ixgbe_setup_sfp_modules_82599,

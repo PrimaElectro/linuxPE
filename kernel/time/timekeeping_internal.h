@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _TIMEKEEPING_INTERNAL_H
 #define _TIMEKEEPING_INTERNAL_H
 /*
@@ -14,9 +13,9 @@ extern void tk_debug_account_sleep_time(struct timespec64 *t);
 #endif
 
 #ifdef CONFIG_CLOCKSOURCE_VALIDATE_LAST_CYCLE
-static inline u64 clocksource_delta(u64 now, u64 last, u64 mask)
+static inline cycle_t clocksource_delta(cycle_t now, cycle_t last, cycle_t mask)
 {
-	u64 ret = (now - last) & mask;
+	cycle_t ret = (now - last) & mask;
 
 	/*
 	 * Prevent time going backwards by checking the MSB of mask in
@@ -25,7 +24,7 @@ static inline u64 clocksource_delta(u64 now, u64 last, u64 mask)
 	return ret & ~(mask >> 1) ? 0 : ret;
 }
 #else
-static inline u64 clocksource_delta(u64 now, u64 last, u64 mask)
+static inline cycle_t clocksource_delta(cycle_t now, cycle_t last, cycle_t mask)
 {
 	return (now - last) & mask;
 }

@@ -65,11 +65,6 @@ struct spu_queue {
 	struct list_head	list;
 };
 
-struct spu_qreg {
-	struct spu_queue	*queue;
-	unsigned long		type;
-};
-
 static struct spu_queue **cpu_to_cwq;
 static struct spu_queue **cpu_to_mau;
 
@@ -1639,27 +1634,31 @@ static void queue_cache_destroy(void)
 	queue_cache[HV_NCS_QTYPE_CWQ - 1] = NULL;
 }
 
-static long spu_queue_register_workfn(void *arg)
+static int spu_queue_register(struct spu_queue *p, unsigned long q_type)
 {
-	struct spu_qreg *qr = arg;
-	struct spu_queue *p = qr->queue;
-	unsigned long q_type = qr->type;
+	cpumask_var_t old_allowed;
 	unsigned long hv_ret;
+
+	if (cpumask_empty(&p->sharing))
+		return -EINVAL;
+
+	if (!alloc_cpumask_var(&old_allowed, GFP_KERNEL))
+		return -ENOMEM;
+
+	cpumask_copy(old_allowed, &current->cpus_allowed);
+
+	set_cpus_allowed_ptr(current, &p->sharing);
 
 	hv_ret = sun4v_ncs_qconf(q_type, __pa(p->q),
 				 CWQ_NUM_ENTRIES, &p->qhandle);
 	if (!hv_ret)
 		sun4v_ncs_sethead_marker(p->qhandle, 0);
 
-	return hv_ret ? -EINVAL : 0;
-}
+	set_cpus_allowed_ptr(current, old_allowed);
 
-static int spu_queue_register(struct spu_queue *p, unsigned long q_type)
-{
-	int cpu = cpumask_any_and(&p->sharing, cpu_online_mask);
-	struct spu_qreg qr = { .queue = p, .type = q_type };
+	free_cpumask_var(old_allowed);
 
-	return work_on_cpu_safe(cpu, spu_queue_register_workfn, &qr);
+	return (hv_ret ? -EINVAL : 0);
 }
 
 static int spu_queue_setup(struct spu_queue *p)
@@ -1733,8 +1732,8 @@ static int spu_mdesc_walk_arcs(struct mdesc_handle *mdesc,
 			continue;
 		id = mdesc_get_property(mdesc, tgt, "id", NULL);
 		if (table[*id] != NULL) {
-			dev_err(&dev->dev, "%pOF: SPU cpu slot already set.\n",
-				dev->dev.of_node);
+			dev_err(&dev->dev, "%s: SPU cpu slot already set.\n",
+				dev->dev.of_node->full_name);
 			return -EINVAL;
 		}
 		cpumask_set_cpu(*id, &p->sharing);
@@ -1754,8 +1753,8 @@ static int handle_exec_unit(struct spu_mdesc_info *ip, struct list_head *list,
 
 	p = kzalloc(sizeof(struct spu_queue), GFP_KERNEL);
 	if (!p) {
-		dev_err(&dev->dev, "%pOF: Could not allocate SPU queue.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Could not allocate SPU queue.\n",
+			dev->dev.of_node->full_name);
 		return -ENOMEM;
 	}
 
@@ -1984,39 +1983,41 @@ static void n2_spu_driver_version(void)
 static int n2_crypto_probe(struct platform_device *dev)
 {
 	struct mdesc_handle *mdesc;
+	const char *full_name;
 	struct n2_crypto *np;
 	int err;
 
 	n2_spu_driver_version();
 
-	pr_info("Found N2CP at %pOF\n", dev->dev.of_node);
+	full_name = dev->dev.of_node->full_name;
+	pr_info("Found N2CP at %s\n", full_name);
 
 	np = alloc_n2cp();
 	if (!np) {
-		dev_err(&dev->dev, "%pOF: Unable to allocate n2cp.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to allocate n2cp.\n",
+			full_name);
 		return -ENOMEM;
 	}
 
 	err = grab_global_resources();
 	if (err) {
-		dev_err(&dev->dev, "%pOF: Unable to grab global resources.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab "
+			"global resources.\n", full_name);
 		goto out_free_n2cp;
 	}
 
 	mdesc = mdesc_grab();
 
 	if (!mdesc) {
-		dev_err(&dev->dev, "%pOF: Unable to grab MDESC.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab MDESC.\n",
+			full_name);
 		err = -ENODEV;
 		goto out_free_global;
 	}
 	err = grab_mdesc_irq_props(mdesc, dev, &np->cwq_info, "n2cp");
 	if (err) {
-		dev_err(&dev->dev, "%pOF: Unable to grab IRQ props.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab IRQ props.\n",
+			full_name);
 		mdesc_release(mdesc);
 		goto out_free_global;
 	}
@@ -2027,15 +2028,15 @@ static int n2_crypto_probe(struct platform_device *dev)
 	mdesc_release(mdesc);
 
 	if (err) {
-		dev_err(&dev->dev, "%pOF: CWQ MDESC scan failed.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: CWQ MDESC scan failed.\n",
+			full_name);
 		goto out_free_global;
 	}
 
 	err = n2_register_algs();
 	if (err) {
-		dev_err(&dev->dev, "%pOF: Unable to register algorithms.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to register algorithms.\n",
+			full_name);
 		goto out_free_spu_list;
 	}
 
@@ -2093,40 +2094,42 @@ static void free_ncp(struct n2_mau *mp)
 static int n2_mau_probe(struct platform_device *dev)
 {
 	struct mdesc_handle *mdesc;
+	const char *full_name;
 	struct n2_mau *mp;
 	int err;
 
 	n2_spu_driver_version();
 
-	pr_info("Found NCP at %pOF\n", dev->dev.of_node);
+	full_name = dev->dev.of_node->full_name;
+	pr_info("Found NCP at %s\n", full_name);
 
 	mp = alloc_ncp();
 	if (!mp) {
-		dev_err(&dev->dev, "%pOF: Unable to allocate ncp.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to allocate ncp.\n",
+			full_name);
 		return -ENOMEM;
 	}
 
 	err = grab_global_resources();
 	if (err) {
-		dev_err(&dev->dev, "%pOF: Unable to grab global resources.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab "
+			"global resources.\n", full_name);
 		goto out_free_ncp;
 	}
 
 	mdesc = mdesc_grab();
 
 	if (!mdesc) {
-		dev_err(&dev->dev, "%pOF: Unable to grab MDESC.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab MDESC.\n",
+			full_name);
 		err = -ENODEV;
 		goto out_free_global;
 	}
 
 	err = grab_mdesc_irq_props(mdesc, dev, &mp->mau_info, "ncp");
 	if (err) {
-		dev_err(&dev->dev, "%pOF: Unable to grab IRQ props.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: Unable to grab IRQ props.\n",
+			full_name);
 		mdesc_release(mdesc);
 		goto out_free_global;
 	}
@@ -2137,8 +2140,8 @@ static int n2_mau_probe(struct platform_device *dev)
 	mdesc_release(mdesc);
 
 	if (err) {
-		dev_err(&dev->dev, "%pOF: MAU MDESC scan failed.\n",
-			dev->dev.of_node);
+		dev_err(&dev->dev, "%s: MAU MDESC scan failed.\n",
+			full_name);
 		goto out_free_global;
 	}
 
@@ -2168,7 +2171,7 @@ static int n2_mau_remove(struct platform_device *dev)
 	return 0;
 }
 
-static const struct of_device_id n2_crypto_match[] = {
+static struct of_device_id n2_crypto_match[] = {
 	{
 		.name = "n2cp",
 		.compatible = "SUNW,n2-cwq",
@@ -2195,7 +2198,7 @@ static struct platform_driver n2_crypto_driver = {
 	.remove		=	n2_crypto_remove,
 };
 
-static const struct of_device_id n2_mau_match[] = {
+static struct of_device_id n2_mau_match[] = {
 	{
 		.name = "ncp",
 		.compatible = "SUNW,n2-mau",

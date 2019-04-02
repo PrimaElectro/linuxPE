@@ -1,7 +1,7 @@
 /*
  * NET		Generic infrastructure for Network protocols.
  *
- *		Definitions for request_sock
+ *		Definitions for request_sock 
  *
  * Authors:	Arnaldo Carvalho de Melo <acme@conectiva.com.br>
  *
@@ -19,7 +19,6 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/bug.h>
-#include <linux/refcount.h>
 
 #include <net/sock.h>
 
@@ -30,7 +29,7 @@ struct proto;
 
 struct request_sock_ops {
 	int		family;
-	unsigned int	obj_size;
+	int		obj_size;
 	struct kmem_cache	*slab;
 	char		*slab_name;
 	int		(*rtx_syn_ack)(const struct sock *sk,
@@ -90,7 +89,7 @@ reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener,
 		return NULL;
 	req->rsk_listener = NULL;
 	if (attach_listener) {
-		if (unlikely(!refcount_inc_not_zero(&sk_listener->sk_refcnt))) {
+		if (unlikely(!atomic_inc_not_zero(&sk_listener->sk_refcnt))) {
 			kmem_cache_free(ops->slab, req);
 			return NULL;
 		}
@@ -101,7 +100,7 @@ reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener,
 	sk_node_init(&req_to_sk(req)->sk_node);
 	sk_tx_queue_clear(req_to_sk(req));
 	req->saved_syn = NULL;
-	refcount_set(&req->rsk_refcnt, 0);
+	atomic_set(&req->rsk_refcnt, 0);
 
 	return req;
 }
@@ -109,7 +108,7 @@ reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener,
 static inline void reqsk_free(struct request_sock *req)
 {
 	/* temporary debugging */
-	WARN_ON_ONCE(refcount_read(&req->rsk_refcnt) != 0);
+	WARN_ON_ONCE(atomic_read(&req->rsk_refcnt) != 0);
 
 	req->rsk_ops->destructor(req);
 	if (req->rsk_listener)
@@ -120,9 +119,11 @@ static inline void reqsk_free(struct request_sock *req)
 
 static inline void reqsk_put(struct request_sock *req)
 {
-	if (refcount_dec_and_test(&req->rsk_refcnt))
+	if (atomic_dec_and_test(&req->rsk_refcnt))
 		reqsk_free(req);
 }
+
+extern int sysctl_max_syn_backlog;
 
 /*
  * For a TCP Fast Open listener -

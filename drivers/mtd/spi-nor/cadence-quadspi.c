@@ -495,9 +495,7 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor,
 	void __iomem *reg_base = cqspi->iobase;
 	void __iomem *ahb_base = cqspi->ahb_base;
 	unsigned int remaining = n_rx;
-	unsigned int mod_bytes = n_rx % 4;
 	unsigned int bytes_to_read = 0;
-	u8 *rxbuf_end = rxbuf + n_rx;
 	int ret = 0;
 
 	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
@@ -525,24 +523,10 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor,
 		}
 
 		while (bytes_to_read != 0) {
-			unsigned int word_remain = round_down(remaining, 4);
-
 			bytes_to_read *= cqspi->fifo_width;
 			bytes_to_read = bytes_to_read > remaining ?
 					remaining : bytes_to_read;
-			bytes_to_read = round_down(bytes_to_read, 4);
-			/* Read 4 byte word chunks then single bytes */
-			if (bytes_to_read) {
-				ioread32_rep(ahb_base, rxbuf,
-					     (bytes_to_read / 4));
-			} else if (!word_remain && mod_bytes) {
-				unsigned int temp = ioread32(ahb_base);
-
-				bytes_to_read = mod_bytes;
-				memcpy(rxbuf, &temp, min((unsigned int)
-							 (rxbuf_end - rxbuf),
-							 bytes_to_read));
-			}
+			readsl(ahb_base, rxbuf, DIV_ROUND_UP(bytes_to_read, 4));
 			rxbuf += bytes_to_read;
 			remaining -= bytes_to_read;
 			bytes_to_read = cqspi_get_rd_sram_level(cqspi);
@@ -625,23 +609,8 @@ static int cqspi_indirect_write_execute(struct spi_nor *nor,
 	       reg_base + CQSPI_REG_INDIRECTWR);
 
 	while (remaining > 0) {
-		size_t write_words, mod_bytes;
-
 		write_bytes = remaining > page_size ? page_size : remaining;
-		write_words = write_bytes / 4;
-		mod_bytes = write_bytes % 4;
-		/* Write 4 bytes at a time then single bytes. */
-		if (write_words) {
-			iowrite32_rep(cqspi->ahb_base, txbuf, write_words);
-			txbuf += (write_words * 4);
-		}
-		if (mod_bytes) {
-			unsigned int temp = 0xFFFFFFFF;
-
-			memcpy(&temp, txbuf, mod_bytes);
-			iowrite32(temp, cqspi->ahb_base);
-			txbuf += mod_bytes;
-		}
+		writesl(cqspi->ahb_base, txbuf, DIV_ROUND_UP(write_bytes, 4));
 
 		ret = wait_for_completion_timeout(&cqspi->transfer_complete,
 						  msecs_to_jiffies
@@ -652,6 +621,7 @@ static int cqspi_indirect_write_execute(struct spi_nor *nor,
 			goto failwr;
 		}
 
+		txbuf += write_bytes;
 		remaining -= write_bytes;
 
 		if (remaining > 0)
@@ -883,14 +853,15 @@ static int cqspi_set_protocol(struct spi_nor *nor, const int read)
 	f_pdata->data_width = CQSPI_INST_TYPE_SINGLE;
 
 	if (read) {
-		switch (nor->read_proto) {
-		case SNOR_PROTO_1_1_1:
+		switch (nor->flash_read) {
+		case SPI_NOR_NORMAL:
+		case SPI_NOR_FAST:
 			f_pdata->data_width = CQSPI_INST_TYPE_SINGLE;
 			break;
-		case SNOR_PROTO_1_1_2:
+		case SPI_NOR_DUAL:
 			f_pdata->data_width = CQSPI_INST_TYPE_DUAL;
 			break;
-		case SNOR_PROTO_1_1_4:
+		case SPI_NOR_QUAD:
 			f_pdata->data_width = CQSPI_INST_TYPE_QUAD;
 			break;
 		default:
@@ -920,7 +891,7 @@ static ssize_t cqspi_write(struct spi_nor *nor, loff_t to,
 	if (ret)
 		return ret;
 
-	return len;
+	return (ret < 0) ? ret : len;
 }
 
 static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
@@ -940,7 +911,7 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 	if (ret)
 		return ret;
 
-	return len;
+	return (ret < 0) ? ret : len;
 }
 
 static int cqspi_erase(struct spi_nor *nor, loff_t offs)
@@ -1096,13 +1067,6 @@ static void cqspi_controller_init(struct cqspi_st *cqspi)
 
 static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 {
-	const struct spi_nor_hwcaps hwcaps = {
-		.mask = SNOR_HWCAPS_READ |
-			SNOR_HWCAPS_READ_FAST |
-			SNOR_HWCAPS_READ_1_1_2 |
-			SNOR_HWCAPS_READ_1_1_4 |
-			SNOR_HWCAPS_PP,
-	};
 	struct platform_device *pdev = cqspi->pdev;
 	struct device *dev = &pdev->dev;
 	struct cqspi_flash_pdata *f_pdata;
@@ -1157,7 +1121,7 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 			goto err;
 		}
 
-		ret = spi_nor_scan(nor, NULL, &hwcaps);
+		ret = spi_nor_scan(nor, NULL, SPI_NOR_QUAD);
 		if (ret)
 			goto err;
 
@@ -1311,7 +1275,7 @@ static const struct dev_pm_ops cqspi__dev_pm_ops = {
 #define CQSPI_DEV_PM_OPS	NULL
 #endif
 
-static const struct of_device_id cqspi_dt_ids[] = {
+static struct of_device_id const cqspi_dt_ids[] = {
 	{.compatible = "cdns,qspi-nor",},
 	{ /* end of table */ }
 };

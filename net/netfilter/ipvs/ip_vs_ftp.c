@@ -260,21 +260,20 @@ static int ip_vs_ftp_out(struct ip_vs_app *app, struct ip_vs_conn *cp,
 		buf_len = strlen(buf);
 
 		ct = nf_ct_get(skb, &ctinfo);
-		if (ct) {
-			bool mangled;
-
+		if (ct && !nf_ct_is_untracked(ct) && nfct_nat(ct)) {
 			/* If mangling fails this function will return 0
 			 * which will cause the packet to be dropped.
 			 * Mangling can only fail under memory pressure,
 			 * hopefully it will succeed on the retransmitted
 			 * packet.
 			 */
-			mangled = nf_nat_mangle_tcp_packet(skb, ct, ctinfo,
-							   iph->ihl * 4,
-							   start - data,
-							   end - start,
-							   buf, buf_len);
-			if (mangled) {
+			rcu_read_lock();
+			ret = nf_nat_mangle_tcp_packet(skb, ct, ctinfo,
+						       iph->ihl * 4,
+						       start-data, end-start,
+						       buf, buf_len);
+			rcu_read_unlock();
+			if (ret) {
 				ip_vs_nfct_expect_related(skb, ct, n_cp,
 							  IPPROTO_TCP, 0, 0);
 				if (skb->ip_summed == CHECKSUM_COMPLETE)
@@ -483,8 +482,11 @@ static struct pernet_operations ip_vs_ftp_ops = {
 
 static int __init ip_vs_ftp_init(void)
 {
+	int rv;
+
+	rv = register_pernet_subsys(&ip_vs_ftp_ops);
 	/* rcu_barrier() is called by netns on error */
-	return register_pernet_subsys(&ip_vs_ftp_ops);
+	return rv;
 }
 
 /*

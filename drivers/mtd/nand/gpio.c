@@ -26,7 +26,7 @@
 #include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/rawnand.h>
+#include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/nand-gpio.h>
 #include <linux/of.h>
@@ -78,9 +78,7 @@ static void gpio_nand_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
 	gpio_nand_dosync(gpiomtd);
 
 	if (ctrl & NAND_CTRL_CHANGE) {
-		if (gpio_is_valid(gpiomtd->plat.gpio_nce))
-			gpio_set_value(gpiomtd->plat.gpio_nce,
-				       !(ctrl & NAND_NCE));
+		gpio_set_value(gpiomtd->plat.gpio_nce, !(ctrl & NAND_NCE));
 		gpio_set_value(gpiomtd->plat.gpio_cle, !!(ctrl & NAND_CLE));
 		gpio_set_value(gpiomtd->plat.gpio_ale, !!(ctrl & NAND_ALE));
 		gpio_nand_dosync(gpiomtd);
@@ -203,8 +201,7 @@ static int gpio_nand_remove(struct platform_device *pdev)
 
 	if (gpio_is_valid(gpiomtd->plat.gpio_nwp))
 		gpio_set_value(gpiomtd->plat.gpio_nwp, 0);
-	if (gpio_is_valid(gpiomtd->plat.gpio_nce))
-		gpio_set_value(gpiomtd->plat.gpio_nce, 1);
+	gpio_set_value(gpiomtd->plat.gpio_nce, 1);
 
 	return 0;
 }
@@ -242,13 +239,10 @@ static int gpio_nand_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	if (gpio_is_valid(gpiomtd->plat.gpio_nce)) {
-		ret = devm_gpio_request(&pdev->dev, gpiomtd->plat.gpio_nce,
-					"NAND NCE");
-		if (ret)
-			return ret;
-		gpio_direction_output(gpiomtd->plat.gpio_nce, 1);
-	}
+	ret = devm_gpio_request(&pdev->dev, gpiomtd->plat.gpio_nce, "NAND NCE");
+	if (ret)
+		return ret;
+	gpio_direction_output(gpiomtd->plat.gpio_nce, 1);
 
 	if (gpio_is_valid(gpiomtd->plat.gpio_nwp)) {
 		ret = devm_gpio_request(&pdev->dev, gpiomtd->plat.gpio_nwp,
@@ -292,9 +286,10 @@ static int gpio_nand_probe(struct platform_device *pdev)
 	if (gpio_is_valid(gpiomtd->plat.gpio_nwp))
 		gpio_direction_output(gpiomtd->plat.gpio_nwp, 1);
 
-	ret = nand_scan(mtd, 1);
-	if (ret)
+	if (nand_scan(mtd, 1)) {
+		ret = -ENXIO;
 		goto err_wp;
+	}
 
 	if (gpiomtd->plat.adjust_parts)
 		gpiomtd->plat.adjust_parts(&gpiomtd->plat, mtd->size);

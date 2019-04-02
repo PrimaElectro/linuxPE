@@ -150,11 +150,11 @@ again:
 		sp = state->owner;
 		/* Block nfs4_proc_unlck */
 		mutex_lock(&sp->so_delegreturn_mutex);
-		seq = raw_seqcount_begin(&sp->so_reclaim_seqcount);
+		seq = read_seqbegin(&sp->so_reclaim_seqlock);
 		err = nfs4_open_delegation_recall(ctx, state, stateid, type);
 		if (!err)
 			err = nfs_delegation_claim_locks(ctx, state, stateid);
-		if (!err && read_seqcount_retry(&sp->so_reclaim_seqcount, seq))
+		if (!err && read_seqretry(&sp->so_reclaim_seqlock, seq))
 			err = -EAGAIN;
 		mutex_unlock(&sp->so_delegreturn_mutex);
 		put_nfs_open_context(ctx);
@@ -391,6 +391,10 @@ int nfs_inode_set_delegation(struct inode *inode, struct rpc_cred *cred, struct 
 	rcu_assign_pointer(nfsi->delegation, delegation);
 	delegation = NULL;
 
+	/* Ensure we revalidate the attributes and page cache! */
+	spin_lock(&inode->i_lock);
+	nfsi->cache_validity |= NFS_INO_REVAL_FORCED;
+	spin_unlock(&inode->i_lock);
 	trace_nfs4_set_delegation(inode, res->delegation_type);
 
 out:
@@ -1089,7 +1093,7 @@ bool nfs4_delegation_flush_on_close(const struct inode *inode)
 	delegation = rcu_dereference(nfsi->delegation);
 	if (delegation == NULL || !(delegation->type & FMODE_WRITE))
 		goto out;
-	if (atomic_long_read(&nfsi->nrequests) < delegation->pagemod_limit)
+	if (nfsi->nrequests < delegation->pagemod_limit)
 		ret = false;
 out:
 	rcu_read_unlock();

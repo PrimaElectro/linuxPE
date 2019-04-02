@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/arch/m32r/kernel/sys_m32r.c
  *
@@ -23,7 +22,7 @@
 #include <linux/utsname.h>
 #include <linux/ipc.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/cachectl.h>
 #include <asm/cacheflush.h>
 #include <asm/syscall.h>

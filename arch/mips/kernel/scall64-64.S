@@ -438,5 +438,4 @@ EXPORT(sys_call_table)
 	PTR	sys_pkey_mprotect
 	PTR	sys_pkey_alloc
 	PTR	sys_pkey_free			/* 5325 */
-	PTR	sys_statx
 	.size	sys_call_table,.-sys_call_table

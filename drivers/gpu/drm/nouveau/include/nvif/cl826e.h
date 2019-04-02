@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVIF_CL826E_H__
 #define __NVIF_CL826E_H__
 
@@ -11,5 +10,5 @@ struct g82_channel_dma_v0 {
 	__u64 offset;
 };
 
-#define NV826E_V0_NTFY_NON_STALL_INTERRUPT                                 0x00
+#define G82_CHANNEL_DMA_V0_NTFY_UEVENT                                     0x00
 #endif

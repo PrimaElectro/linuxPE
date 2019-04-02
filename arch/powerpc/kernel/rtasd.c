@@ -21,9 +21,8 @@
 #include <linux/cpu.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
-#include <linux/topology.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/rtas.h>
 #include <asm/prom.h>
@@ -283,7 +282,6 @@ static void prrn_work_fn(struct work_struct *work)
 	 * the RTAS event.
 	 */
 	pseries_devicetree_update(-prrn_update_scope);
-	numa_update_cpu_topology(false);
 }
 
 static DECLARE_WORK(prrn_work, prrn_work_fn);
@@ -436,10 +434,7 @@ static void do_event_scan(void)
 		}
 
 		if (error == 0) {
-			if (rtas_error_type((struct rtas_error_log *)logdata) !=
-			    RTAS_TYPE_PRRN)
-				pSeries_log_error(logdata, ERR_TYPE_RTAS_LOG,
-						  0);
+			pSeries_log_error(logdata, ERR_TYPE_RTAS_LOG, 0);
 			handle_rtas_event((struct rtas_error_log *)logdata);
 		}
 

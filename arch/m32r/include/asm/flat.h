@@ -17,6 +17,11 @@
 #define	flat_set_persistent(relval, p)		0
 #define	flat_reloc_valid(reloc, size)		\
 	(((reloc) - textlen_for_m32r_lo16_data) <= (size))
+#define flat_get_addr_from_rp(rp, relval, flags, persistent) \
+	m32r_flat_get_addr_from_rp(rp, relval, (text_len) )
+
+#define flat_put_addr_at_rp(rp, addr, relval) \
+	m32r_flat_put_addr_at_rp(rp, addr, relval)
 
 /* Convert a relocation entry into an address.  */
 static inline unsigned long
@@ -52,9 +57,9 @@ flat_get_relocate_addr (unsigned long relval)
 
 static unsigned long textlen_for_m32r_lo16_data = 0;
 
-static inline unsigned long m32r_flat_get_addr_from_rp (u32 *rp,
-                                                        u32 relval,
-						        u32 textlen)
+static inline unsigned long m32r_flat_get_addr_from_rp (unsigned long *rp,
+                                                        unsigned long relval,
+						        unsigned long textlen)
 {
         unsigned int reloc = flat_m32r_get_reloc_type (relval);
 	textlen_for_m32r_lo16_data = 0;
@@ -95,7 +100,9 @@ static inline unsigned long m32r_flat_get_addr_from_rp (u32 *rp,
 	return ~0;      /* bogus value */
 }
 
-static inline int flat_put_addr_at_rp(u32 *rp, u32 addr, u32 relval)
+static inline void m32r_flat_put_addr_at_rp (unsigned long *rp,
+					     unsigned long addr,
+                                             unsigned long relval)
 {
         unsigned int reloc = flat_m32r_get_reloc_type (relval);
 	if (reloc & 0xf0) {
@@ -133,11 +140,6 @@ static inline int flat_put_addr_at_rp(u32 *rp, u32 addr, u32 relval)
 			break;
 		}
 	}
-	return 0;
 }
-
-// kludge - text_len is a local variable in the only user.
-#define flat_get_addr_from_rp(rp, relval, flags, addr, persistent) \
-	(m32r_flat_get_addr_from_rp(rp, relval, text_len), 0)
 
 #endif /* __ASM_M32R_FLAT_H */

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef SOUND_FIREWIRE_DICE_INTERFACE_H_INCLUDED
 #define SOUND_FIREWIRE_DICE_INTERFACE_H_INCLUDED
 
@@ -252,7 +251,6 @@
 
 /*
  * The speed at which the packets are sent, SCODE_100-_400; read/write.
- * SCODE_800 is only available in Dice III.
  */
 #define TX_SPEED			0x014
 

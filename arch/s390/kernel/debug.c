@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *   S/390 debug facility
  *
@@ -20,8 +19,8 @@
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/sysctl.h>
-#include <linux/uaccess.h>
-#include <linux/export.h>
+#include <asm/uaccess.h>
+#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/debugfs.h>
@@ -278,7 +277,7 @@ debug_info_alloc(const char *name, int pages_per_area, int nr_areas,
 	memset(rc->views, 0, DEBUG_MAX_VIEWS * sizeof(struct debug_view *));
 	memset(rc->debugfs_entries, 0 ,DEBUG_MAX_VIEWS *
 		sizeof(struct dentry*));
-	refcount_set(&(rc->ref_count), 0);
+	atomic_set(&(rc->ref_count), 0);
 
 	return rc;
 
@@ -362,7 +361,7 @@ debug_info_create(const char *name, int pages_per_area, int nr_areas,
         debug_area_last = rc;
         rc->next = NULL;
 
-	refcount_set(&rc->ref_count, 1);
+	debug_info_get(rc);
 out:
 	return rc;
 }
@@ -417,7 +416,7 @@ static void
 debug_info_get(debug_info_t * db_info)
 {
 	if (db_info)
-		refcount_inc(&db_info->ref_count);
+		atomic_inc(&db_info->ref_count);
 }
 
 /*
@@ -432,7 +431,7 @@ debug_info_put(debug_info_t *db_info)
 
 	if (!db_info)
 		return;
-	if (refcount_dec_and_test(&db_info->ref_count)) {
+	if (atomic_dec_and_test(&db_info->ref_count)) {
 		for (i = 0; i < DEBUG_MAX_VIEWS; i++) {
 			if (!db_info->views[i])
 				continue;
@@ -867,8 +866,7 @@ static inline void
 debug_finish_entry(debug_info_t * id, debug_entry_t* active, int level,
 			int exception)
 {
-	active->id.stck = get_tod_clock_fast() -
-		*(unsigned long long *) &tod_clock_base[1];
+	active->id.stck = get_tod_clock_fast();
 	active->id.fields.cpuid = smp_processor_id();
 	active->caller = __builtin_return_address(0);
 	active->id.fields.exception = exception;
@@ -1457,24 +1455,23 @@ int
 debug_dflt_header_fn(debug_info_t * id, struct debug_view *view,
 			 int area, debug_entry_t * entry, char *out_buf)
 {
-	unsigned long base, sec, usec;
+	struct timespec64 time_spec;
 	char *except_str;
 	unsigned long caller;
 	int rc = 0;
 	unsigned int level;
 
 	level = entry->id.fields.level;
-	base = (*(unsigned long *) &tod_clock_base[0]) >> 4;
-	sec = (entry->id.stck >> 12) + base - (TOD_UNIX_EPOCH >> 12);
-	usec = do_div(sec, USEC_PER_SEC);
+	stck_to_timespec64(entry->id.stck, &time_spec);
 
 	if (entry->id.fields.exception)
 		except_str = "*";
 	else
 		except_str = "-";
 	caller = (unsigned long) entry->caller;
-	rc += sprintf(out_buf, "%02i %011ld:%06lu %1u %1s %02i %p  ",
-		      area, sec, usec, level, except_str,
+	rc += sprintf(out_buf, "%02i %011lld:%06lu %1u %1s %02i %p  ",
+		      area, (long long)time_spec.tv_sec,
+		      time_spec.tv_nsec / 1000, level, except_str,
 		      entry->id.fields.cpuid, (void *)caller);
 	return rc;
 }

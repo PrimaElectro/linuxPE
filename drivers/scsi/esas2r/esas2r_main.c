@@ -198,7 +198,7 @@ static ssize_t write_hw(struct file *file, struct kobject *kobj,
 					      GFP_KERNEL);
 		if (a->local_atto_ioctl == NULL) {
 			esas2r_log(ESAS2R_LOG_WARN,
-				   "write_hw kzalloc failed for %zu bytes",
+				   "write_hw kzalloc failed for %d bytes",
 				   sizeof(struct atto_ioctl));
 			return -ENOMEM;
 		}
@@ -309,7 +309,7 @@ MODULE_PARM_DESC(interrupt_mode,
 		 "Defines the interrupt mode to use.  0 for legacy"
 		 ", 1 for MSI.  Default is MSI (1).");
 
-static const struct pci_device_id
+static struct pci_device_id
 	esas2r_pci_table[] = {
 	{ ATTO_VENDOR_ID, 0x0049,	  ATTO_VENDOR_ID, 0x0049,
 	  0,
@@ -1186,7 +1186,7 @@ retry:
 		} else {
 			esas2r_log(ESAS2R_LOG_CRIT,
 				   "unable to allocate a request for a "
-				   "device reset (%d:%llu)!",
+				   "device reset (%d:%d)!",
 				   cmd->device->id,
 				   cmd->device->lun);
 		}

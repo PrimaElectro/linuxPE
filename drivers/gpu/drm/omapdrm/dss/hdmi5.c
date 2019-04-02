@@ -39,12 +39,12 @@
 #include <linux/regulator/consumer.h>
 #include <linux/component.h>
 #include <linux/of.h>
-#include <linux/of_graph.h>
 #include <sound/omap-hdmi-audio.h>
 
 #include "omapdss.h"
 #include "hdmi5_core.h"
 #include "dss.h"
+#include "dss_features.h"
 
 static struct omap_hdmi hdmi;
 
@@ -172,7 +172,7 @@ static void hdmi_power_off_core(struct omap_dss_device *dssdev)
 static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 {
 	int r;
-	struct videomode *vm;
+	struct omap_video_timings *p;
 	enum omap_channel channel = dssdev->dispc_channel;
 	struct dss_pll_clock_info hdmi_cinfo = { 0 };
 	unsigned pc;
@@ -181,13 +181,12 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 	if (r)
 		return r;
 
-	vm = &hdmi.cfg.vm;
+	p = &hdmi.cfg.timings;
 
-	DSSDBG("hdmi_power_on hactive= %d vactive = %d\n", vm->hactive,
-	       vm->vactive);
+	DSSDBG("hdmi_power_on x_res= %d y_res = %d\n", p->x_res, p->y_res);
 
-	pc = vm->pixelclock;
-	if (vm->flags & DISPLAY_FLAGS_DOUBLECLK)
+	pc = p->pixelclock;
+	if (p->double_pixel)
 		pc *= 2;
 
 	/* DSS_HDMI_TCLK is bitclk / 10 */
@@ -227,7 +226,7 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 	hdmi5_configure(&hdmi.core, &hdmi.wp, &hdmi.cfg);
 
 	/* tv size */
-	dss_mgr_set_timings(channel, vm);
+	dss_mgr_set_timings(channel, p);
 
 	r = dss_mgr_enable(channel);
 	if (r)
@@ -273,30 +272,30 @@ static void hdmi_power_off_full(struct omap_dss_device *dssdev)
 }
 
 static int hdmi_display_check_timing(struct omap_dss_device *dssdev,
-				     struct videomode *vm)
+					struct omap_video_timings *timings)
 {
-	if (!dispc_mgr_timings_ok(dssdev->dispc_channel, vm))
+	if (!dispc_mgr_timings_ok(dssdev->dispc_channel, timings))
 		return -EINVAL;
 
 	return 0;
 }
 
 static void hdmi_display_set_timing(struct omap_dss_device *dssdev,
-				    struct videomode *vm)
+		struct omap_video_timings *timings)
 {
 	mutex_lock(&hdmi.lock);
 
-	hdmi.cfg.vm = *vm;
+	hdmi.cfg.timings = *timings;
 
-	dispc_set_tv_pclk(vm->pixelclock);
+	dispc_set_tv_pclk(timings->pixelclock);
 
 	mutex_unlock(&hdmi.lock);
 }
 
 static void hdmi_display_get_timings(struct omap_dss_device *dssdev,
-				     struct videomode *vm)
+		struct omap_video_timings *timings)
 {
-	*vm = hdmi.cfg.vm;
+	*timings = hdmi.cfg.timings;
 }
 
 static void hdmi_dump_regs(struct seq_file *s)
@@ -379,7 +378,7 @@ static int hdmi_display_enable(struct omap_dss_device *dssdev)
 
 	if (hdmi.audio_configured) {
 		r = hdmi5_audio_config(&hdmi.core, &hdmi.wp, &hdmi.audio_config,
-				       hdmi.cfg.vm.pixelclock);
+				       hdmi.cfg.timings.pixelclock);
 		if (r) {
 			DSSERR("Error restoring audio configuration: %d", r);
 			hdmi.audio_abort_cb(&hdmi.pdev->dev);
@@ -572,7 +571,7 @@ static int hdmi_probe_of(struct platform_device *pdev)
 	struct device_node *ep;
 	int r;
 
-	ep = of_graph_get_endpoint_by_regs(node, 0, 0);
+	ep = omapdss_of_get_first_endpoint(node);
 	if (!ep)
 		return 0;
 
@@ -660,7 +659,7 @@ static int hdmi_audio_config(struct device *dev,
 			     struct omap_dss_audio *dss_audio)
 {
 	struct omap_hdmi *hd = dev_get_drvdata(dev);
-	int ret = 0;
+	int ret;
 
 	mutex_lock(&hd->lock);
 
@@ -670,7 +669,7 @@ static int hdmi_audio_config(struct device *dev,
 	}
 
 	ret = hdmi5_audio_config(&hd->core, &hd->wp, dss_audio,
-				 hd->cfg.vm.pixelclock);
+				 hd->cfg.timings.pixelclock);
 
 	if (!ret) {
 		hd->audio_configured = true;
@@ -694,7 +693,7 @@ static int hdmi_audio_register(struct device *dev)
 {
 	struct omap_hdmi_audio_pdata pdata = {
 		.dev = dev,
-		.version = 5,
+		.dss_version = omapdss_get_version(),
 		.audio_dma_addr = hdmi_wp_get_audio_dma_addr(&hdmi.wp),
 		.ops = &hdmi_audio_ops,
 	};
@@ -727,11 +726,13 @@ static int hdmi5_bind(struct device *dev, struct device *master, void *data)
 	mutex_init(&hdmi.lock);
 	spin_lock_init(&hdmi.audio_playing_lock);
 
-	r = hdmi_probe_of(pdev);
-	if (r)
-		return r;
+	if (pdev->dev.of_node) {
+		r = hdmi_probe_of(pdev);
+		if (r)
+			return r;
+	}
 
-	r = hdmi_wp_init(pdev, &hdmi.wp, 5);
+	r = hdmi_wp_init(pdev, &hdmi.wp);
 	if (r)
 		return r;
 
@@ -739,7 +740,7 @@ static int hdmi5_bind(struct device *dev, struct device *master, void *data)
 	if (r)
 		return r;
 
-	r = hdmi_phy_init(pdev, &hdmi.phy, 5);
+	r = hdmi_phy_init(pdev, &hdmi.phy);
 	if (r)
 		goto err;
 

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _PERF_UI_BROWSER_HISTS_H_
 #define _PERF_UI_BROWSER_HISTS_H_ 1
 
@@ -19,7 +18,6 @@ struct hist_browser {
 	u64		     nr_non_filtered_entries;
 	u64		     nr_hierarchy_entries;
 	u64		     nr_callchain_rows;
-	bool		     c2c_filter;
 
 	/* Get title string. */
 	int                  (*title)(struct hist_browser *browser,

@@ -90,8 +90,4 @@
 
 };
 
-&cpu_thermal {
-	coefficients = <348 (-9301)>;
-};
-
 /include/ "omap446x-clocks.dtsi"

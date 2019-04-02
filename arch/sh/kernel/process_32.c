@@ -15,9 +15,6 @@
  */
 #include <linux/module.h>
 #include <linux/mm.h>
-#include <linux/sched/debug.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
 #include <linux/slab.h>
 #include <linux/elfcore.h>
 #include <linux/kallsyms.h>
@@ -26,7 +23,7 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/prefetch.h>
 #include <linux/stackprotector.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/fpu.h>
 #include <asm/syscalls.h>

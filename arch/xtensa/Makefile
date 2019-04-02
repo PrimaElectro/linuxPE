@@ -93,7 +93,11 @@ endif
 
 boot		:= arch/xtensa/boot
 
-all Image zImage uImage: vmlinux
+all: zImage
+
+bzImage : zImage
+
+zImage: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $@
 
 %.dtb:
@@ -103,8 +107,6 @@ dtbs: scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts
 
 define archhelp
-  @echo '* Image       - Kernel ELF image with reset vector'
   @echo '* zImage      - Compressed kernel image (arch/xtensa/boot/images/zImage.*)'
-  @echo '* uImage      - U-Boot wrapped image'
   @echo '  dtbs        - Build device tree blobs for enabled boards'
 endef

@@ -1,13 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/mm.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/task_stack.h>
+#include <linux/sched.h>
 #include <linux/export.h>
 #include <linux/stackprotector.h>
 #include <asm/fpu.h>
-#include <asm/ptrace.h>
 
 struct kmem_cache *task_xstate_cachep = NULL;
 unsigned int xstate_size;
@@ -59,7 +56,7 @@ void arch_task_cache_init(void)
 
 	task_xstate_cachep = kmem_cache_create("task_xstate", xstate_size,
 					       __alignof__(union thread_xstate),
-					       SLAB_PANIC, NULL);
+					       SLAB_PANIC | SLAB_NOTRACK, NULL);
 }
 
 #ifdef CONFIG_SH_FPU_EMU

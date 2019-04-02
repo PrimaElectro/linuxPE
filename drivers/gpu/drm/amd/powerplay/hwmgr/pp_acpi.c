@@ -21,11 +21,10 @@
  *
  */
 
-#include <linux/delay.h>
 #include <linux/errno.h>
+#include "linux/delay.h"
 #include "hwmgr.h"
 #include "amd_acpi.h"
-#include "pp_acpi.h"
 
 bool acpi_atcs_functions_supported(void *device, uint32_t index)
 {

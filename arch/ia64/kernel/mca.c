@@ -72,9 +72,7 @@
 #include <linux/jiffies.h>
 #include <linux/types.h>
 #include <linux/init.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/debug.h>
-#include <linux/sched/task.h>
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/bootmem.h>
@@ -334,7 +332,7 @@ static void ia64_mlogbuf_dump_from_init(void)
 	ia64_mlogbuf_dump();
 }
 
-static inline void
+static void inline
 ia64_mca_spin(const char *func)
 {
 	if (monarch_cpu == smp_processor_id())

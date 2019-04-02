@@ -89,7 +89,7 @@ struct device *nd_dax_create(struct nd_region *nd_region)
 	struct device *dev = NULL;
 	struct nd_dax *nd_dax;
 
-	if (!is_memory(&nd_region->dev))
+	if (!is_nd_pmem(&nd_region->dev))
 		return NULL;
 
 	nd_dax = nd_dax_alloc(nd_region);
@@ -111,14 +111,6 @@ int nd_dax_probe(struct device *dev, struct nd_namespace_common *ndns)
 	if (ndns->force_raw)
 		return -ENODEV;
 
-	switch (ndns->claim_class) {
-	case NVDIMM_CCLASS_NONE:
-	case NVDIMM_CCLASS_DAX:
-		break;
-	default:
-		return -ENODEV;
-	}
-
 	nvdimm_bus_lock(&ndns->dev);
 	nd_dax = nd_dax_alloc(nd_region);
 	nd_pfn = &nd_dax->nd_pfn;
@@ -132,7 +124,7 @@ int nd_dax_probe(struct device *dev, struct nd_namespace_common *ndns)
 	dev_dbg(dev, "%s: dax: %s\n", __func__,
 			rc == 0 ? dev_name(dax_dev) : "<none>");
 	if (rc < 0) {
-		nd_detach_ndns(dax_dev, &nd_pfn->ndns);
+		__nd_detach_ndns(dax_dev, &nd_pfn->ndns);
 		put_device(dax_dev);
 	} else
 		__nd_device_register(dax_dev);

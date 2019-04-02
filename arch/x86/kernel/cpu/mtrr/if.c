@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/capability.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
@@ -172,8 +171,6 @@ mtrr_ioctl(struct file *file, unsigned int cmd, unsigned long __arg)
 	struct mtrr_sentry sentry;
 	struct mtrr_gentry gentry;
 	void __user *arg = (void __user *) __arg;
-
-	memset(&gentry, 0, sizeof(gentry));
 
 	switch (cmd) {
 	case MTRRIOC_ADD_ENTRY:

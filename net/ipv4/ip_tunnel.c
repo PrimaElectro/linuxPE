@@ -176,7 +176,7 @@ skip_key_lookup:
 		return cand;
 
 	t = rcu_dereference(itn->collect_md_tun);
-	if (t && t->dev->flags & IFF_UP)
+	if (t)
 		return t;
 
 	if (itn->fb_tunnel_dev && itn->fb_tunnel_dev->flags & IFF_UP)
@@ -253,16 +253,15 @@ static struct net_device *__ip_tunnel_create(struct net *net,
 	struct net_device *dev;
 	char name[IFNAMSIZ];
 
-	err = -E2BIG;
-	if (parms->name[0]) {
-		if (!dev_valid_name(parms->name))
-			goto failed;
+	if (parms->name[0])
 		strlcpy(name, parms->name, IFNAMSIZ);
-	} else {
-		if (strlen(ops->kind) > (IFNAMSIZ - 3))
+	else {
+		if (strlen(ops->kind) > (IFNAMSIZ - 3)) {
+			err = -E2BIG;
 			goto failed;
-		strcpy(name, ops->kind);
-		strcat(name, "%d");
+		}
+		strlcpy(name, ops->kind, IFNAMSIZ);
+		strncat(name, "%d", 2);
 	}
 
 	ASSERT_RTNL();
@@ -294,8 +293,7 @@ failed:
 static inline void init_tunnel_flow(struct flowi4 *fl4,
 				    int proto,
 				    __be32 daddr, __be32 saddr,
-				    __be32 key, __u8 tos, int oif,
-				    __u32 mark)
+				    __be32 key, __u8 tos, int oif)
 {
 	memset(fl4, 0, sizeof(*fl4));
 	fl4->flowi4_oif = oif;
@@ -304,7 +302,6 @@ static inline void init_tunnel_flow(struct flowi4 *fl4,
 	fl4->flowi4_tos = tos;
 	fl4->flowi4_proto = proto;
 	fl4->fl4_gre_key = key;
-	fl4->flowi4_mark = mark;
 }
 
 static int ip_tunnel_bind_dev(struct net_device *dev)
@@ -325,8 +322,7 @@ static int ip_tunnel_bind_dev(struct net_device *dev)
 
 		init_tunnel_flow(&fl4, iph->protocol, iph->daddr,
 				 iph->saddr, tunnel->parms.o_key,
-				 RT_TOS(iph->tos), tunnel->parms.link,
-				 tunnel->fwmark);
+				 RT_TOS(iph->tos), tunnel->parms.link);
 		rt = ip_route_output_key(tunnel->net, &fl4);
 
 		if (!IS_ERR(rt)) {
@@ -362,7 +358,6 @@ static struct ip_tunnel *ip_tunnel_create(struct net *net,
 {
 	struct ip_tunnel *nt;
 	struct net_device *dev;
-	int t_hlen;
 
 	BUG_ON(!itn->fb_tunnel_dev);
 	dev = __ip_tunnel_create(net, itn->fb_tunnel_dev->rtnl_link_ops, parms);
@@ -372,9 +367,6 @@ static struct ip_tunnel *ip_tunnel_create(struct net *net,
 	dev->mtu = ip_tunnel_bind_dev(dev);
 
 	nt = netdev_priv(dev);
-	t_hlen = nt->hlen + sizeof(struct iphdr);
-	dev->min_mtu = ETH_MIN_MTU;
-	dev->max_mtu = 0xFFF8 - dev->hard_header_len - t_hlen;
 	ip_tunnel_add(itn, nt);
 	return nt;
 }
@@ -447,8 +439,6 @@ int ip_tunnel_rcv(struct ip_tunnel *tunnel, struct sk_buff *skb,
 	return 0;
 
 drop:
-	if (tun_dst)
-		dst_release((struct dst_entry *)tun_dst);
 	kfree_skb(skb);
 	return 0;
 }
@@ -521,7 +511,8 @@ static int tnl_update_pmtu(struct net_device *dev, struct sk_buff *skb,
 	else
 		mtu = skb_dst(skb) ? dst_mtu(skb_dst(skb)) : dev->mtu;
 
-	skb_dst_update_pmtu(skb, mtu);
+	if (skb_dst(skb))
+		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, mtu);
 
 	if (skb->protocol == htons(ETH_P_IP)) {
 		if (!skb_is_gso(skb) &&
@@ -583,7 +574,7 @@ void ip_md_tunnel_xmit(struct sk_buff *skb, struct net_device *dev, u8 proto)
 			tos = ipv6_get_dsfield((const struct ipv6hdr *)inner_iph);
 	}
 	init_tunnel_flow(&fl4, proto, key->u.ipv4.dst, key->u.ipv4.src, 0,
-			 RT_TOS(tos), tunnel->parms.link, tunnel->fwmark);
+			 RT_TOS(tos), tunnel->parms.link);
 	if (tunnel->encap.type != TUNNEL_ENCAP_NONE)
 		goto tx_error;
 	rt = ip_route_output_key(tunnel->net, &fl4);
@@ -635,7 +626,6 @@ void ip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 		    const struct iphdr *tnl_params, u8 protocol)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
-	unsigned int inner_nhdr_len = 0;
 	const struct iphdr *inner_iph;
 	struct flowi4 fl4;
 	u8     tos, ttl;
@@ -644,14 +634,6 @@ void ip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 	unsigned int max_headroom;	/* The extra header space needed */
 	__be32 dst;
 	bool connected;
-
-	/* ensure we can access the inner net header, for several users below */
-	if (skb->protocol == htons(ETH_P_IP))
-		inner_nhdr_len = sizeof(struct iphdr);
-	else if (skb->protocol == htons(ETH_P_IPV6))
-		inner_nhdr_len = sizeof(struct ipv6hdr);
-	if (unlikely(!pskb_may_pull(skb, inner_nhdr_len)))
-		goto tx_error;
 
 	inner_iph = (const struct iphdr *)skb_inner_network_header(skb);
 	connected = (tunnel->parms.iph.daddr != 0);
@@ -721,8 +703,7 @@ void ip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 	}
 
 	init_tunnel_flow(&fl4, protocol, dst, tnl_params->saddr,
-			 tunnel->parms.o_key, RT_TOS(tos), tunnel->parms.link,
-			 tunnel->fwmark);
+			 tunnel->parms.o_key, RT_TOS(tos), tunnel->parms.link);
 
 	if (ip_tunnel_encap(skb, tunnel, &protocol, &fl4) < 0)
 		goto tx_error;
@@ -810,8 +791,7 @@ static void ip_tunnel_update(struct ip_tunnel_net *itn,
 			     struct ip_tunnel *t,
 			     struct net_device *dev,
 			     struct ip_tunnel_parm *p,
-			     bool set_mtu,
-			     __u32 fwmark)
+			     bool set_mtu)
 {
 	ip_tunnel_del(itn, t);
 	t->parms.iph.saddr = p->iph.saddr;
@@ -828,11 +808,10 @@ static void ip_tunnel_update(struct ip_tunnel_net *itn,
 	t->parms.iph.tos = p->iph.tos;
 	t->parms.iph.frag_off = p->iph.frag_off;
 
-	if (t->parms.link != p->link || t->fwmark != fwmark) {
+	if (t->parms.link != p->link) {
 		int mtu;
 
 		t->parms.link = p->link;
-		t->fwmark = fwmark;
 		mtu = ip_tunnel_bind_dev(dev);
 		if (set_mtu)
 			dev->mtu = mtu;
@@ -910,7 +889,7 @@ int ip_tunnel_ioctl(struct net_device *dev, struct ip_tunnel_parm *p, int cmd)
 
 		if (t) {
 			err = 0;
-			ip_tunnel_update(itn, t, dev, p, true, 0);
+			ip_tunnel_update(itn, t, dev, p, true);
 		} else {
 			err = -ENOENT;
 		}
@@ -950,7 +929,7 @@ int __ip_tunnel_change_mtu(struct net_device *dev, int new_mtu, bool strict)
 	int t_hlen = tunnel->hlen + sizeof(struct iphdr);
 	int max_mtu = 0xFFF8 - dev->hard_header_len - t_hlen;
 
-	if (new_mtu < ETH_MIN_MTU)
+	if (new_mtu < 68)
 		return -EINVAL;
 
 	if (new_mtu > max_mtu) {
@@ -978,6 +957,7 @@ static void ip_tunnel_dev_free(struct net_device *dev)
 	gro_cells_destroy(&tunnel->gro_cells);
 	dst_cache_destroy(&tunnel->dst_cache);
 	free_percpu(dev->tstats);
+	free_netdev(dev);
 }
 
 void ip_tunnel_dellink(struct net_device *dev, struct list_head *head)
@@ -1010,7 +990,7 @@ int ip_tunnel_get_iflink(const struct net_device *dev)
 }
 EXPORT_SYMBOL(ip_tunnel_get_iflink);
 
-int ip_tunnel_init_net(struct net *net, unsigned int ip_tnl_net_id,
+int ip_tunnel_init_net(struct net *net, int ip_tnl_net_id,
 				  struct rtnl_link_ops *ops, char *devname)
 {
 	struct ip_tunnel_net *itn = net_generic(net, ip_tnl_net_id);
@@ -1082,7 +1062,7 @@ void ip_tunnel_delete_net(struct ip_tunnel_net *itn, struct rtnl_link_ops *ops)
 EXPORT_SYMBOL_GPL(ip_tunnel_delete_net);
 
 int ip_tunnel_newlink(struct net_device *dev, struct nlattr *tb[],
-		      struct ip_tunnel_parm *p, __u32 fwmark)
+		      struct ip_tunnel_parm *p)
 {
 	struct ip_tunnel *nt;
 	struct net *net = dev_net(dev);
@@ -1103,7 +1083,6 @@ int ip_tunnel_newlink(struct net_device *dev, struct nlattr *tb[],
 
 	nt->net = net;
 	nt->parms = *p;
-	nt->fwmark = fwmark;
 	err = register_netdevice(dev);
 	if (err)
 		goto out;
@@ -1112,14 +1091,8 @@ int ip_tunnel_newlink(struct net_device *dev, struct nlattr *tb[],
 		eth_hw_addr_random(dev);
 
 	mtu = ip_tunnel_bind_dev(dev);
-	if (tb[IFLA_MTU]) {
-		unsigned int max = 0xfff8 - dev->hard_header_len - nt->hlen;
-
-		dev->mtu = clamp(dev->mtu, (unsigned int)ETH_MIN_MTU,
-				 (unsigned int)(max - sizeof(struct iphdr)));
-	} else {
+	if (!tb[IFLA_MTU])
 		dev->mtu = mtu;
-	}
 
 	ip_tunnel_add(itn, nt);
 out:
@@ -1128,7 +1101,7 @@ out:
 EXPORT_SYMBOL_GPL(ip_tunnel_newlink);
 
 int ip_tunnel_changelink(struct net_device *dev, struct nlattr *tb[],
-			 struct ip_tunnel_parm *p, __u32 fwmark)
+			 struct ip_tunnel_parm *p)
 {
 	struct ip_tunnel *t;
 	struct ip_tunnel *tunnel = netdev_priv(dev);
@@ -1160,7 +1133,7 @@ int ip_tunnel_changelink(struct net_device *dev, struct nlattr *tb[],
 		}
 	}
 
-	ip_tunnel_update(itn, t, dev, p, !tb[IFLA_MTU], fwmark);
+	ip_tunnel_update(itn, t, dev, p, !tb[IFLA_MTU]);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ip_tunnel_changelink);
@@ -1171,8 +1144,7 @@ int ip_tunnel_init(struct net_device *dev)
 	struct iphdr *iph = &tunnel->parms.iph;
 	int err;
 
-	dev->needs_free_netdev = true;
-	dev->priv_destructor = ip_tunnel_dev_free;
+	dev->destructor	= ip_tunnel_dev_free;
 	dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
 	if (!dev->tstats)
 		return -ENOMEM;
@@ -1220,7 +1192,7 @@ void ip_tunnel_uninit(struct net_device *dev)
 EXPORT_SYMBOL_GPL(ip_tunnel_uninit);
 
 /* Do least required initialization, rest of init is done in tunnel_init call */
-void ip_tunnel_setup(struct net_device *dev, unsigned int net_id)
+void ip_tunnel_setup(struct net_device *dev, int net_id)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
 	tunnel->ip_tnl_net_id = net_id;

@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0
 #
 # This is a simple wrapper Makefile that calls the main Makefile.perf
 # with a -j option to do parallel builds
@@ -84,10 +83,10 @@ endif # has_clean
 endif # MAKECMDGOALS
 
 #
-# Explicitly disable parallelism for the clean target.
+# The clean target is not really parallel, don't print the jobs info:
 #
 clean:
-	$(make) -j1
+	$(make)
 
 #
 # The build-test target is not really parallel, don't print the jobs info,

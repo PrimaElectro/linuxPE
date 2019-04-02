@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __USBMIXER_H
 #define __USBMIXER_H
 

@@ -11,14 +11,13 @@
  * General Public License for more details.
  */
 #include <linux/radix-tree.h>
+#include <linux/memremap.h>
 #include <linux/device.h>
 #include <linux/types.h>
 #include <linux/pfn_t.h>
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/memory_hotplug.h>
-#include <linux/swap.h>
-#include <linux/swapops.h>
 
 #ifndef ioremap_cache
 /* temporary while we convert existing ioremap_cache users to memremap */
@@ -35,24 +34,13 @@ static void *arch_memremap_wb(resource_size_t offset, unsigned long size)
 }
 #endif
 
-#ifndef arch_memremap_can_ram_remap
-static bool arch_memremap_can_ram_remap(resource_size_t offset, size_t size,
-					unsigned long flags)
-{
-	return true;
-}
-#endif
-
-static void *try_ram_remap(resource_size_t offset, size_t size,
-			   unsigned long flags)
+static void *try_ram_remap(resource_size_t offset, size_t size)
 {
 	unsigned long pfn = PHYS_PFN(offset);
 
 	/* In the simple case just return the existing linear address */
-	if (pfn_valid(pfn) && !PageHighMem(pfn_to_page(pfn)) &&
-	    arch_memremap_can_ram_remap(offset, size, flags))
+	if (pfn_valid(pfn) && !PageHighMem(pfn_to_page(pfn)))
 		return __va(offset);
-
 	return NULL; /* fallback to arch_memremap_wb */
 }
 
@@ -60,8 +48,7 @@ static void *try_ram_remap(resource_size_t offset, size_t size,
  * memremap() - remap an iomem_resource as cacheable memory
  * @offset: iomem resource start address
  * @size: size of remap
- * @flags: any of MEMREMAP_WB, MEMREMAP_WT, MEMREMAP_WC,
- *		  MEMREMAP_ENC, MEMREMAP_DEC
+ * @flags: any of MEMREMAP_WB, MEMREMAP_WT and MEMREMAP_WC
  *
  * memremap() is "ioremap" for cases where it is known that the resource
  * being mapped does not have i/o side effects and the __iomem
@@ -108,7 +95,7 @@ void *memremap(resource_size_t offset, size_t size, unsigned long flags)
 		 * the requested range is potentially in System RAM.
 		 */
 		if (is_ram == REGION_INTERSECTS)
-			addr = try_ram_remap(offset, size, flags);
+			addr = try_ram_remap(offset, size);
 		if (!addr)
 			addr = arch_memremap_wb(offset, size);
 	}
@@ -195,72 +182,33 @@ struct page_map {
 	struct vmem_altmap altmap;
 };
 
-static unsigned long order_at(struct resource *res, unsigned long pgoff)
+void get_zone_device_page(struct page *page)
 {
-	unsigned long phys_pgoff = PHYS_PFN(res->start) + pgoff;
-	unsigned long nr_pages, mask;
-
-	nr_pages = PHYS_PFN(resource_size(res));
-	if (nr_pages == pgoff)
-		return ULONG_MAX;
-
-	/*
-	 * What is the largest aligned power-of-2 range available from
-	 * this resource pgoff to the end of the resource range,
-	 * considering the alignment of the current pgoff?
-	 */
-	mask = phys_pgoff | rounddown_pow_of_two(nr_pages - pgoff);
-	if (!mask)
-		return ULONG_MAX;
-
-	return find_first_bit(&mask, BITS_PER_LONG);
+	percpu_ref_get(page->pgmap->ref);
 }
+EXPORT_SYMBOL(get_zone_device_page);
 
-#define foreach_order_pgoff(res, order, pgoff) \
-	for (pgoff = 0, order = order_at((res), pgoff); order < ULONG_MAX; \
-			pgoff += 1UL << order, order = order_at((res), pgoff))
-
-#if IS_ENABLED(CONFIG_DEVICE_PRIVATE)
-int device_private_entry_fault(struct vm_area_struct *vma,
-		       unsigned long addr,
-		       swp_entry_t entry,
-		       unsigned int flags,
-		       pmd_t *pmdp)
+void put_zone_device_page(struct page *page)
 {
-	struct page *page = device_private_entry_to_page(entry);
-
-	/*
-	 * The page_fault() callback must migrate page back to system memory
-	 * so that CPU can access it. This might fail for various reasons
-	 * (device issue, device was unsafely unplugged, ...). When such
-	 * error conditions happen, the callback must return VM_FAULT_SIGBUS.
-	 *
-	 * Note that because memory cgroup charges are accounted to the device
-	 * memory, this should never fail because of memory restrictions (but
-	 * allocation of regular system page might still fail because we are
-	 * out of memory).
-	 *
-	 * There is a more in-depth description of what that callback can and
-	 * cannot do, in include/linux/memremap.h
-	 */
-	return page->pgmap->page_fault(vma, addr, page, flags, pmdp);
+	put_dev_pagemap(page->pgmap);
 }
-EXPORT_SYMBOL(device_private_entry_fault);
-#endif /* CONFIG_DEVICE_PRIVATE */
+EXPORT_SYMBOL(put_zone_device_page);
 
-static void pgmap_radix_release(struct resource *res, unsigned long end_pgoff)
+static void pgmap_radix_release(struct resource *res, resource_size_t end_key)
 {
-	unsigned long pgoff, order;
+	resource_size_t key, align_start, align_size, align_end;
+
+	align_start = res->start & ~(SECTION_SIZE - 1);
+	align_size = ALIGN(resource_size(res), SECTION_SIZE);
+	align_end = align_start + align_size - 1;
 
 	mutex_lock(&pgmap_lock);
-	foreach_order_pgoff(res, order, pgoff) {
-		if (pgoff >= end_pgoff)
+	for (key = res->start; key <= res->end; key += SECTION_SIZE) {
+		if (key >= end_key)
 			break;
-		radix_tree_delete(&pgmap_radix, PHYS_PFN(res->start) + pgoff);
+		radix_tree_delete(&pgmap_radix, key >> PA_SECTION_SHIFT);
 	}
 	mutex_unlock(&pgmap_lock);
-
-	synchronize_rcu();
 }
 
 static unsigned long pfn_first(struct page_map *page_map)
@@ -292,10 +240,6 @@ static void devm_memremap_pages_release(struct device *dev, void *data)
 	struct resource *res = &page_map->res;
 	resource_size_t align_start, align_size;
 	struct dev_pagemap *pgmap = &page_map->pgmap;
-	unsigned long pfn;
-
-	for_each_device_pfn(pfn, page_map)
-		put_page(pfn_to_page(pfn));
 
 	if (percpu_ref_tryget_live(pgmap->ref)) {
 		dev_WARN(dev, "%s: page mapping is still live!\n", __func__);
@@ -307,9 +251,11 @@ static void devm_memremap_pages_release(struct device *dev, void *data)
 	align_size = ALIGN(res->start + resource_size(res), SECTION_SIZE)
 		- align_start;
 
+	lock_device_hotplug();
 	mem_hotplug_begin();
 	arch_remove_memory(align_start, align_size);
 	mem_hotplug_done();
+	unlock_device_hotplug();
 
 	untrack_pfn(NULL, PHYS_PFN(align_start), align_size);
 	pgmap_radix_release(res, -1);
@@ -324,7 +270,7 @@ struct dev_pagemap *find_dev_pagemap(resource_size_t phys)
 
 	WARN_ON_ONCE(!rcu_read_lock_held());
 
-	page_map = radix_tree_lookup(&pgmap_radix, PHYS_PFN(phys));
+	page_map = radix_tree_lookup(&pgmap_radix, phys >> PA_SECTION_SHIFT);
 	return page_map ? &page_map->pgmap : NULL;
 }
 
@@ -337,10 +283,7 @@ struct dev_pagemap *find_dev_pagemap(resource_size_t phys)
  *
  * Notes:
  * 1/ @ref must be 'live' on entry and 'dead' before devm_memunmap_pages() time
- *    (or devm release event). The expected order of events is that @ref has
- *    been through percpu_ref_kill() before devm_memremap_pages_release(). The
- *    wait for the completion of all references being dropped and
- *    percpu_ref_exit() must occur after devm_memremap_pages_release().
+ *    (or devm release event).
  *
  * 2/ @res is expected to be a host memory range that could feasibly be
  *    treated as a "System RAM" range, i.e. not a device mmio range, but
@@ -349,41 +292,27 @@ struct dev_pagemap *find_dev_pagemap(resource_size_t phys)
 void *devm_memremap_pages(struct device *dev, struct resource *res,
 		struct percpu_ref *ref, struct vmem_altmap *altmap)
 {
-	resource_size_t align_start, align_size, align_end;
-	unsigned long pfn, pgoff, order;
+	resource_size_t key = 0, align_start, align_size, align_end;
 	pgprot_t pgprot = PAGE_KERNEL;
 	struct dev_pagemap *pgmap;
 	struct page_map *page_map;
-	int error, nid, is_ram, i = 0;
-	struct dev_pagemap *conflict_pgmap;
+	int error, nid, is_ram;
+	unsigned long pfn;
 
 	align_start = res->start & ~(SECTION_SIZE - 1);
 	align_size = ALIGN(res->start + resource_size(res), SECTION_SIZE)
 		- align_start;
-	align_end = align_start + align_size - 1;
-
-	conflict_pgmap = get_dev_pagemap(PHYS_PFN(align_start), NULL);
-	if (conflict_pgmap) {
-		dev_WARN(dev, "Conflicting mapping in same section\n");
-		put_dev_pagemap(conflict_pgmap);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	conflict_pgmap = get_dev_pagemap(PHYS_PFN(align_end), NULL);
-	if (conflict_pgmap) {
-		dev_WARN(dev, "Conflicting mapping in same section\n");
-		put_dev_pagemap(conflict_pgmap);
-		return ERR_PTR(-ENOMEM);
-	}
-
 	is_ram = region_intersects(align_start, align_size,
 		IORESOURCE_SYSTEM_RAM, IORES_DESC_NONE);
 
-	if (is_ram != REGION_DISJOINT) {
-		WARN_ONCE(1, "%s attempted on %s region %pr\n", __func__,
-				is_ram == REGION_MIXED ? "mixed" : "ram", res);
+	if (is_ram == REGION_MIXED) {
+		WARN_ONCE(1, "%s attempted on mixed region %pr\n",
+				__func__, res);
 		return ERR_PTR(-ENXIO);
 	}
+
+	if (is_ram == REGION_INTERSECTS)
+		return __va(res->start);
 
 	if (!ref)
 		return ERR_PTR(-EINVAL);
@@ -403,19 +332,15 @@ void *devm_memremap_pages(struct device *dev, struct resource *res,
 	}
 	pgmap->ref = ref;
 	pgmap->res = &page_map->res;
-	pgmap->type = MEMORY_DEVICE_HOST;
-	pgmap->page_fault = NULL;
-	pgmap->page_free = NULL;
-	pgmap->data = NULL;
 
 	mutex_lock(&pgmap_lock);
 	error = 0;
-
-	foreach_order_pgoff(res, order, pgoff) {
+	align_end = align_start + align_size - 1;
+	for (key = align_start; key <= align_end; key += SECTION_SIZE) {
 		struct dev_pagemap *dup;
 
 		rcu_read_lock();
-		dup = find_dev_pagemap(res->start + PFN_PHYS(pgoff));
+		dup = find_dev_pagemap(key);
 		rcu_read_unlock();
 		if (dup) {
 			dev_err(dev, "%s: %pr collides with mapping for %s\n",
@@ -423,8 +348,8 @@ void *devm_memremap_pages(struct device *dev, struct resource *res,
 			error = -EBUSY;
 			break;
 		}
-		error = __radix_tree_insert(&pgmap_radix,
-				PHYS_PFN(res->start) + pgoff, order, page_map);
+		error = radix_tree_insert(&pgmap_radix, key >> PA_SECTION_SHIFT,
+				page_map);
 		if (error) {
 			dev_err(dev, "%s: failed: %d\n", __func__, error);
 			break;
@@ -443,13 +368,11 @@ void *devm_memremap_pages(struct device *dev, struct resource *res,
 	if (error)
 		goto err_pfn_remap;
 
+	lock_device_hotplug();
 	mem_hotplug_begin();
-	error = arch_add_memory(nid, align_start, align_size, false);
-	if (!error)
-		move_pfn_range_to_zone(&NODE_DATA(nid)->node_zones[ZONE_DEVICE],
-					align_start >> PAGE_SHIFT,
-					align_size >> PAGE_SHIFT);
+	error = arch_add_memory(nid, align_start, align_size, true);
 	mem_hotplug_done();
+	unlock_device_hotplug();
 	if (error)
 		goto err_add_memory;
 
@@ -464,9 +387,6 @@ void *devm_memremap_pages(struct device *dev, struct resource *res,
 		 */
 		list_del(&page->lru);
 		page->pgmap = pgmap;
-		percpu_ref_get(ref);
-		if (!(++i % 1024))
-			cond_resched();
 	}
 	devres_add(dev, page_map);
 	return __va(res->start);
@@ -475,11 +395,11 @@ void *devm_memremap_pages(struct device *dev, struct resource *res,
 	untrack_pfn(NULL, PHYS_PFN(align_start), align_size);
  err_pfn_remap:
  err_radix:
-	pgmap_radix_release(res, pgoff);
+	pgmap_radix_release(res, key);
 	devres_free(page_map);
 	return ERR_PTR(error);
 }
-EXPORT_SYMBOL_GPL(devm_memremap_pages);
+EXPORT_SYMBOL(devm_memremap_pages);
 
 unsigned long vmem_altmap_offset(struct vmem_altmap *altmap)
 {
@@ -518,28 +438,3 @@ struct vmem_altmap *to_vmem_altmap(unsigned long memmap_start)
 	return pgmap ? pgmap->altmap : NULL;
 }
 #endif /* CONFIG_ZONE_DEVICE */
-
-
-#if IS_ENABLED(CONFIG_DEVICE_PRIVATE) ||  IS_ENABLED(CONFIG_DEVICE_PUBLIC)
-void put_zone_device_private_or_public_page(struct page *page)
-{
-	int count = page_ref_dec_return(page);
-
-	/*
-	 * If refcount is 1 then page is freed and refcount is stable as nobody
-	 * holds a reference on the page.
-	 */
-	if (count == 1) {
-		/* Clear Active bit in case of parallel mark_page_accessed */
-		__ClearPageActive(page);
-		__ClearPageWaiters(page);
-
-		page->mapping = NULL;
-		mem_cgroup_uncharge(page);
-
-		page->pgmap->page_free(page, page->pgmap->data);
-	} else if (!count)
-		__put_page(page);
-}
-EXPORT_SYMBOL(put_zone_device_private_or_public_page);
-#endif /* CONFIG_DEVICE_PRIVATE || CONFIG_DEVICE_PUBLIC */

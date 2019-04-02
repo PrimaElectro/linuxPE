@@ -106,7 +106,6 @@ all_compiled_sources()
 		case "$i" in
 			*.[cS])
 				j=${i/\.[cS]/\.o}
-				j="${j#$tree}"
 				if [ -e $j ]; then
 					echo $i
 				fi
@@ -129,8 +128,6 @@ all_target_sources()
 
 all_kconfigs()
 {
-	find ${tree}arch/ -maxdepth 1 $ignore \
-	       -name "Kconfig*" -not -type l -print;
 	for arch in $ALLSOURCE_ARCHS; do
 		find_sources $arch 'Kconfig*'
 	done
@@ -307,26 +304,11 @@ if [ "${ARCH}" = "um" ]; then
 elif [ "${SRCARCH}" = "arm" -a "${SUBARCH}" != "" ]; then
 	subarchdir=$(find ${tree}arch/$SRCARCH/ -name "mach-*" -type d -o \
 							-name "plat-*" -type d);
-	mach_suffix=$SUBARCH
-	plat_suffix=$SUBARCH
-
-	# Special cases when $plat_suffix != $mach_suffix
-	case $mach_suffix in
-		"omap1" | "omap2")
-			plat_suffix="omap"
-			;;
-	esac
-
-	if [ ! -d ${tree}arch/$SRCARCH/mach-$mach_suffix ]; then
-		echo "Warning: arch/arm/mach-$mach_suffix/ not found." >&2
-		echo "         Fix your \$SUBARCH appropriately" >&2
-	fi
-
 	for i in $subarchdir; do
 		case "$i" in
-			*"mach-"${mach_suffix})
+			*"mach-"${SUBARCH})
 				;;
-			*"plat-"${plat_suffix})
+			*"plat-"${SUBARCH})
 				;;
 			*)
 				subarchprune="$subarchprune \

@@ -14,7 +14,7 @@
 #include <linux/xattr.h>
 #include <linux/gfs2_ondisk.h>
 #include <linux/posix_acl_xattr.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "gfs2.h"
 #include "incore.h"
@@ -25,7 +25,6 @@
 #include "meta_io.h"
 #include "quota.h"
 #include "rgrp.h"
-#include "super.h"
 #include "trans.h"
 #include "util.h"
 
@@ -1210,12 +1209,8 @@ int __gfs2_xattr_set(struct inode *inode, const char *name,
 	if (namel > GFS2_EA_MAX_NAME_LEN)
 		return -ERANGE;
 
-	if (value == NULL) {
-		error = gfs2_xattr_remove(ip, type, name);
-		if (error == -ENODATA && !(flags & XATTR_REPLACE))
-			error = 0;
-		return error;
-	}
+	if (value == NULL)
+		return gfs2_xattr_remove(ip, type, name);
 
 	if (ea_check_size(sdp, namel, size))
 		return -ERANGE;
@@ -1332,8 +1327,8 @@ static int ea_dealloc_indirect(struct gfs2_inode *ip)
 	gfs2_rlist_alloc(&rlist, LM_ST_EXCLUSIVE);
 
 	for (x = 0; x < rlist.rl_rgrps; x++) {
-		struct gfs2_rgrpd *rgd = gfs2_glock2rgrp(rlist.rl_ghs[x].gh_gl);
-
+		struct gfs2_rgrpd *rgd;
+		rgd = rlist.rl_ghs[x].gh_gl->gl_object;
 		rg_blocks += rgd->rd_length;
 	}
 

@@ -280,7 +280,7 @@ static const struct vmstor_protocol vmstor_protocols[] = {
 
 
 /*
- * This structure is sent during the initialization phase to get the different
+ * This structure is sent during the intialization phase to get the different
  * properties of the channel.
  */
 
@@ -459,15 +459,6 @@ struct storvsc_device {
 	 * Max I/O, the device can support.
 	 */
 	u32   max_transfer_bytes;
-	/*
-	 * Number of sub-channels we will open.
-	 */
-	u16 num_sc;
-	struct vmbus_channel **stor_chns;
-	/*
-	 * Mask of CPUs bound to subchannels.
-	 */
-	struct cpumask alloced_cpus;
 	/* Used for vsc/vsp channel reset process */
 	struct storvsc_cmd_request init_request;
 	struct storvsc_cmd_request reset_request;
@@ -476,9 +467,6 @@ struct storvsc_device {
 	 */
 	u64 node_name;
 	u64 port_name;
-#if IS_ENABLED(CONFIG_SCSI_FC_ATTRS)
-	struct fc_rport *rport;
-#endif
 };
 
 struct hv_host_device {
@@ -648,11 +636,6 @@ static void handle_sc_creation(struct vmbus_channel *new_sc)
 		   (void *)&props,
 		   sizeof(struct vmstorage_channel_properties),
 		   storvsc_on_channel_callback, new_sc);
-
-	if (new_sc->state == CHANNEL_OPENED_STATE) {
-		stor_device->stor_chns[new_sc->target_cpu] = new_sc;
-		cpumask_set_cpu(new_sc->target_cpu, &stor_device->alloced_cpus);
-	}
 }
 
 static void  handle_multichannel_storage(struct hv_device *device, int max_chns)
@@ -669,7 +652,6 @@ static void  handle_multichannel_storage(struct hv_device *device, int max_chns)
 	if (!stor_device)
 		return;
 
-	stor_device->num_sc = num_sc;
 	request = &stor_device->init_request;
 	vstor_packet = &request->vstor_packet;
 
@@ -857,25 +839,6 @@ static int storvsc_channel_init(struct hv_device *device, bool is_fc)
 	 * support multi-channel.
 	 */
 	max_chns = vstor_packet->storage_channel_properties.max_channel_cnt;
-
-	/*
-	 * Allocate state to manage the sub-channels.
-	 * We allocate an array based on the numbers of possible CPUs
-	 * (Hyper-V does not support cpu online/offline).
-	 * This Array will be sparseley populated with unique
-	 * channels - primary + sub-channels.
-	 * We will however populate all the slots to evenly distribute
-	 * the load.
-	 */
-	stor_device->stor_chns = kcalloc(num_possible_cpus(), sizeof(void *),
-					 GFP_KERNEL);
-	if (stor_device->stor_chns == NULL)
-		return -ENOMEM;
-
-	stor_device->stor_chns[device->channel->target_cpu] = device->channel;
-	cpumask_set_cpu(device->channel->target_cpu,
-			&stor_device->alloced_cpus);
-
 	if (vmstor_proto_version >= VMSTOR_PROTO_VERSION_WIN8) {
 		if (vstor_packet->storage_channel_properties.flags &
 		    STORAGE_CHANNEL_SUPPORTS_MULTI_CHANNEL)
@@ -1150,9 +1113,13 @@ static void storvsc_on_receive(struct storvsc_device *stor_device,
 static void storvsc_on_channel_callback(void *context)
 {
 	struct vmbus_channel *channel = (struct vmbus_channel *)context;
-	const struct vmpacket_descriptor *desc;
 	struct hv_device *device;
 	struct storvsc_device *stor_device;
+	u32 bytes_recvd;
+	u64 request_id;
+	unsigned char packet[ALIGN(sizeof(struct vstor_packet), 8)];
+	struct storvsc_cmd_request *request;
+	int ret;
 
 	if (channel->primary_channel != NULL)
 		device = channel->primary_channel->device_obj;
@@ -1163,22 +1130,34 @@ static void storvsc_on_channel_callback(void *context)
 	if (!stor_device)
 		return;
 
-	foreach_vmbus_pkt(desc, channel) {
-		void *packet = hv_pkt_data(desc);
-		struct storvsc_cmd_request *request;
+	do {
+		ret = vmbus_recvpacket(channel, packet,
+				       ALIGN((sizeof(struct vstor_packet) -
+					     vmscsi_size_delta), 8),
+				       &bytes_recvd, &request_id);
+		if (ret == 0 && bytes_recvd > 0) {
 
-		request = (struct storvsc_cmd_request *)
-			((unsigned long)desc->trans_id);
+			request = (struct storvsc_cmd_request *)
+					(unsigned long)request_id;
 
-		if (request == &stor_device->init_request ||
-		    request == &stor_device->reset_request) {
-			memcpy(&request->vstor_packet, packet,
-			       (sizeof(struct vstor_packet) - vmscsi_size_delta));
-			complete(&request->wait_event);
+			if ((request == &stor_device->init_request) ||
+			    (request == &stor_device->reset_request)) {
+
+				memcpy(&request->vstor_packet, packet,
+				       (sizeof(struct vstor_packet) -
+					vmscsi_size_delta));
+				complete(&request->wait_event);
+			} else {
+				storvsc_on_receive(stor_device,
+						(struct vstor_packet *)packet,
+						request);
+			}
 		} else {
-			storvsc_on_receive(stor_device, packet, request);
+			break;
 		}
-	}
+	} while (1);
+
+	return;
 }
 
 static int storvsc_connect_to_vsp(struct hv_device *device, u32 ring_size,
@@ -1207,13 +1186,13 @@ static int storvsc_connect_to_vsp(struct hv_device *device, u32 ring_size,
 static int storvsc_dev_remove(struct hv_device *device)
 {
 	struct storvsc_device *stor_device;
+	unsigned long flags;
 
 	stor_device = hv_get_drvdata(device);
 
+	spin_lock_irqsave(&device->channel->inbound_lock, flags);
 	stor_device->destroy = true;
-
-	/* Make sure flag is set before waiting */
-	wmb();
+	spin_unlock_irqrestore(&device->channel->inbound_lock, flags);
 
 	/*
 	 * At this point, all outbound traffic should be disable. We
@@ -1230,69 +1209,24 @@ static int storvsc_dev_remove(struct hv_device *device)
 	 * we have drained - to drain the outgoing packets, we need to
 	 * allow incoming packets.
 	 */
+	spin_lock_irqsave(&device->channel->inbound_lock, flags);
 	hv_set_drvdata(device, NULL);
+	spin_unlock_irqrestore(&device->channel->inbound_lock, flags);
 
 	/* Close the channel */
 	vmbus_close(device->channel);
 
-	kfree(stor_device->stor_chns);
 	kfree(stor_device);
 	return 0;
 }
 
-static struct vmbus_channel *get_og_chn(struct storvsc_device *stor_device,
-					u16 q_num)
-{
-	u16 slot = 0;
-	u16 hash_qnum;
-	struct cpumask alloced_mask;
-	int num_channels, tgt_cpu;
-
-	if (stor_device->num_sc == 0)
-		return stor_device->device->channel;
-
-	/*
-	 * Our channel array is sparsley populated and we
-	 * initiated I/O on a processor/hw-q that does not
-	 * currently have a designated channel. Fix this.
-	 * The strategy is simple:
-	 * I. Ensure NUMA locality
-	 * II. Distribute evenly (best effort)
-	 * III. Mapping is persistent.
-	 */
-
-	cpumask_and(&alloced_mask, &stor_device->alloced_cpus,
-		    cpumask_of_node(cpu_to_node(q_num)));
-
-	num_channels = cpumask_weight(&alloced_mask);
-	if (num_channels == 0)
-		return stor_device->device->channel;
-
-	hash_qnum = q_num;
-	while (hash_qnum >= num_channels)
-		hash_qnum -= num_channels;
-
-	for_each_cpu(tgt_cpu, &alloced_mask) {
-		if (slot == hash_qnum)
-			break;
-		slot++;
-	}
-
-	stor_device->stor_chns[q_num] = stor_device->stor_chns[tgt_cpu];
-
-	return stor_device->stor_chns[q_num];
-}
-
-
 static int storvsc_do_io(struct hv_device *device,
-			 struct storvsc_cmd_request *request, u16 q_num)
+			 struct storvsc_cmd_request *request)
 {
 	struct storvsc_device *stor_device;
 	struct vstor_packet *vstor_packet;
 	struct vmbus_channel *outgoing_channel;
 	int ret = 0;
-	struct cpumask alloced_mask;
-	int tgt_cpu;
 
 	vstor_packet = &request->vstor_packet;
 	stor_device = get_out_stor_device(device);
@@ -1306,26 +1240,7 @@ static int storvsc_do_io(struct hv_device *device,
 	 * Select an an appropriate channel to send the request out.
 	 */
 
-	if (stor_device->stor_chns[q_num] != NULL) {
-		outgoing_channel = stor_device->stor_chns[q_num];
-		if (outgoing_channel->target_cpu == smp_processor_id()) {
-			/*
-			 * Ideally, we want to pick a different channel if
-			 * available on the same NUMA node.
-			 */
-			cpumask_and(&alloced_mask, &stor_device->alloced_cpus,
-				    cpumask_of_node(cpu_to_node(q_num)));
-			for_each_cpu(tgt_cpu, &alloced_mask) {
-				if (tgt_cpu != outgoing_channel->target_cpu) {
-					outgoing_channel =
-					stor_device->stor_chns[tgt_cpu];
-					break;
-				}
-			}
-		}
-	} else {
-		outgoing_channel = get_og_chn(stor_device, q_num);
-	}
+	outgoing_channel = vmbus_get_outgoing_channel(device->channel);
 
 
 	vstor_packet->flags |= REQUEST_COMPLETION_FLAG;
@@ -1385,6 +1300,8 @@ static int storvsc_device_alloc(struct scsi_device *sdevice)
 
 static int storvsc_device_configure(struct scsi_device *sdevice)
 {
+
+	blk_queue_max_segment_size(sdevice->request_queue, PAGE_SIZE);
 
 	blk_queue_bounce_limit(sdevice->request_queue, BLK_BOUNCE_ANY);
 
@@ -1496,10 +1413,6 @@ static int storvsc_host_reset_handler(struct scsi_cmnd *scmnd)
  */
 static enum blk_eh_timer_return storvsc_eh_timed_out(struct scsi_cmnd *scmnd)
 {
-#if IS_ENABLED(CONFIG_SCSI_FC_ATTRS)
-	if (scmnd->device->host->transportt == fc_transport_template)
-		return fc_eh_timed_out(scmnd);
-#endif
 	return BLK_EH_RESET_TIMER;
 }
 
@@ -1615,9 +1528,9 @@ static int storvsc_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scmnd)
 	if (sg_count) {
 		if (sg_count > MAX_PAGE_BUFFER_COUNT) {
 
-			payload_sz = (sg_count * sizeof(u64) +
+			payload_sz = (sg_count * sizeof(void *) +
 				      sizeof(struct vmbus_packet_mpb_array));
-			payload = kzalloc(payload_sz, GFP_ATOMIC);
+			payload = kmalloc(payload_sz, GFP_ATOMIC);
 			if (!payload)
 				return SCSI_MLQUEUE_DEVICE_BUSY;
 		}
@@ -1631,14 +1544,20 @@ static int storvsc_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scmnd)
 				page_to_pfn(sg_page((cur_sgl)));
 			cur_sgl = sg_next(cur_sgl);
 		}
+
+	} else if (scsi_sglist(scmnd)) {
+		payload->range.len = length;
+		payload->range.offset =
+			virt_to_phys(scsi_sglist(scmnd)) & (PAGE_SIZE-1);
+		payload->range.pfn_array[0] =
+			virt_to_phys(scsi_sglist(scmnd)) >> PAGE_SHIFT;
 	}
 
 	cmd_request->payload = payload;
 	cmd_request->payload_sz = payload_sz;
 
 	/* Invokes the vsc to start an IO */
-	ret = storvsc_do_io(dev, cmd_request, get_cpu());
-	put_cpu();
+	ret = storvsc_do_io(dev, cmd_request);
 
 	if (ret == -EAGAIN) {
 		if (payload_sz > sizeof(cmd_request->mpb))
@@ -1661,13 +1580,12 @@ static struct scsi_host_template scsi_driver = {
 	.eh_timed_out =		storvsc_eh_timed_out,
 	.slave_alloc =		storvsc_device_alloc,
 	.slave_configure =	storvsc_device_configure,
-	.cmd_per_lun =		2048,
+	.cmd_per_lun =		255,
 	.this_id =		-1,
 	.use_clustering =	ENABLE_CLUSTERING,
 	/* Make sure we dont get a sg segment crosses a page boundary */
 	.dma_boundary =		PAGE_SIZE-1,
 	.no_write_same =	1,
-	.track_queue_depth =	1,
 };
 
 enum {
@@ -1725,14 +1643,11 @@ static int storvsc_probe(struct hv_device *device,
 		max_targets = STORVSC_MAX_TARGETS;
 		max_channels = STORVSC_MAX_CHANNELS;
 		/*
-		 * On Windows8 and above, we support sub-channels for storage
-		 * on SCSI and FC controllers.
+		 * On Windows8 and above, we support sub-channels for storage.
 		 * The number of sub-channels offerred is based on the number of
 		 * VCPUs in the guest.
 		 */
-		if (!dev_is_ide)
-			max_sub_channels =
-				(num_cpus - 1) / storvsc_vcpus_per_sub_channel;
+		max_sub_channels = (num_cpus / storvsc_vcpus_per_sub_channel);
 	}
 
 	scsi_driver.can_queue = (max_outstanding_req_per_channel *
@@ -1801,11 +1716,6 @@ static int storvsc_probe(struct hv_device *device,
 	 * from the host.
 	 */
 	host->sg_tablesize = (stor_device->max_transfer_bytes >> PAGE_SHIFT);
-	/*
-	 * Set the number of HW queues we are supporting.
-	 */
-	if (stor_device->num_sc != 0)
-		host->nr_hw_queues = stor_device->num_sc + 1;
 
 	/* Register the HBA and start the scsi bus scan */
 	ret = scsi_add_host(host, &device->device);
@@ -1818,28 +1728,18 @@ static int storvsc_probe(struct hv_device *device,
 		target = (device->dev_instance.b[5] << 8 |
 			 device->dev_instance.b[4]);
 		ret = scsi_add_device(host, 0, target, 0);
-		if (ret)
-			goto err_out3;
+		if (ret) {
+			scsi_remove_host(host);
+			goto err_out2;
+		}
 	}
 #if IS_ENABLED(CONFIG_SCSI_FC_ATTRS)
 	if (host->transportt == fc_transport_template) {
-		struct fc_rport_identifiers ids = {
-			.roles = FC_PORT_ROLE_FCP_DUMMY_INITIATOR,
-		};
-
 		fc_host_node_name(host) = stor_device->node_name;
 		fc_host_port_name(host) = stor_device->port_name;
-		stor_device->rport = fc_remote_port_add(host, 0, &ids);
-		if (!stor_device->rport) {
-			ret = -ENOMEM;
-			goto err_out3;
-		}
 	}
 #endif
 	return 0;
-
-err_out3:
-	scsi_remove_host(host);
 
 err_out2:
 	/*
@@ -1852,7 +1752,6 @@ err_out2:
 	goto err_out0;
 
 err_out1:
-	kfree(stor_device->stor_chns);
 	kfree(stor_device);
 
 err_out0:
@@ -1866,10 +1765,8 @@ static int storvsc_remove(struct hv_device *dev)
 	struct Scsi_Host *host = stor_device->host;
 
 #if IS_ENABLED(CONFIG_SCSI_FC_ATTRS)
-	if (host->transportt == fc_transport_template) {
-		fc_remote_port_delete(stor_device->rport);
+	if (host->transportt == fc_transport_template)
 		fc_remove_host(host);
-	}
 #endif
 	scsi_remove_host(host);
 	storvsc_dev_remove(dev);
@@ -1913,6 +1810,11 @@ static int __init storvsc_drv_init(void)
 	fc_transport_template = fc_attach_transport(&fc_transport_functions);
 	if (!fc_transport_template)
 		return -ENODEV;
+
+	/*
+	 * Install Hyper-V specific timeout handler.
+	 */
+	fc_transport_template->eh_timed_out = storvsc_eh_timed_out;
 #endif
 
 	ret = vmbus_driver_register(&storvsc_drv);

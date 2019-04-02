@@ -41,13 +41,13 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 
 	test_msg("Running btrfs_split_item tests\n");
 
-	fs_info = btrfs_alloc_dummy_fs_info(nodesize, sectorsize);
+	fs_info = btrfs_alloc_dummy_fs_info();
 	if (!fs_info) {
 		test_msg("Could not allocate fs_info\n");
 		return -ENOMEM;
 	}
 
-	root = btrfs_alloc_dummy_root(fs_info);
+	root = btrfs_alloc_dummy_root(fs_info, sectorsize, nodesize);
 	if (IS_ERR(root)) {
 		test_msg("Could not allocate root\n");
 		ret = PTR_ERR(root);
@@ -61,7 +61,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	path->nodes[0] = eb = alloc_dummy_extent_buffer(fs_info, nodesize);
+	path->nodes[0] = eb = alloc_dummy_extent_buffer(NULL, nodesize,
+							nodesize);
 	if (!eb) {
 		test_msg("Could not allocate dummy buffer\n");
 		ret = -ENOMEM;

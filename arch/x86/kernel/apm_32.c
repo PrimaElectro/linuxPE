@@ -218,8 +218,7 @@
 #include <linux/apm_bios.h>
 #include <linux/init.h>
 #include <linux/time.h>
-#include <linux/sched/signal.h>
-#include <linux/sched/cputime.h>
+#include <linux/sched.h>
 #include <linux/pm.h>
 #include <linux/capability.h>
 #include <linux/device.h>
@@ -235,12 +234,11 @@
 #include <linux/i8253.h>
 #include <linux/cpuidle.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/desc.h>
 #include <asm/olpc.h>
 #include <asm/paravirt.h>
 #include <asm/reboot.h>
-#include <asm/nospec-branch.h>
 
 #if defined(CONFIG_APM_DISPLAY_BLANK) && defined(CONFIG_VT)
 extern int (*console_blank_hook)(int);
@@ -610,18 +608,16 @@ static long __apm_bios_call(void *_call)
 
 	cpu = get_cpu();
 	BUG_ON(cpu != 0);
-	gdt = get_cpu_gdt_rw(cpu);
+	gdt = get_cpu_gdt_table(cpu);
 	save_desc_40 = gdt[0x40 / 8];
 	gdt[0x40 / 8] = bad_bios_desc;
 
 	apm_irq_save(flags);
-	firmware_restrict_branch_speculation_start();
 	APM_DO_SAVE_SEGS;
 	apm_bios_call_asm(call->func, call->ebx, call->ecx,
 			  &call->eax, &call->ebx, &call->ecx, &call->edx,
 			  &call->esi);
 	APM_DO_RESTORE_SEGS;
-	firmware_restrict_branch_speculation_end();
 	apm_irq_restore(flags);
 	gdt[0x40 / 8] = save_desc_40;
 	put_cpu();
@@ -688,17 +684,15 @@ static long __apm_bios_call_simple(void *_call)
 
 	cpu = get_cpu();
 	BUG_ON(cpu != 0);
-	gdt = get_cpu_gdt_rw(cpu);
+	gdt = get_cpu_gdt_table(cpu);
 	save_desc_40 = gdt[0x40 / 8];
 	gdt[0x40 / 8] = bad_bios_desc;
 
 	apm_irq_save(flags);
-	firmware_restrict_branch_speculation_start();
 	APM_DO_SAVE_SEGS;
 	error = apm_bios_call_simple_asm(call->func, call->ebx, call->ecx,
 					 &call->eax);
 	APM_DO_RESTORE_SEGS;
-	firmware_restrict_branch_speculation_end();
 	apm_irq_restore(flags);
 	gdt[0x40 / 8] = save_desc_40;
 	put_cpu();
@@ -911,21 +905,21 @@ static int apm_cpu_idle(struct cpuidle_device *dev,
 {
 	static int use_apm_idle; /* = 0 */
 	static unsigned int last_jiffies; /* = 0 */
-	static u64 last_stime; /* = 0 */
-	u64 stime, utime;
+	static unsigned int last_stime; /* = 0 */
+	cputime_t stime;
 
 	int apm_idle_done = 0;
 	unsigned int jiffies_since_last_check = jiffies - last_jiffies;
 	unsigned int bucket;
 
 recalc:
-	task_cputime(current, &utime, &stime);
+	task_cputime(current, NULL, &stime);
 	if (jiffies_since_last_check > IDLE_CALC_LIMIT) {
 		use_apm_idle = 0;
 	} else if (jiffies_since_last_check > idle_period) {
 		unsigned int idle_percentage;
 
-		idle_percentage = nsecs_to_jiffies(stime - last_stime);
+		idle_percentage = cputime_to_jiffies(stime - last_stime);
 		idle_percentage *= 100;
 		idle_percentage /= jiffies_since_last_check;
 		use_apm_idle = (idle_percentage > idle_threshold);
@@ -2048,7 +2042,7 @@ static int __init swab_apm_power_in_minutes(const struct dmi_system_id *d)
 	return 0;
 }
 
-static const struct dmi_system_id apm_dmi_table[] __initconst = {
+static struct dmi_system_id __initdata apm_dmi_table[] = {
 	{
 		print_if_true,
 		KERN_WARNING "IBM T23 - BIOS 1.03b+ and controller firmware 1.02+ may be needed for Linux APM.",
@@ -2357,7 +2351,7 @@ static int __init apm_init(void)
 	 * Note we only set APM segments on CPU zero, since we pin the APM
 	 * code to that CPU.
 	 */
-	gdt = get_cpu_gdt_rw(0);
+	gdt = get_cpu_gdt_table(0);
 	set_desc_base(&gdt[APM_CS >> 3],
 		 (unsigned long)__va((unsigned long)apm_info.bios.cseg << 4));
 	set_desc_base(&gdt[APM_CS_16 >> 3],
@@ -2394,7 +2388,6 @@ static int __init apm_init(void)
 	if (HZ != 100)
 		idle_period = (idle_period * HZ) / 100;
 	if (idle_threshold < 100) {
-		cpuidle_poll_state_init(&apm_idle_driver);
 		if (!cpuidle_register_driver(&apm_idle_driver))
 			if (cpuidle_register_device(&apm_cpuidle_device))
 				cpuidle_unregister_driver(&apm_idle_driver);

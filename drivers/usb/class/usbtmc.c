@@ -157,7 +157,6 @@ static int usbtmc_open(struct inode *inode, struct file *filp)
 	}
 
 	data = usb_get_intfdata(intf);
-	/* Protect reference to data from file structure until release */
 	kref_get(&data->kref);
 
 	/* Store pointer in file structure's private data field */
@@ -532,7 +531,7 @@ static int usbtmc488_ioctl_simple(struct usbtmc_device_data *data,
 }
 
 /*
- * Sends a REQUEST_DEV_DEP_MSG_IN message on the Bulk-OUT endpoint.
+ * Sends a REQUEST_DEV_DEP_MSG_IN message on the Bulk-IN endpoint.
  * @transfer_size: number of bytes to request from the device.
  *
  * See the USBTMC specification, Table 4.
@@ -1085,7 +1084,7 @@ static struct attribute *capability_attrs[] = {
 	NULL,
 };
 
-static const struct attribute_group capability_attr_grp = {
+static struct attribute_group capability_attr_grp = {
 	.attrs = capability_attrs,
 };
 
@@ -1151,7 +1150,7 @@ static struct attribute *data_attrs[] = {
 	NULL,
 };
 
-static const struct attribute_group data_attr_grp = {
+static struct attribute_group data_attr_grp = {
 	.attrs = data_attrs,
 };
 
@@ -1375,7 +1374,7 @@ static int usbtmc_probe(struct usb_interface *intf,
 {
 	struct usbtmc_device_data *data;
 	struct usb_host_interface *iface_desc;
-	struct usb_endpoint_descriptor *bulk_in, *bulk_out, *int_in;
+	struct usb_endpoint_descriptor *endpoint;
 	int n;
 	int retcode;
 
@@ -1421,29 +1420,49 @@ static int usbtmc_probe(struct usb_interface *intf,
 	iface_desc = data->intf->cur_altsetting;
 	data->ifnum = iface_desc->desc.bInterfaceNumber;
 
-	/* Find bulk endpoints */
-	retcode = usb_find_common_endpoints(iface_desc,
-			&bulk_in, &bulk_out, NULL, NULL);
-	if (retcode) {
+	/* Find bulk in endpoint */
+	for (n = 0; n < iface_desc->desc.bNumEndpoints; n++) {
+		endpoint = &iface_desc->endpoint[n].desc;
+
+		if (usb_endpoint_is_bulk_in(endpoint)) {
+			data->bulk_in = endpoint->bEndpointAddress;
+			dev_dbg(&intf->dev, "Found bulk in endpoint at %u\n",
+				data->bulk_in);
+			break;
+		}
+	}
+
+	/* Find bulk out endpoint */
+	for (n = 0; n < iface_desc->desc.bNumEndpoints; n++) {
+		endpoint = &iface_desc->endpoint[n].desc;
+
+		if (usb_endpoint_is_bulk_out(endpoint)) {
+			data->bulk_out = endpoint->bEndpointAddress;
+			dev_dbg(&intf->dev, "Found Bulk out endpoint at %u\n",
+				data->bulk_out);
+			break;
+		}
+	}
+
+	if (!data->bulk_out || !data->bulk_in) {
 		dev_err(&intf->dev, "bulk endpoints not found\n");
+		retcode = -ENODEV;
 		goto err_put;
 	}
 
-	data->bulk_in = bulk_in->bEndpointAddress;
-	dev_dbg(&intf->dev, "Found bulk in endpoint at %u\n", data->bulk_in);
-
-	data->bulk_out = bulk_out->bEndpointAddress;
-	dev_dbg(&intf->dev, "Found Bulk out endpoint at %u\n", data->bulk_out);
-
 	/* Find int endpoint */
-	retcode = usb_find_int_in_endpoint(iface_desc, &int_in);
-	if (!retcode) {
-		data->iin_ep_present = 1;
-		data->iin_ep = int_in->bEndpointAddress;
-		data->iin_wMaxPacketSize = usb_endpoint_maxp(int_in);
-		data->iin_interval = int_in->bInterval;
-		dev_dbg(&intf->dev, "Found Int in endpoint at %u\n",
+	for (n = 0; n < iface_desc->desc.bNumEndpoints; n++) {
+		endpoint = &iface_desc->endpoint[n].desc;
+
+		if (usb_endpoint_is_int_in(endpoint)) {
+			data->iin_ep_present = 1;
+			data->iin_ep = endpoint->bEndpointAddress;
+			data->iin_wMaxPacketSize = usb_endpoint_maxp(endpoint);
+			data->iin_interval = endpoint->bInterval;
+			dev_dbg(&intf->dev, "Found Int in endpoint at %u\n",
 				data->iin_ep);
+			break;
+		}
 	}
 
 	retcode = get_capabilities(data);
@@ -1461,7 +1480,7 @@ static int usbtmc_probe(struct usb_interface *intf,
 			goto error_register;
 		}
 
-		/* Protect interrupt in endpoint data until iin_urb is freed */
+		/* will reference data in int urb */
 		kref_get(&data->kref);
 
 		/* allocate buffer for interrupt in */

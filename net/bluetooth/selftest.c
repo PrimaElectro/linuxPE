@@ -26,7 +26,7 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
-#include "ecdh_helper.h"
+#include "ecc.h"
 #include "smp.h"
 #include "selftest.h"
 
@@ -142,30 +142,18 @@ static int __init test_ecdh_sample(const u8 priv_a[32], const u8 priv_b[32],
 				   const u8 pub_a[64], const u8 pub_b[64],
 				   const u8 dhkey[32])
 {
-	u8 *tmp, *dhkey_a, *dhkey_b;
-	int ret = 0;
+	u8 dhkey_a[32], dhkey_b[32];
 
-	tmp = kmalloc(64, GFP_KERNEL);
-	if (!tmp)
+	ecdh_shared_secret(pub_b, priv_a, dhkey_a);
+	ecdh_shared_secret(pub_a, priv_b, dhkey_b);
+
+	if (memcmp(dhkey_a, dhkey, 32))
 		return -EINVAL;
 
-	dhkey_a = &tmp[0];
-	dhkey_b = &tmp[32];
-
-	compute_ecdh_secret(pub_b, priv_a, dhkey_a);
-	compute_ecdh_secret(pub_a, priv_b, dhkey_b);
-
-	if (memcmp(dhkey_a, dhkey, 32)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
 	if (memcmp(dhkey_b, dhkey, 32))
-		ret = -EINVAL;
+		return -EINVAL;
 
-out:
-	kfree(tmp);
-	return ret;
+	return 0;
 }
 
 static char test_ecdh_buffer[32];

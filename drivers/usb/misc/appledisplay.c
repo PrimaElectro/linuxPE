@@ -63,8 +63,6 @@ static const struct usb_device_id appledisplay_table[] = {
 	{ APPLEDISPLAY_DEVICE(0x9219) },
 	{ APPLEDISPLAY_DEVICE(0x921c) },
 	{ APPLEDISPLAY_DEVICE(0x921d) },
-	{ APPLEDISPLAY_DEVICE(0x9222) },
-	{ APPLEDISPLAY_DEVICE(0x9226) },
 	{ APPLEDISPLAY_DEVICE(0x9236) },
 
 	/* Terminating entry */
@@ -214,20 +212,27 @@ static int appledisplay_probe(struct usb_interface *iface,
 	struct backlight_properties props;
 	struct appledisplay *pdata;
 	struct usb_device *udev = interface_to_usbdev(iface);
+	struct usb_host_interface *iface_desc;
 	struct usb_endpoint_descriptor *endpoint;
 	int int_in_endpointAddr = 0;
-	int retval, brightness;
+	int i, retval = -ENOMEM, brightness;
 	char bl_name[20];
 
 	/* set up the endpoint information */
 	/* use only the first interrupt-in endpoint */
-	retval = usb_find_int_in_endpoint(iface->cur_altsetting, &endpoint);
-	if (retval) {
-		dev_err(&iface->dev, "Could not find int-in endpoint\n");
-		return retval;
+	iface_desc = iface->cur_altsetting;
+	for (i = 0; i < iface_desc->desc.bNumEndpoints; i++) {
+		endpoint = &iface_desc->endpoint[i].desc;
+		if (!int_in_endpointAddr && usb_endpoint_is_int_in(endpoint)) {
+			/* we found an interrupt in endpoint */
+			int_in_endpointAddr = endpoint->bEndpointAddress;
+			break;
+		}
 	}
-
-	int_in_endpointAddr = endpoint->bEndpointAddress;
+	if (!int_in_endpointAddr) {
+		dev_err(&iface->dev, "Could not find int-in endpoint\n");
+		return -EIO;
+	}
 
 	/* allocate memory for our device state and initialize it */
 	pdata = kzalloc(sizeof(struct appledisplay), GFP_KERNEL);

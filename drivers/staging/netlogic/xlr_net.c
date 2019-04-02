@@ -155,6 +155,7 @@ static void xlr_net_fmn_handler(int bkt, int src_stnid, int size, int code,
 		skb_reserve(skb, BYTE_OFFSET);
 		skb_put(skb, length);
 		skb->protocol = eth_type_trans(skb, skb->dev);
+		skb->dev->last_rx = jiffies;
 		netif_rx(skb);
 		/* Fill rx ring */
 		skb_data = xlr_alloc_skb();
@@ -171,34 +172,29 @@ static struct phy_device *xlr_get_phydev(struct xlr_net_priv *priv)
 /*
  * Ethtool operation
  */
-static int xlr_get_link_ksettings(struct net_device *ndev,
-				  struct ethtool_link_ksettings *ecmd)
+static int xlr_get_settings(struct net_device *ndev, struct ethtool_cmd *ecmd)
 {
 	struct xlr_net_priv *priv = netdev_priv(ndev);
 	struct phy_device *phydev = xlr_get_phydev(priv);
 
 	if (!phydev)
 		return -ENODEV;
-
-	phy_ethtool_ksettings_get(phydev, ecmd);
-
-	return 0;
+	return phy_ethtool_gset(phydev, ecmd);
 }
 
-static int xlr_set_link_ksettings(struct net_device *ndev,
-				  const struct ethtool_link_ksettings *ecmd)
+static int xlr_set_settings(struct net_device *ndev, struct ethtool_cmd *ecmd)
 {
 	struct xlr_net_priv *priv = netdev_priv(ndev);
 	struct phy_device *phydev = xlr_get_phydev(priv);
 
 	if (!phydev)
 		return -ENODEV;
-	return phy_ethtool_ksettings_set(phydev, ecmd);
+	return phy_ethtool_sset(phydev, ecmd);
 }
 
 static const struct ethtool_ops xlr_ethtool_ops = {
-	.get_link_ksettings = xlr_get_link_ksettings,
-	.set_link_ksettings = xlr_set_link_ksettings,
+	.get_settings = xlr_get_settings,
+	.set_settings = xlr_set_settings,
 };
 
 /*
@@ -399,6 +395,14 @@ static void xlr_stats(struct net_device *ndev, struct rtnl_link_stats64 *stats)
 			TX_DROP_FRAME_COUNTER);
 }
 
+static struct rtnl_link_stats64 *xlr_get_stats64(struct net_device *ndev,
+						 struct rtnl_link_stats64 *stats
+						 )
+{
+	xlr_stats(ndev, stats);
+	return stats;
+}
+
 static const struct net_device_ops xlr_netdev_ops = {
 	.ndo_open = xlr_net_open,
 	.ndo_stop = xlr_net_stop,
@@ -406,7 +410,7 @@ static const struct net_device_ops xlr_netdev_ops = {
 	.ndo_select_queue = xlr_net_select_queue,
 	.ndo_set_mac_address = xlr_net_set_mac_addr,
 	.ndo_set_rx_mode = xlr_set_rx_mode,
-	.ndo_get_stats64 = xlr_stats,
+	.ndo_get_stats64 = xlr_get_stats64,
 };
 
 /*
@@ -1001,8 +1005,10 @@ static int xlr_net_probe(struct platform_device *pdev)
 	 */
 	adapter = (struct xlr_adapter *)
 		devm_kzalloc(&pdev->dev, sizeof(*adapter), GFP_KERNEL);
-	if (!adapter)
-		return -ENOMEM;
+	if (!adapter) {
+		err = -ENOMEM;
+		return err;
+	}
 
 	/*
 	 * XLR and XLS have 1 and 2 NAE controller respectively

@@ -23,7 +23,6 @@
 #include <linux/init.h>
 #include <linux/export.h>
 #include <linux/slab.h>
-#include <linux/sched/signal.h>
 #include <linux/vmalloc.h>
 #include <sound/core.h>
 
@@ -118,6 +117,7 @@ int snd_seq_dump_var_event(const struct snd_seq_event *event,
 	}
 	return 0;
 }
+
 EXPORT_SYMBOL(snd_seq_dump_var_event);
 
 
@@ -168,6 +168,7 @@ int snd_seq_expand_var_event(const struct snd_seq_event *event, int count, char 
 				     &buf);
 	return err < 0 ? err : newlen;
 }
+
 EXPORT_SYMBOL(snd_seq_expand_var_event);
 
 /*
@@ -220,13 +221,12 @@ void snd_seq_cell_free(struct snd_seq_event_cell * cell)
  */
 static int snd_seq_cell_alloc(struct snd_seq_pool *pool,
 			      struct snd_seq_event_cell **cellp,
-			      int nonblock, struct file *file,
-			      struct mutex *mutexp)
+			      int nonblock, struct file *file)
 {
 	struct snd_seq_event_cell *cell;
 	unsigned long flags;
 	int err = -EAGAIN;
-	wait_queue_entry_t wait;
+	wait_queue_t wait;
 
 	if (pool == NULL)
 		return -EINVAL;
@@ -245,11 +245,7 @@ static int snd_seq_cell_alloc(struct snd_seq_pool *pool,
 		set_current_state(TASK_INTERRUPTIBLE);
 		add_wait_queue(&pool->output_sleep, &wait);
 		spin_unlock_irq(&pool->lock);
-		if (mutexp)
-			mutex_unlock(mutexp);
 		schedule();
-		if (mutexp)
-			mutex_lock(mutexp);
 		spin_lock_irq(&pool->lock);
 		remove_wait_queue(&pool->output_sleep, &wait);
 		/* interrupted? */
@@ -292,7 +288,7 @@ __error:
  */
 int snd_seq_event_dup(struct snd_seq_pool *pool, struct snd_seq_event *event,
 		      struct snd_seq_event_cell **cellp, int nonblock,
-		      struct file *file, struct mutex *mutexp)
+		      struct file *file)
 {
 	int ncells, err;
 	unsigned int extlen;
@@ -309,7 +305,7 @@ int snd_seq_event_dup(struct snd_seq_pool *pool, struct snd_seq_event *event,
 	if (ncells >= pool->total_elements)
 		return -ENOMEM;
 
-	err = snd_seq_cell_alloc(pool, &cell, nonblock, file, mutexp);
+	err = snd_seq_cell_alloc(pool, &cell, nonblock, file);
 	if (err < 0)
 		return err;
 
@@ -335,8 +331,7 @@ int snd_seq_event_dup(struct snd_seq_pool *pool, struct snd_seq_event *event,
 			int size = sizeof(struct snd_seq_event);
 			if (len < size)
 				size = len;
-			err = snd_seq_cell_alloc(pool, &tmp, nonblock, file,
-						 mutexp);
+			err = snd_seq_cell_alloc(pool, &tmp, nonblock, file);
 			if (err < 0)
 				goto __error;
 			if (cell->event.data.ext.ptr == NULL)

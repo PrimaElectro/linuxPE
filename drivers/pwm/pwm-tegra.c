@@ -29,7 +29,6 @@
 #include <linux/of_device.h>
 #include <linux/pwm.h>
 #include <linux/platform_device.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
 #include <linux/reset.h>
 
@@ -41,9 +40,6 @@
 
 struct tegra_pwm_soc {
 	unsigned int num_channels;
-
-	/* Maximum IP frequency for given SoCs */
-	unsigned long max_frequency;
 };
 
 struct tegra_pwm_chip {
@@ -52,8 +48,6 @@ struct tegra_pwm_chip {
 
 	struct clk *clk;
 	struct reset_control*rst;
-
-	unsigned long clk_rate;
 
 	void __iomem *regs;
 
@@ -80,8 +74,8 @@ static int tegra_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 			    int duty_ns, int period_ns)
 {
 	struct tegra_pwm_chip *pc = to_tegra_pwm_chip(chip);
-	unsigned long long c = duty_ns, hz;
-	unsigned long rate;
+	unsigned long long c = duty_ns;
+	unsigned long rate, hz;
 	u32 val = 0;
 	int err;
 
@@ -91,7 +85,8 @@ static int tegra_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * nearest integer during division.
 	 */
 	c *= (1 << PWM_DUTY_WIDTH);
-	c = DIV_ROUND_CLOSEST_ULL(c, period_ns);
+	c += period_ns / 2;
+	do_div(c, period_ns);
 
 	val = (u32)c << PWM_DUTY_SHIFT;
 
@@ -99,11 +94,10 @@ static int tegra_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * Compute the prescaler value for which (1 << PWM_DUTY_WIDTH)
 	 * cycles at the PWM clock rate will take period_ns nanoseconds.
 	 */
-	rate = pc->clk_rate >> PWM_DUTY_WIDTH;
+	rate = clk_get_rate(pc->clk) >> PWM_DUTY_WIDTH;
+	hz = NSEC_PER_SEC / period_ns;
 
-	/* Consider precision in PWM_SCALE_WIDTH rate calculation */
-	hz = DIV_ROUND_CLOSEST_ULL(100ULL * NSEC_PER_SEC, period_ns);
-	rate = DIV_ROUND_CLOSEST_ULL(100ULL * rate, hz);
+	rate = (rate + (hz / 2)) / hz;
 
 	/*
 	 * Since the actual PWM divider is the register's frequency divider
@@ -204,21 +198,7 @@ static int tegra_pwm_probe(struct platform_device *pdev)
 	if (IS_ERR(pwm->clk))
 		return PTR_ERR(pwm->clk);
 
-	/* Set maximum frequency of the IP */
-	ret = clk_set_rate(pwm->clk, pwm->soc->max_frequency);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to set max frequency: %d\n", ret);
-		return ret;
-	}
-
-	/*
-	 * The requested and configured frequency may differ due to
-	 * clock register resolutions. Get the configured frequency
-	 * so that PWM period can be calculated more accurately.
-	 */
-	pwm->clk_rate = clk_get_rate(pwm->clk);
-
-	pwm->rst = devm_reset_control_get_exclusive(&pdev->dev, "pwm");
+	pwm->rst = devm_reset_control_get(&pdev->dev, "pwm");
 	if (IS_ERR(pwm->rst)) {
 		ret = PTR_ERR(pwm->rst);
 		dev_err(&pdev->dev, "Reset control is not found: %d\n", ret);
@@ -273,26 +253,12 @@ static int tegra_pwm_remove(struct platform_device *pdev)
 	return pwmchip_remove(&pc->chip);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int tegra_pwm_suspend(struct device *dev)
-{
-	return pinctrl_pm_select_sleep_state(dev);
-}
-
-static int tegra_pwm_resume(struct device *dev)
-{
-	return pinctrl_pm_select_default_state(dev);
-}
-#endif
-
 static const struct tegra_pwm_soc tegra20_pwm_soc = {
 	.num_channels = 4,
-	.max_frequency = 48000000UL,
 };
 
 static const struct tegra_pwm_soc tegra186_pwm_soc = {
 	.num_channels = 1,
-	.max_frequency = 102000000UL,
 };
 
 static const struct of_device_id tegra_pwm_of_match[] = {
@@ -303,15 +269,10 @@ static const struct of_device_id tegra_pwm_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, tegra_pwm_of_match);
 
-static const struct dev_pm_ops tegra_pwm_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(tegra_pwm_suspend, tegra_pwm_resume)
-};
-
 static struct platform_driver tegra_pwm_driver = {
 	.driver = {
 		.name = "tegra-pwm",
 		.of_match_table = tegra_pwm_of_match,
-		.pm = &tegra_pwm_pm_ops,
 	},
 	.probe = tegra_pwm_probe,
 	.remove = tegra_pwm_remove,

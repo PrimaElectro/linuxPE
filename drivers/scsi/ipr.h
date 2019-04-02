@@ -39,8 +39,8 @@
 /*
  * Literals
  */
-#define IPR_DRIVER_VERSION "2.6.4"
-#define IPR_DRIVER_DATE "(March 14, 2017)"
+#define IPR_DRIVER_VERSION "2.6.3"
+#define IPR_DRIVER_DATE "(October 17, 2015)"
 
 /*
  * IPR_MAX_CMD_PER_LUN: This defines the maximum number of outstanding
@@ -1413,7 +1413,10 @@ struct ipr_chip_cfg_t {
 struct ipr_chip_t {
 	u16 vendor;
 	u16 device;
-	bool has_msi;
+	u16 intr_type;
+#define IPR_USE_LSI			0x00
+#define IPR_USE_MSI			0x01
+#define IPR_USE_MSIX			0x02
 	u16 sis_type;
 #define IPR_SIS32			0x00
 #define IPR_SIS64			0x01
@@ -1488,8 +1491,6 @@ struct ipr_ioa_cfg {
 	u8 cfg_locked:1;
 	u8 clear_isr:1;
 	u8 probe_done:1;
-	u8 scsi_unblock:1;
-	u8 scsi_blocked:1;
 
 	u8 revid;
 
@@ -1568,7 +1569,6 @@ struct ipr_ioa_cfg {
 	u8 saved_mode_page_len;
 
 	struct work_struct work_q;
-	struct work_struct scsi_add_work_q;
 	struct workqueue_struct *reset_work_q;
 
 	wait_queue_head_t reset_wait_q;
@@ -1593,9 +1593,11 @@ struct ipr_ioa_cfg {
 	struct ipr_cmnd **ipr_cmnd_list;
 	dma_addr_t *ipr_cmnd_list_dma;
 
+	u16 intr_flag;
 	unsigned int nvectors;
 
 	struct {
+		unsigned short vec;
 		char desc[22];
 	} vectors_info[IPR_MAX_MSIX_VECTORS];
 

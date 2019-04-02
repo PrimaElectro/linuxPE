@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * sleep.c - x86-specific ACPI sleep support.
  *
@@ -102,7 +101,7 @@ int x86_acpi_suspend_lowlevel(void)
 #ifdef CONFIG_SMP
 	initial_stack = (unsigned long)temp_stack + sizeof(temp_stack);
 	early_gdt_descr.address =
-			(unsigned long)get_cpu_gdt_rw(smp_processor_id());
+			(unsigned long)get_cpu_gdt_table(smp_processor_id());
 	initial_gs = per_cpu_offset(smp_processor_id());
 #endif
 	initial_code = (unsigned long)wakeup_long64;

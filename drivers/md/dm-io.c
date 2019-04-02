@@ -58,8 +58,7 @@ struct dm_io_client *dm_io_client_create(void)
 	if (!client->pool)
 		goto bad;
 
-	client->bios = bioset_create(min_ios, 0, (BIOSET_NEED_BVECS |
-						  BIOSET_NEED_RESCUER));
+	client->bios = bioset_create(min_ios, 0);
 	if (!client->bios)
 		goto bad;
 
@@ -125,7 +124,7 @@ static void complete_io(struct io *io)
 	fn(error_bits, context);
 }
 
-static void dec_count(struct io *io, unsigned int region, blk_status_t error)
+static void dec_count(struct io *io, unsigned int region, int error)
 {
 	if (error)
 		set_bit(region, &io->error_bits);
@@ -138,9 +137,9 @@ static void endio(struct bio *bio)
 {
 	struct io *io;
 	unsigned region;
-	blk_status_t error;
+	int error;
 
-	if (bio->bi_status && bio_data_dir(bio) == READ)
+	if (bio->bi_error && bio_data_dir(bio) == READ)
 		zero_fill_bio(bio);
 
 	/*
@@ -148,7 +147,7 @@ static void endio(struct bio *bio)
 	 */
 	retrieve_io_and_region_from_bio(bio, &io, &region);
 
-	error = bio->bi_status;
+	error = bio->bi_error;
 	bio_put(bio);
 
 	dec_count(io, region, error);
@@ -163,10 +162,7 @@ struct dpages {
 			 struct page **p, unsigned long *len, unsigned *offset);
 	void (*next_page)(struct dpages *dp);
 
-	union {
-		unsigned context_u;
-		struct bvec_iter context_bi;
-	};
+	unsigned context_u;
 	void *context_ptr;
 
 	void *vma_invalidate_address;
@@ -208,36 +204,25 @@ static void list_dp_init(struct dpages *dp, struct page_list *pl, unsigned offse
 static void bio_get_page(struct dpages *dp, struct page **p,
 			 unsigned long *len, unsigned *offset)
 {
-	struct bio_vec bvec = bvec_iter_bvec((struct bio_vec *)dp->context_ptr,
-					     dp->context_bi);
-
-	*p = bvec.bv_page;
-	*len = bvec.bv_len;
-	*offset = bvec.bv_offset;
-
-	/* avoid figuring it out again in bio_next_page() */
-	dp->context_bi.bi_sector = (sector_t)bvec.bv_len;
+	struct bio_vec *bvec = dp->context_ptr;
+	*p = bvec->bv_page;
+	*len = bvec->bv_len - dp->context_u;
+	*offset = bvec->bv_offset + dp->context_u;
 }
 
 static void bio_next_page(struct dpages *dp)
 {
-	unsigned int len = (unsigned int)dp->context_bi.bi_sector;
-
-	bvec_iter_advance((struct bio_vec *)dp->context_ptr,
-			  &dp->context_bi, len);
+	struct bio_vec *bvec = dp->context_ptr;
+	dp->context_ptr = bvec + 1;
+	dp->context_u = 0;
 }
 
 static void bio_dp_init(struct dpages *dp, struct bio *bio)
 {
 	dp->get_page = bio_get_page;
 	dp->next_page = bio_next_page;
-
-	/*
-	 * We just use bvec iterator to retrieve pages, so it is ok to
-	 * access the bvec table directly here
-	 */
-	dp->context_ptr = bio->bi_io_vec;
-	dp->context_bi = bio->bi_iter;
+	dp->context_ptr = __bvec_iter_bvec(bio->bi_io_vec, bio->bi_iter);
+	dp->context_u = bio->bi_iter.bi_bvec_done;
 }
 
 /*
@@ -313,14 +298,11 @@ static void do_region(int op, int op_flags, unsigned region,
 	 */
 	if (op == REQ_OP_DISCARD)
 		special_cmd_max_sectors = q->limits.max_discard_sectors;
-	else if (op == REQ_OP_WRITE_ZEROES)
-		special_cmd_max_sectors = q->limits.max_write_zeroes_sectors;
 	else if (op == REQ_OP_WRITE_SAME)
 		special_cmd_max_sectors = q->limits.max_write_same_sectors;
-	if ((op == REQ_OP_DISCARD || op == REQ_OP_WRITE_ZEROES ||
-	     op == REQ_OP_WRITE_SAME) && special_cmd_max_sectors == 0) {
-		atomic_inc(&io->count);
-		dec_count(io, region, BLK_STS_NOTSUPP);
+	if ((op == REQ_OP_DISCARD || op == REQ_OP_WRITE_SAME) &&
+	    special_cmd_max_sectors == 0) {
+		dec_count(io, region, -EOPNOTSUPP);
 		return;
 	}
 
@@ -332,27 +314,20 @@ static void do_region(int op, int op_flags, unsigned region,
 		/*
 		 * Allocate a suitably sized-bio.
 		 */
-		switch (op) {
-		case REQ_OP_DISCARD:
-		case REQ_OP_WRITE_ZEROES:
-			num_bvecs = 0;
-			break;
-		case REQ_OP_WRITE_SAME:
+		if ((op == REQ_OP_DISCARD) || (op == REQ_OP_WRITE_SAME))
 			num_bvecs = 1;
-			break;
-		default:
+		else
 			num_bvecs = min_t(int, BIO_MAX_PAGES,
 					  dm_sector_div_up(remaining, (PAGE_SIZE >> SECTOR_SHIFT)));
-		}
 
 		bio = bio_alloc_bioset(GFP_NOIO, num_bvecs, io->client->bios);
 		bio->bi_iter.bi_sector = where->sector + (where->count - remaining);
-		bio_set_dev(bio, where->bdev);
+		bio->bi_bdev = where->bdev;
 		bio->bi_end_io = endio;
 		bio_set_op_attrs(bio, op, op_flags);
 		store_io_and_region_in_bio(bio, io, region);
 
-		if (op == REQ_OP_DISCARD || op == REQ_OP_WRITE_ZEROES) {
+		if (op == REQ_OP_DISCARD) {
 			num_sectors = min_t(sector_t, special_cmd_max_sectors, remaining);
 			bio->bi_iter.bi_size = num_sectors << SECTOR_SHIFT;
 			remaining -= num_sectors;

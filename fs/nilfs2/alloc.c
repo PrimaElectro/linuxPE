@@ -34,7 +34,7 @@
 static inline unsigned long
 nilfs_palloc_groups_per_desc_block(const struct inode *inode)
 {
-	return i_blocksize(inode) /
+	return (1UL << inode->i_blkbits) /
 		sizeof(struct nilfs_palloc_group_desc);
 }
 

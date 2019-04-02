@@ -10,7 +10,6 @@
 #include <linux/seq_file.h>
 #include <linux/bootmem.h>
 #include <linux/debugfs.h>
-#include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/pfn_t.h>
 #include <linux/slab.h>
@@ -24,7 +23,7 @@
 #include <asm/x86_init.h>
 #include <asm/pgtable.h>
 #include <asm/fcntl.h>
-#include <asm/e820/api.h>
+#include <asm/e820.h>
 #include <asm/mtrr.h>
 #include <asm/page.h>
 #include <asm/msr.h>
@@ -293,7 +292,7 @@ void init_cache_modes(void)
  * pat_init - Initialize PAT MSR and PAT table
  *
  * This function initializes PAT MSR and PAT table with an OS-defined value
- * to enable additional cache attributes, WC, WT and WP.
+ * to enable additional cache attributes, WC and WT.
  *
  * This function must be called on all CPUs using the specific sequence of
  * operations defined in Intel SDM. mtrr_rendezvous_handler() provides this
@@ -352,7 +351,7 @@ void pat_init(void)
 		 *      010    2    UC-: _PAGE_CACHE_MODE_UC_MINUS
 		 *      011    3    UC : _PAGE_CACHE_MODE_UC
 		 *      100    4    WB : Reserved
-		 *      101    5    WP : _PAGE_CACHE_MODE_WP
+		 *      101    5    WC : Reserved
 		 *      110    6    UC-: Reserved
 		 *      111    7    WT : _PAGE_CACHE_MODE_WT
 		 *
@@ -360,7 +359,7 @@ void pat_init(void)
 		 * corresponding types in the presence of PAT errata.
 		 */
 		pat = PAT(0, WB) | PAT(1, WC) | PAT(2, UC_MINUS) | PAT(3, UC) |
-		      PAT(4, WB) | PAT(5, WP) | PAT(6, UC_MINUS) | PAT(7, WT);
+		      PAT(4, WB) | PAT(5, WC) | PAT(6, UC_MINUS) | PAT(7, WT);
 	}
 
 	if (!boot_cpu_done) {
@@ -744,9 +743,6 @@ EXPORT_SYMBOL(arch_io_free_memtype_wc);
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 				unsigned long size, pgprot_t vma_prot)
 {
-	if (!phys_mem_access_encrypted(pfn << PAGE_SHIFT, size))
-		vma_prot = pgprot_decrypted(vma_prot);
-
 	return vma_prot;
 }
 
@@ -986,17 +982,20 @@ int track_pfn_remap(struct vm_area_struct *vma, pgprot_t *prot,
 	return 0;
 }
 
-void track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot, pfn_t pfn)
+int track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot,
+		     pfn_t pfn)
 {
 	enum page_cache_mode pcm;
 
 	if (!pat_enabled())
-		return;
+		return 0;
 
 	/* Set prot based on lookup */
 	pcm = lookup_memtype(pfn_t_to_phys(pfn));
 	*prot = __pgprot((pgprot_val(*prot) & (~_PAGE_CACHE_MASK)) |
 			 cachemode2protval(pcm));
+
+	return 0;
 }
 
 /*

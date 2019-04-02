@@ -41,7 +41,15 @@
 	status = "ok";
 };
 
+&sas0 {
+	status = "ok";
+};
+
 &sas1 {
+	status = "ok";
+};
+
+&sas2 {
 	status = "ok";
 };
 

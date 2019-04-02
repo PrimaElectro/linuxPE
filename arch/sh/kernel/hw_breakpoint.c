@@ -11,7 +11,6 @@
  */
 #include <linux/init.h>
 #include <linux/perf_event.h>
-#include <linux/sched/signal.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/percpu.h>
 #include <linux/kallsyms.h>

@@ -171,7 +171,10 @@ static int mtk8250_probe_of(struct platform_device *pdev, struct uart_port *p,
 	}
 
 	data->bus_clk = devm_clk_get(&pdev->dev, "bus");
-	return PTR_ERR_OR_ZERO(data->bus_clk);
+	if (IS_ERR(data->bus_clk))
+		return PTR_ERR(data->bus_clk);
+
+	return 0;
 }
 
 static int mtk8250_probe(struct platform_device *pdev)
@@ -222,16 +225,16 @@ static int mtk8250_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	err = mtk8250_runtime_resume(&pdev->dev);
-	if (err)
-		return err;
+	pm_runtime_enable(&pdev->dev);
+	if (!pm_runtime_enabled(&pdev->dev)) {
+		err = mtk8250_runtime_resume(&pdev->dev);
+		if (err)
+			return err;
+	}
 
 	data->line = serial8250_register_8250_port(&uart);
 	if (data->line < 0)
 		return data->line;
-
-	pm_runtime_set_active(&pdev->dev);
-	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 }
@@ -243,10 +246,12 @@ static int mtk8250_remove(struct platform_device *pdev)
 	pm_runtime_get_sync(&pdev->dev);
 
 	serial8250_unregister_port(data->line);
-	mtk8250_runtime_suspend(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
+
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		mtk8250_runtime_suspend(&pdev->dev);
 
 	return 0;
 }

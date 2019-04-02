@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 
 #ifndef __ASM_ARC_ENTRY_ARCV2_H
 #define __ASM_ARC_ENTRY_ARCV2_H
@@ -16,11 +15,6 @@
 	;   3. Auto saved: r0-r11, blink, LPE,LPS,LPC, JLI,LDI,EI, PC, STAT32
 	;
 	; Now manually save: r12, sp, fp, gp, r25
-
-#ifdef CONFIG_ARC_HAS_ACCL_REGS
-	PUSH	r59
-	PUSH	r58
-#endif
 
 	PUSH	r30
 	PUSH	r12
@@ -80,11 +74,6 @@
 1:
 	POP	r12
 	POP	r30
-
-#ifdef CONFIG_ARC_HAS_ACCL_REGS
-	POP	r58
-	POP	r59
-#endif
 
 .endm
 

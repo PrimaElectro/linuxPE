@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/ext2/dir.c
  *
@@ -101,7 +100,7 @@ static int ext2_commit_chunk(struct page *page, loff_t pos, unsigned len)
 	}
 
 	if (IS_DIRSYNC(dir)) {
-		err = write_one_page(page);
+		err = write_one_page(page, 1);
 		if (!err)
 			err = sync_inode_metadata(dir, 1);
 	} else {

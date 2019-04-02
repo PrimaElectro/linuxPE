@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0
 #
 # KVM configuration
 #
@@ -68,7 +67,6 @@ config KVM_BOOK3S_64
 	select KVM_BOOK3S_64_HANDLER
 	select KVM
 	select KVM_BOOK3S_PR_POSSIBLE if !KVM_BOOK3S_HV_POSSIBLE
-	select SPAPR_TCE_IOMMU if IOMMU_SUPPORT && (PPC_PSERIES || PPC_POWERNV)
 	---help---
 	  Support running unmodified book3s_64 and book3s_32 guest kernels
 	  in virtual machines on book3s_64 host processors.
@@ -177,6 +175,7 @@ config KVM_E500MC
 config KVM_MPIC
 	bool "KVM in-kernel MPIC emulation"
 	depends on KVM && E500
+	depends on !PREEMPT_RT_FULL
 	select HAVE_KVM_IRQCHIP
 	select HAVE_KVM_IRQFD
 	select HAVE_KVM_IRQ_ROUTING
@@ -197,11 +196,6 @@ config KVM_XICS
 	  Include support for the XICS (eXternal Interrupt Controller
 	  Specification) interrupt controller architecture used on
 	  IBM POWER (pSeries) servers.
-
-config KVM_XIVE
-	bool
-	default y
-	depends on KVM_XICS && PPC_XIVE_NATIVE && KVM_BOOK3S_HV_POSSIBLE
 
 source drivers/vhost/Kconfig
 

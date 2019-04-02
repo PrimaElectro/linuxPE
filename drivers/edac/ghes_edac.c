@@ -14,8 +14,10 @@
 #include <acpi/ghes.h>
 #include <linux/edac.h>
 #include <linux/dmi.h>
-#include "edac_module.h"
+#include "edac_core.h"
 #include <ras/ras_event.h>
+
+#define GHES_EDAC_REVISION " Ver: 1.0.0"
 
 struct ghes_edac_pvt {
 	struct list_head list;
@@ -449,6 +451,7 @@ int ghes_edac_register(struct ghes *ghes, struct device *dev)
 	mci->edac_ctl_cap = EDAC_FLAG_NONE;
 	mci->edac_cap = EDAC_FLAG_NONE;
 	mci->mod_name = "ghes_edac.c";
+	mci->mod_ver = GHES_EDAC_REVISION;
 	mci->ctl_name = "ghes_edac";
 	mci->dev_name = "ghes";
 

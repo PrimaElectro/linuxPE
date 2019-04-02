@@ -24,86 +24,65 @@ static int afs_deliver_cb_callback(struct afs_call *);
 static int afs_deliver_cb_probe_uuid(struct afs_call *);
 static int afs_deliver_cb_tell_me_about_yourself(struct afs_call *);
 static void afs_cm_destructor(struct afs_call *);
-static void SRXAFSCB_CallBack(struct work_struct *);
-static void SRXAFSCB_InitCallBackState(struct work_struct *);
-static void SRXAFSCB_Probe(struct work_struct *);
-static void SRXAFSCB_ProbeUuid(struct work_struct *);
-static void SRXAFSCB_TellMeAboutYourself(struct work_struct *);
-
-#define CM_NAME(name) \
-	const char afs_SRXCB##name##_name[] __tracepoint_string =	\
-		"CB." #name
 
 /*
  * CB.CallBack operation type
  */
-static CM_NAME(CallBack);
 static const struct afs_call_type afs_SRXCBCallBack = {
-	.name		= afs_SRXCBCallBack_name,
+	.name		= "CB.CallBack",
 	.deliver	= afs_deliver_cb_callback,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_CallBack,
 };
 
 /*
  * CB.InitCallBackState operation type
  */
-static CM_NAME(InitCallBackState);
 static const struct afs_call_type afs_SRXCBInitCallBackState = {
-	.name		= afs_SRXCBInitCallBackState_name,
+	.name		= "CB.InitCallBackState",
 	.deliver	= afs_deliver_cb_init_call_back_state,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_InitCallBackState,
 };
 
 /*
  * CB.InitCallBackState3 operation type
  */
-static CM_NAME(InitCallBackState3);
 static const struct afs_call_type afs_SRXCBInitCallBackState3 = {
-	.name		= afs_SRXCBInitCallBackState3_name,
+	.name		= "CB.InitCallBackState3",
 	.deliver	= afs_deliver_cb_init_call_back_state3,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_InitCallBackState,
 };
 
 /*
  * CB.Probe operation type
  */
-static CM_NAME(Probe);
 static const struct afs_call_type afs_SRXCBProbe = {
-	.name		= afs_SRXCBProbe_name,
+	.name		= "CB.Probe",
 	.deliver	= afs_deliver_cb_probe,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_Probe,
 };
 
 /*
  * CB.ProbeUuid operation type
  */
-static CM_NAME(ProbeUuid);
 static const struct afs_call_type afs_SRXCBProbeUuid = {
-	.name		= afs_SRXCBProbeUuid_name,
+	.name		= "CB.ProbeUuid",
 	.deliver	= afs_deliver_cb_probe_uuid,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_ProbeUuid,
 };
 
 /*
  * CB.TellMeAboutYourself operation type
  */
-static CM_NAME(TellMeAboutYourself);
 static const struct afs_call_type afs_SRXCBTellMeAboutYourself = {
-	.name		= afs_SRXCBTellMeAboutYourself_name,
+	.name		= "CB.TellMeAboutYourself",
 	.deliver	= afs_deliver_cb_tell_me_about_yourself,
 	.abort_to_error	= afs_abort_to_error,
 	.destructor	= afs_cm_destructor,
-	.work		= SRXAFSCB_TellMeAboutYourself,
 };
 
 /*
@@ -177,7 +156,6 @@ static void SRXAFSCB_CallBack(struct work_struct *work)
 	afs_send_empty_reply(call);
 
 	afs_break_callbacks(call->server, call->count, call->request);
-	afs_put_call(call);
 	_leave("");
 }
 
@@ -298,7 +276,9 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		return -ENOTCONN;
 	call->server = server;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_CallBack);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }
 
 /*
@@ -312,7 +292,6 @@ static void SRXAFSCB_InitCallBackState(struct work_struct *work)
 
 	afs_init_callback_state(call->server);
 	afs_send_empty_reply(call);
-	afs_put_call(call);
 	_leave("");
 }
 
@@ -343,7 +322,9 @@ static int afs_deliver_cb_init_call_back_state(struct afs_call *call)
 		return -ENOTCONN;
 	call->server = server;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_InitCallBackState);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }
 
 /*
@@ -389,9 +370,9 @@ static int afs_deliver_cb_init_call_back_state3(struct afs_call *call)
 
 		b = call->buffer;
 		r = call->request;
-		r->time_low			= b[0];
-		r->time_mid			= htons(ntohl(b[1]));
-		r->time_hi_and_version		= htons(ntohl(b[2]));
+		r->time_low			= ntohl(b[0]);
+		r->time_mid			= ntohl(b[1]);
+		r->time_hi_and_version		= ntohl(b[2]);
 		r->clock_seq_hi_and_reserved 	= ntohl(b[3]);
 		r->clock_seq_low		= ntohl(b[4]);
 
@@ -415,7 +396,9 @@ static int afs_deliver_cb_init_call_back_state3(struct afs_call *call)
 		return -ENOTCONN;
 	call->server = server;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_InitCallBackState);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }
 
 /*
@@ -427,7 +410,6 @@ static void SRXAFSCB_Probe(struct work_struct *work)
 
 	_enter("");
 	afs_send_empty_reply(call);
-	afs_put_call(call);
 	_leave("");
 }
 
@@ -447,7 +429,9 @@ static int afs_deliver_cb_probe(struct afs_call *call)
 	/* no unmarshalling required */
 	call->state = AFS_CALL_REPLYING;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_Probe);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }
 
 /*
@@ -470,7 +454,6 @@ static void SRXAFSCB_ProbeUuid(struct work_struct *work)
 		reply.match = htonl(1);
 
 	afs_send_simple_reply(call, &reply, sizeof(reply));
-	afs_put_call(call);
 	_leave("");
 }
 
@@ -529,7 +512,9 @@ static int afs_deliver_cb_probe_uuid(struct afs_call *call)
 
 	call->state = AFS_CALL_REPLYING;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_ProbeUuid);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }
 
 /*
@@ -571,9 +556,9 @@ static void SRXAFSCB_TellMeAboutYourself(struct work_struct *work)
 	memset(&reply, 0, sizeof(reply));
 	reply.ia.nifs = htonl(nifs);
 
-	reply.ia.uuid[0] = afs_uuid.time_low;
-	reply.ia.uuid[1] = htonl(ntohs(afs_uuid.time_mid));
-	reply.ia.uuid[2] = htonl(ntohs(afs_uuid.time_hi_and_version));
+	reply.ia.uuid[0] = htonl(afs_uuid.time_low);
+	reply.ia.uuid[1] = htonl(afs_uuid.time_mid);
+	reply.ia.uuid[2] = htonl(afs_uuid.time_hi_and_version);
 	reply.ia.uuid[3] = htonl((s8) afs_uuid.clock_seq_hi_and_reserved);
 	reply.ia.uuid[4] = htonl((s8) afs_uuid.clock_seq_low);
 	for (loop = 0; loop < 6; loop++)
@@ -591,7 +576,7 @@ static void SRXAFSCB_TellMeAboutYourself(struct work_struct *work)
 	reply.cap.capcount = htonl(1);
 	reply.cap.caps[0] = htonl(AFS_CAP_ERROR_TRANSLATION);
 	afs_send_simple_reply(call, &reply, sizeof(reply));
-	afs_put_call(call);
+
 	_leave("");
 }
 
@@ -611,5 +596,7 @@ static int afs_deliver_cb_tell_me_about_yourself(struct afs_call *call)
 	/* no unmarshalling required */
 	call->state = AFS_CALL_REPLYING;
 
-	return afs_queue_call_work(call);
+	INIT_WORK(&call->work, SRXAFSCB_TellMeAboutYourself);
+	queue_work(afs_wq, &call->work);
+	return 0;
 }

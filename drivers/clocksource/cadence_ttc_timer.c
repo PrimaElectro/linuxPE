@@ -18,7 +18,6 @@
 #include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/clockchips.h>
-#include <linux/clocksource.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/slab.h>
@@ -159,11 +158,11 @@ static irqreturn_t ttc_clock_event_interrupt(int irq, void *dev_id)
  *
  * returns: Current timer counter register value
  **/
-static u64 __ttc_clocksource_read(struct clocksource *cs)
+static cycle_t __ttc_clocksource_read(struct clocksource *cs)
 {
 	struct ttc_timer *timer = &to_ttc_timer_clksrc(cs)->ttc;
 
-	return (u64)readl_relaxed(timer->base_addr +
+	return (cycle_t)readl_relaxed(timer->base_addr +
 				TTC_COUNT_VAL_OFFSET);
 }
 
@@ -540,4 +539,4 @@ static int __init ttc_timer_init(struct device_node *timer)
 	return 0;
 }
 
-TIMER_OF_DECLARE(ttc, "cdns,ttc", ttc_timer_init);
+CLOCKSOURCE_OF_DECLARE(ttc, "cdns,ttc", ttc_timer_init);

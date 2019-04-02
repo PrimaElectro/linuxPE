@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ADAU17X1_H__
 #define __ADAU17X1_H__
 

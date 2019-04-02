@@ -495,13 +495,13 @@ static int pic32_uart_startup(struct uart_port *port)
 
 out_t:
 	kfree(sport->irq_tx_name);
-	free_irq(sport->irq_tx, port);
+	free_irq(sport->irq_tx, sport);
 out_r:
 	kfree(sport->irq_rx_name);
-	free_irq(sport->irq_rx, port);
+	free_irq(sport->irq_rx, sport);
 out_f:
 	kfree(sport->irq_fault_name);
-	free_irq(sport->irq_fault, port);
+	free_irq(sport->irq_fault, sport);
 out_done:
 	return ret;
 }
@@ -920,7 +920,6 @@ static struct platform_driver pic32_uart_platform_driver = {
 	.driver		= {
 		.name	= PIC32_DEV_NAME,
 		.of_match_table	= of_match_ptr(pic32_serial_dt_ids),
-		.suppress_bind_attrs = IS_BUILTIN(CONFIG_SERIAL_PIC32),
 	},
 };
 

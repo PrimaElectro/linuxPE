@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2017, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -243,7 +243,9 @@ acpi_ev_default_region_setup(acpi_handle handle,
 			     u32 function,
 			     void *handler_context, void **region_context);
 
-acpi_status acpi_ev_initialize_region(union acpi_operand_object *region_obj);
+acpi_status
+acpi_ev_initialize_region(union acpi_operand_object *region_obj,
+			  u8 acpi_ns_locked);
 
 /*
  * evsci - SCI (System Control Interrupt) handling/dispatch

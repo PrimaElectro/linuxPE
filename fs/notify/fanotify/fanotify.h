@@ -1,9 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/fsnotify_backend.h>
 #include <linux/path.h>
 #include <linux/slab.h>
 
-extern struct kmem_cache *fanotify_mark_cache;
 extern struct kmem_cache *fanotify_event_cachep;
 extern struct kmem_cache *fanotify_perm_event_cachep;
 
@@ -49,4 +47,4 @@ static inline struct fanotify_event_info *FANOTIFY_E(struct fsnotify_event *fse)
 }
 
 struct fanotify_event_info *fanotify_alloc_event(struct inode *inode, u32 mask,
-						 const struct path *path);
+						 struct path *path);

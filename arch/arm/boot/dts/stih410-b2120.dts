@@ -60,11 +60,5 @@
 		ehci1: usb@9a83e00 {
 			status = "okay";
 		};
-
-		sti-display-subsystem {
-			sti-hda@8d02000 {
-				status = "okay";
-			};
-		};
 	};
 };

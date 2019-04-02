@@ -256,14 +256,15 @@ out:
 	return edid;
 }
 
-struct edid *drm_load_edid_firmware(struct drm_connector *connector)
+int drm_load_edid_firmware(struct drm_connector *connector)
 {
 	const char *connector_name = connector->name;
 	char *edidname, *last, *colon, *fwstr, *edidstr, *fallback = NULL;
+	int ret;
 	struct edid *edid;
 
 	if (edid_firmware[0] == '\0')
-		return ERR_PTR(-ENOENT);
+		return 0;
 
 	/*
 	 * If there are multiple edid files specified and separated
@@ -292,7 +293,7 @@ struct edid *drm_load_edid_firmware(struct drm_connector *connector)
 	if (!edidname) {
 		if (!fallback) {
 			kfree(fwstr);
-			return ERR_PTR(-ENOENT);
+			return 0;
 		}
 		edidname = fallback;
 	}
@@ -304,5 +305,13 @@ struct edid *drm_load_edid_firmware(struct drm_connector *connector)
 	edid = edid_load(connector, edidname, connector_name);
 	kfree(fwstr);
 
-	return edid;
+	if (IS_ERR_OR_NULL(edid))
+		return 0;
+
+	drm_mode_connector_update_edid_property(connector, edid);
+	ret = drm_add_edid_modes(connector, edid);
+	drm_edid_to_eld(connector, edid);
+	kfree(edid);
+
+	return ret;
 }

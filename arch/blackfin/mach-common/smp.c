@@ -11,8 +11,7 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/spinlock.h>
-#include <linux/sched/mm.h>
-#include <linux/sched/task_stack.h>
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/cache.h>
 #include <linux/clockchips.h>
@@ -308,8 +307,8 @@ void secondary_start_kernel(void)
 	local_irq_disable();
 
 	/* Attach the new idle task to the global mm. */
-	mmget(mm);
-	mmgrab(mm);
+	atomic_inc(&mm->mm_users);
+	atomic_inc(&mm->mm_count);
 	current->active_mm = mm;
 
 	preempt_disable();

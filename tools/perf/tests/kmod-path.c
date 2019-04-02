@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <stdbool.h>
 #include <stdlib.h>
 #include "tests.h"
@@ -51,7 +50,7 @@ static int test_is_kernel_module(const char *path, int cpumode, bool expect)
 #define M(path, c, e) \
 	TEST_ASSERT_VAL("failed", !test_is_kernel_module(path, c, e))
 
-int test__kmod_path__parse(struct test *t __maybe_unused, int subtest __maybe_unused)
+int test__kmod_path__parse(int subtest __maybe_unused)
 {
 	/* path                alloc_name  alloc_ext   kmod  comp   name     ext */
 	T("/xxxx/xxxx/x-x.ko", true      , true      , true, false, "[x_x]", NULL);
@@ -62,7 +61,6 @@ int test__kmod_path__parse(struct test *t __maybe_unused, int subtest __maybe_un
 	M("/xxxx/xxxx/x-x.ko", PERF_RECORD_MISC_KERNEL, true);
 	M("/xxxx/xxxx/x-x.ko", PERF_RECORD_MISC_USER, false);
 
-#ifdef HAVE_ZLIB_SUPPORT
 	/* path                alloc_name  alloc_ext   kmod  comp  name   ext */
 	T("/xxxx/xxxx/x.ko.gz", true     , true      , true, true, "[x]", "gz");
 	T("/xxxx/xxxx/x.ko.gz", false    , true      , true, true, NULL , "gz");
@@ -98,7 +96,6 @@ int test__kmod_path__parse(struct test *t __maybe_unused, int subtest __maybe_un
 	M("x.ko.gz", PERF_RECORD_MISC_CPUMODE_UNKNOWN, true);
 	M("x.ko.gz", PERF_RECORD_MISC_KERNEL, true);
 	M("x.ko.gz", PERF_RECORD_MISC_USER, false);
-#endif
 
 	/* path            alloc_name  alloc_ext  kmod  comp   name             ext */
 	T("[test_module]", true      , true     , true, false, "[test_module]", NULL);

@@ -41,10 +41,11 @@ struct tda826x_priv {
 	u32 frequency;
 };
 
-static void tda826x_release(struct dvb_frontend *fe)
+static int tda826x_release(struct dvb_frontend *fe)
 {
 	kfree(fe->tuner_priv);
 	fe->tuner_priv = NULL;
+	return 0;
 }
 
 static int tda826x_sleep(struct dvb_frontend *fe)

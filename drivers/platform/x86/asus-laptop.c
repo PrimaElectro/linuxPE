@@ -1516,12 +1516,14 @@ static int asus_input_init(struct asus_laptop *asus)
 	error = input_register_device(input);
 	if (error) {
 		pr_warn("Unable to register input device\n");
-		goto err_free_dev;
+		goto err_free_keymap;
 	}
 
 	asus->inputdev = input;
 	return 0;
 
+err_free_keymap:
+	sparse_keymap_free(input);
 err_free_dev:
 	input_free_device(input);
 	return error;
@@ -1529,8 +1531,10 @@ err_free_dev:
 
 static void asus_input_exit(struct asus_laptop *asus)
 {
-	if (asus->inputdev)
+	if (asus->inputdev) {
+		sparse_keymap_free(asus->inputdev);
 		input_unregister_device(asus->inputdev);
+	}
 	asus->inputdev = NULL;
 }
 

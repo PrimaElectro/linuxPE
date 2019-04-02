@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include "unwind.h"
 #include "thread.h"
 #include "session.h"
@@ -51,7 +50,7 @@ int unwind__prepare_access(struct thread *thread, struct map *map,
 
 	if (!ops) {
 		pr_err("unwind: target platform=%s is not supported\n", arch);
-		return 0;
+		return -1;
 	}
 out_register:
 	unwind__register_ops(thread, ops);

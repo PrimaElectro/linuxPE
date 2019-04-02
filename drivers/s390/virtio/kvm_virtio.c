@@ -189,7 +189,7 @@ static bool kvm_notify(struct virtqueue *vq)
 static struct virtqueue *kvm_find_vq(struct virtio_device *vdev,
 				     unsigned index,
 				     void (*callback)(struct virtqueue *vq),
-				     const char *name, bool ctx)
+				     const char *name)
 {
 	struct kvm_device *kdev = to_kvmdev(vdev);
 	struct kvm_vqconfig *config;
@@ -211,7 +211,7 @@ static struct virtqueue *kvm_find_vq(struct virtio_device *vdev,
 		goto out;
 
 	vq = vring_new_virtqueue(index, config->num, KVM_S390_VIRTIO_RING_ALIGN,
-				 vdev, true, ctx, (void *) config->address,
+				 vdev, true, (void *) config->address,
 				 kvm_notify, callback, name);
 	if (!vq) {
 		err = -ENOMEM;
@@ -255,9 +255,7 @@ static void kvm_del_vqs(struct virtio_device *vdev)
 static int kvm_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 			struct virtqueue *vqs[],
 			vq_callback_t *callbacks[],
-			const char * const names[],
-			const bool *ctx,
-			struct irq_affinity *desc)
+			const char * const names[])
 {
 	struct kvm_device *kdev = to_kvmdev(vdev);
 	int i;
@@ -267,8 +265,7 @@ static int kvm_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 		return -ENOENT;
 
 	for (i = 0; i < nvqs; ++i) {
-		vqs[i] = kvm_find_vq(vdev, i, callbacks[i], names[i],
-				     ctx ? ctx[i] : false);
+		vqs[i] = kvm_find_vq(vdev, i, callbacks[i], names[i]);
 		if (IS_ERR(vqs[i]))
 			goto error;
 	}

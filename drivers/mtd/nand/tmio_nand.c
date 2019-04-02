@@ -34,7 +34,7 @@
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/rawnand.h>
+#include <linux/mtd/nand.h>
 #include <linux/mtd/nand_ecc.h>
 #include <linux/mtd/partitions.h>
 #include <linux/slab.h>
@@ -435,14 +435,12 @@ static int tmio_probe(struct platform_device *dev)
 	nand_chip->waitfunc = tmio_nand_wait;
 
 	/* Scan to find existence of the device */
-	retval = nand_scan(mtd, 1);
-	if (retval)
+	if (nand_scan(mtd, 1)) {
+		retval = -ENODEV;
 		goto err_irq;
-
+	}
 	/* Register the partitions */
-	retval = mtd_device_parse_register(mtd,
-					   data ? data->part_parsers : NULL,
-					   NULL,
+	retval = mtd_device_parse_register(mtd, NULL, NULL,
 					   data ? data->partition : NULL,
 					   data ? data->num_partitions : 0);
 	if (!retval)

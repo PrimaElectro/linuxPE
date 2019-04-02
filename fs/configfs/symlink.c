@@ -64,7 +64,7 @@ static void fill_item_path(struct config_item * item, char * buffer, int length)
 
 		/* back up enough to print this bus id with '/' */
 		length -= cur;
-		memcpy(buffer + length, config_item_name(p), cur);
+		strncpy(buffer + length,config_item_name(p),cur);
 		*(buffer + --length) = '/';
 	}
 }
@@ -304,6 +304,7 @@ static const char *configfs_get_link(struct dentry *dentry,
 
 const struct inode_operations configfs_symlink_inode_operations = {
 	.get_link = configfs_get_link,
+	.readlink = generic_readlink,
 	.setattr = configfs_setattr,
 };
 

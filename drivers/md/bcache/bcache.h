@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _BCACHE_H
 #define _BCACHE_H
 
@@ -851,11 +850,10 @@ static inline void wake_up_allocators(struct cache_set *c)
 
 /* Forward declarations */
 
-void bch_count_io_errors(struct cache *, blk_status_t, const char *);
+void bch_count_io_errors(struct cache *, int, const char *);
 void bch_bbio_count_io_errors(struct cache_set *, struct bio *,
-			      blk_status_t, const char *);
-void bch_bbio_endio(struct cache_set *, struct bio *, blk_status_t,
-		const char *);
+			      int, const char *);
+void bch_bbio_endio(struct cache_set *, struct bio *, int, const char *);
 void bch_bbio_free(struct bio *, struct cache_set *);
 struct bio *bch_bbio_alloc(struct cache_set *);
 
@@ -906,7 +904,7 @@ void bcache_write_super(struct cache_set *);
 
 int bch_flash_dev_create(struct cache_set *c, uint64_t size);
 
-int bch_cached_dev_attach(struct cached_dev *, struct cache_set *, uint8_t *);
+int bch_cached_dev_attach(struct cached_dev *, struct cache_set *);
 void bch_cached_dev_detach(struct cached_dev *);
 void bch_cached_dev_run(struct cached_dev *);
 void bcache_device_stop(struct bcache_device *);

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  arch/cris/mm/fault.c
  *
@@ -9,7 +8,6 @@
 #include <linux/interrupt.h>
 #include <linux/extable.h>
 #include <linux/wait.h>
-#include <linux/sched/signal.h>
 #include <linux/uaccess.h>
 #include <arch/system.h>
 

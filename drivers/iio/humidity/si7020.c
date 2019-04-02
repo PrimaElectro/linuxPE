@@ -154,17 +154,8 @@ static const struct i2c_device_id si7020_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, si7020_id);
 
-static const struct of_device_id si7020_dt_ids[] = {
-	{ .compatible = "silabs,si7020" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, si7020_dt_ids);
-
 static struct i2c_driver si7020_driver = {
-	.driver = {
-		.name = "si7020",
-		.of_match_table = of_match_ptr(si7020_dt_ids),
-	},
+	.driver.name	= "si7020",
 	.probe		= si7020_probe,
 	.id_table	= si7020_id,
 };

@@ -63,14 +63,6 @@ unsigned int fcoe_debug_logging;
 module_param_named(debug_logging, fcoe_debug_logging, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(debug_logging, "a bit mask of logging levels");
 
-static unsigned int fcoe_e_d_tov = 2 * 1000;
-module_param_named(e_d_tov, fcoe_e_d_tov, int, S_IRUGO|S_IWUSR);
-MODULE_PARM_DESC(e_d_tov, "E_D_TOV in ms, default 2000");
-
-static unsigned int fcoe_r_a_tov = 2 * 2 * 1000;
-module_param_named(r_a_tov, fcoe_r_a_tov, int, S_IRUGO|S_IWUSR);
-MODULE_PARM_DESC(r_a_tov, "R_A_TOV in ms, default 4000");
-
 static DEFINE_MUTEX(fcoe_config_mutex);
 
 static struct workqueue_struct *fcoe_wq;
@@ -277,7 +269,6 @@ static struct scsi_host_template fcoe_shost_template = {
 	.name = "FCoE Driver",
 	.proc_name = FCOE_NAME,
 	.queuecommand = fc_queuecommand,
-	.eh_timed_out = fc_eh_timed_out,
 	.eh_abort_handler = fc_eh_abort,
 	.eh_device_reset_handler = fc_eh_device_reset,
 	.eh_host_reset_handler = fc_eh_host_reset,
@@ -327,7 +318,8 @@ static int fcoe_interface_setup(struct fcoe_interface *fcoe,
 
 	/* look for SAN MAC address, if multiple SAN MACs exist, only
 	 * use the first one for SPMA */
-	real_dev = is_vlan_dev(netdev) ? vlan_dev_real_dev(netdev) : netdev;
+	real_dev = (netdev->priv_flags & IFF_802_1Q_VLAN) ?
+		vlan_dev_real_dev(netdev) : netdev;
 	fcoe->realdev = real_dev;
 	rcu_read_lock();
 	for_each_dev_addr(real_dev, ha) {
@@ -519,7 +511,7 @@ static void fcoe_interface_cleanup(struct fcoe_interface *fcoe)
  * @skb:      The receive skb
  * @netdev:   The associated net device
  * @ptype:    The packet_type structure which was used to register this handler
- * @orig_dev: The original net_device the skb was received on.
+ * @orig_dev: The original net_device the the skb was received on.
  *	      (in case dev is a bond)
  *
  * Returns: 0 for success
@@ -542,7 +534,7 @@ static int fcoe_fip_recv(struct sk_buff *skb, struct net_device *netdev,
  * @skb:      The receive skb
  * @netdev:   The associated net device
  * @ptype:    The packet_type structure which was used to register this handler
- * @orig_dev: The original net_device the skb was received on.
+ * @orig_dev: The original net_device the the skb was received on.
  *	      (in case dev is a bond)
  *
  * Returns: 0 for success
@@ -590,8 +582,7 @@ static void fcoe_fip_send(struct fcoe_ctlr *fip, struct sk_buff *skb)
 	 * Use default VLAN for FIP VLAN discovery protocol
 	 */
 	frame = (struct fip_frame *)skb->data;
-	if (ntohs(frame->eth.h_proto) == ETH_P_FIP &&
-	    ntohs(frame->fip.fip_op) == FIP_OP_VLAN &&
+	if (frame->fip.fip_op == ntohs(FIP_OP_VLAN) &&
 	    fcoe->realdev != fcoe->netdev)
 		skb->dev = fcoe->realdev;
 	else
@@ -642,8 +633,8 @@ static int fcoe_lport_config(struct fc_lport *lport)
 	lport->qfull = 0;
 	lport->max_retry_count = 3;
 	lport->max_rport_retry_count = 3;
-	lport->e_d_tov = fcoe_e_d_tov;
-	lport->r_a_tov = fcoe_r_a_tov;
+	lport->e_d_tov = 2 * 1000;	/* FC-FS default */
+	lport->r_a_tov = 2 * 2 * 1000;
 	lport->service_params = (FCP_SPPF_INIT_FCN | FCP_SPPF_RD_XRDY_DIS |
 				 FCP_SPPF_RETRY | FCP_SPPF_CONF_COMPL);
 	lport->does_npiv = 1;
@@ -730,7 +721,7 @@ static int fcoe_netdev_config(struct fc_lport *lport, struct net_device *netdev)
 	ctlr = fcoe_to_ctlr(fcoe);
 
 	/* Figure out the VLAN ID, if any */
-	if (is_vlan_dev(netdev))
+	if (netdev->priv_flags & IFF_802_1Q_VLAN)
 		lport->vlan = vlan_dev_vlan_id(netdev);
 	else
 		lport->vlan = 0;
@@ -959,13 +950,13 @@ static inline int fcoe_em_config(struct fc_lport *lport)
 	 * Reuse existing offload em instance in case
 	 * it is already allocated on real eth device
 	 */
-	if (is_vlan_dev(fcoe->netdev))
+	if (fcoe->netdev->priv_flags & IFF_802_1Q_VLAN)
 		cur_real_dev = vlan_dev_real_dev(fcoe->netdev);
 	else
 		cur_real_dev = fcoe->netdev;
 
 	list_for_each_entry(oldfcoe, &fcoe_hostlist, list) {
-		if (is_vlan_dev(oldfcoe->netdev))
+		if (oldfcoe->netdev->priv_flags & IFF_802_1Q_VLAN)
 			old_real_dev = vlan_dev_real_dev(oldfcoe->netdev);
 		else
 			old_real_dev = oldfcoe->netdev;
@@ -1464,11 +1455,11 @@ err2:
 static int fcoe_alloc_paged_crc_eof(struct sk_buff *skb, int tlen)
 {
 	struct fcoe_percpu_s *fps;
-	int rc;
+	int rc, cpu = get_cpu_light();
 
-	fps = &get_cpu_var(fcoe_percpu);
+	fps = &per_cpu(fcoe_percpu, cpu);
 	rc = fcoe_get_paged_crc_eof(skb, tlen, fps);
-	put_cpu_var(fcoe_percpu);
+	put_cpu_light();
 
 	return rc;
 }
@@ -1543,7 +1534,7 @@ static int fcoe_xmit(struct fc_lport *lport, struct fc_frame *fp)
 		cp = kmap_atomic(skb_frag_page(frag))
 			+ frag->page_offset;
 	} else {
-		cp = skb_put(skb, tlen);
+		cp = (struct fcoe_crc_eof *)skb_put(skb, tlen);
 	}
 
 	memset(cp, 0, sizeof(*cp));
@@ -1563,7 +1554,7 @@ static int fcoe_xmit(struct fc_lport *lport, struct fc_frame *fp)
 	skb->protocol = htons(ETH_P_FCOE);
 	skb->priority = fcoe->priority;
 
-	if (is_vlan_dev(fcoe->netdev) &&
+	if (fcoe->netdev->priv_flags & IFF_802_1Q_VLAN &&
 	    fcoe->realdev->features & NETIF_F_HW_VLAN_CTAG_TX) {
 		/* must set skb->dev before calling vlan_put_tag */
 		skb->dev = fcoe->realdev;
@@ -1655,11 +1646,11 @@ static inline int fcoe_filter_frames(struct fc_lport *lport,
 		return 0;
 	}
 
-	stats = per_cpu_ptr(lport->stats, get_cpu());
+	stats = per_cpu_ptr(lport->stats, get_cpu_light());
 	stats->InvalidCRCCount++;
 	if (stats->InvalidCRCCount < 5)
 		printk(KERN_WARNING "fcoe: dropping frame with CRC error\n");
-	put_cpu();
+	put_cpu_light();
 	return -EINVAL;
 }
 
@@ -1702,7 +1693,7 @@ static void fcoe_recv_frame(struct sk_buff *skb)
 	 */
 	hp = (struct fcoe_hdr *) skb_network_header(skb);
 
-	stats = per_cpu_ptr(lport->stats, get_cpu());
+	stats = per_cpu_ptr(lport->stats, get_cpu_light());
 	if (unlikely(FC_FCOE_DECAPS_VER(hp) != FC_FCOE_VER)) {
 		if (stats->ErrorFrames < 5)
 			printk(KERN_WARNING "fcoe: FCoE version "
@@ -1734,13 +1725,13 @@ static void fcoe_recv_frame(struct sk_buff *skb)
 		goto drop;
 
 	if (!fcoe_filter_frames(lport, fp)) {
-		put_cpu();
+		put_cpu_light();
 		fc_exch_recv(lport, fp);
 		return;
 	}
 drop:
 	stats->ErrorFrames++;
-	put_cpu();
+	put_cpu_light();
 	kfree_skb(skb);
 }
 
@@ -1794,7 +1785,7 @@ fcoe_hostlist_lookup_realdev_port(struct net_device *netdev)
 	struct net_device *real_dev;
 
 	list_for_each_entry(fcoe, &fcoe_hostlist, list) {
-		if (is_vlan_dev(fcoe->netdev))
+		if (fcoe->netdev->priv_flags & IFF_802_1Q_VLAN)
 			real_dev = vlan_dev_real_dev(fcoe->netdev);
 		else
 			real_dev = fcoe->netdev;
@@ -2169,13 +2160,11 @@ static bool fcoe_match(struct net_device *netdev)
  */
 static void fcoe_dcb_create(struct fcoe_interface *fcoe)
 {
-	int ctlr_prio = TC_PRIO_BESTEFFORT;
-	int fcoe_prio = TC_PRIO_INTERACTIVE;
-	struct fcoe_ctlr *ctlr = fcoe_to_ctlr(fcoe);
 #ifdef CONFIG_DCB
 	int dcbx;
 	u8 fup, up;
 	struct net_device *netdev = fcoe->realdev;
+	struct fcoe_ctlr *ctlr = fcoe_to_ctlr(fcoe);
 	struct dcb_app app = {
 				.priority = 0,
 				.protocol = ETH_P_FCOE
@@ -2197,12 +2186,10 @@ static void fcoe_dcb_create(struct fcoe_interface *fcoe)
 			fup = dcb_getapp(netdev, &app);
 		}
 
-		fcoe_prio = ffs(up) ? ffs(up) - 1 : 0;
-		ctlr_prio = ffs(fup) ? ffs(fup) - 1 : fcoe_prio;
+		fcoe->priority = ffs(up) ? ffs(up) - 1 : 0;
+		ctlr->priority = ffs(fup) ? ffs(fup) - 1 : fcoe->priority;
 	}
 #endif
-	fcoe->priority = fcoe_prio;
-	ctlr->priority = ctlr_prio;
 }
 
 enum fcoe_create_link_state {
@@ -2258,7 +2245,7 @@ static int _fcoe_create(struct net_device *netdev, enum fip_mode fip_mode,
 		fcoe_interface_cleanup(fcoe);
 		mutex_unlock(&fcoe_config_mutex);
 		fcoe_ctlr_device_delete(ctlr_dev);
-		return rc;
+		goto out;
 	}
 
 	/* Make this the "master" N_Port */
@@ -2299,7 +2286,7 @@ static int _fcoe_create(struct net_device *netdev, enum fip_mode fip_mode,
 out_nodev:
 	rtnl_unlock();
 	mutex_unlock(&fcoe_config_mutex);
-
+out:
 	return rc;
 }
 
@@ -2590,7 +2577,7 @@ module_exit(fcoe_exit);
  * fcoe_flogi_resp() - FCoE specific FLOGI and FDISC response handler
  * @seq: active sequence in the FLOGI or FDISC exchange
  * @fp: response frame, or error encoded in a pointer (timeout)
- * @arg: pointer to the fcoe_ctlr structure
+ * @arg: pointer the the fcoe_ctlr structure
  *
  * This handles MAC address management for FCoE, then passes control on to
  * the libfc FLOGI response handler.
@@ -2619,7 +2606,7 @@ done:
  * fcoe_logo_resp() - FCoE specific LOGO response handler
  * @seq: active sequence in the LOGO exchange
  * @fp: response frame, or error encoded in a pointer (timeout)
- * @arg: pointer to the fcoe_ctlr structure
+ * @arg: pointer the the fcoe_ctlr structure
  *
  * This handles MAC address management for FCoE, then passes control on to
  * the libfc LOGO response handler.

@@ -29,7 +29,7 @@
 #include <linux/slab.h>
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
-#include <media/v4l2-fwnode.h>
+#include <media/v4l2-of.h>
 #include <media/media-device.h>
 #include <media/drv-intf/exynos-fimc.h>
 
@@ -388,7 +388,7 @@ static int fimc_md_parse_port_node(struct fimc_md *fmd,
 {
 	struct fimc_source_info *pd = &fmd->sensor[index].pdata;
 	struct device_node *rem, *ep, *np;
-	struct v4l2_fwnode_endpoint endpoint;
+	struct v4l2_of_endpoint endpoint;
 	int ret;
 
 	/* Assume here a port node can have only one endpoint node. */
@@ -396,24 +396,22 @@ static int fimc_md_parse_port_node(struct fimc_md *fmd,
 	if (!ep)
 		return 0;
 
-	ret = v4l2_fwnode_endpoint_parse(of_fwnode_handle(ep), &endpoint);
+	ret = v4l2_of_parse_endpoint(ep, &endpoint);
 	if (ret) {
 		of_node_put(ep);
 		return ret;
 	}
 
-	if (WARN_ON(endpoint.base.port == 0) || index >= FIMC_MAX_SENSORS) {
-		of_node_put(ep);
+	if (WARN_ON(endpoint.base.port == 0) || index >= FIMC_MAX_SENSORS)
 		return -EINVAL;
-	}
 
 	pd->mux_id = (endpoint.base.port - 1) & 0x1;
 
 	rem = of_graph_get_remote_port_parent(ep);
 	of_node_put(ep);
 	if (rem == NULL) {
-		v4l2_info(&fmd->v4l2_dev, "Remote device at %pOF not found\n",
-							ep);
+		v4l2_info(&fmd->v4l2_dev, "Remote device at %s not found\n",
+							ep->full_name);
 		return 0;
 	}
 
@@ -430,8 +428,8 @@ static int fimc_md_parse_port_node(struct fimc_md *fmd,
 		 */
 		pd->sensor_bus_type = FIMC_BUS_TYPE_MIPI_CSI2;
 	} else {
-		v4l2_err(&fmd->v4l2_dev, "Wrong port id (%u) at node %pOF\n",
-			 endpoint.base.port, rem);
+		v4l2_err(&fmd->v4l2_dev, "Wrong port id (%u) at node %s\n",
+			 endpoint.base.port, rem->full_name);
 	}
 	/*
 	 * For FIMC-IS handled sensors, that are placed under i2c-isp device
@@ -453,8 +451,8 @@ static int fimc_md_parse_port_node(struct fimc_md *fmd,
 		return -EINVAL;
 	}
 
-	fmd->sensor[index].asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-	fmd->sensor[index].asd.match.fwnode.fwnode = of_fwnode_handle(rem);
+	fmd->sensor[index].asd.match_type = V4L2_ASYNC_MATCH_OF;
+	fmd->sensor[index].asd.match.of.node = rem;
 	fmd->async_subdevs[index] = &fmd->sensor[index].asd;
 
 	fmd->num_sensors++;
@@ -940,7 +938,8 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 
 			csis = fmd->csis[pdata->mux_id].sd;
 			if (WARN(csis == NULL,
-				 "MIPI-CSI interface specified but s5p-csis module is not loaded!\n"))
+				 "MIPI-CSI interface specified "
+				 "but s5p-csis module is not loaded!\n"))
 				return -EINVAL;
 
 			pad = sensor->entity.num_pads - 1;
@@ -1119,7 +1118,7 @@ static int __fimc_md_modify_pipeline(struct media_entity *entity, bool enable)
 
 /* Locking: called with entity->graph_obj.mdev->graph_mutex mutex held. */
 static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable,
-				      struct media_graph *graph)
+				      struct media_entity_graph *graph)
 {
 	struct media_entity *entity_err = entity;
 	int ret;
@@ -1130,9 +1129,9 @@ static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable,
 	 * through active links. This is needed as we cannot power on/off the
 	 * subdevs in random order.
 	 */
-	media_graph_walk_start(graph, entity);
+	media_entity_graph_walk_start(graph, entity);
 
-	while ((entity = media_graph_walk_next(graph))) {
+	while ((entity = media_entity_graph_walk_next(graph))) {
 		if (!is_media_entity_v4l2_video_device(entity))
 			continue;
 
@@ -1145,9 +1144,9 @@ static int __fimc_md_modify_pipelines(struct media_entity *entity, bool enable,
 	return 0;
 
 err:
-	media_graph_walk_start(graph, entity_err);
+	media_entity_graph_walk_start(graph, entity_err);
 
-	while ((entity_err = media_graph_walk_next(graph))) {
+	while ((entity_err = media_entity_graph_walk_next(graph))) {
 		if (!is_media_entity_v4l2_video_device(entity_err))
 			continue;
 
@@ -1163,7 +1162,7 @@ err:
 static int fimc_md_link_notify(struct media_link *link, unsigned int flags,
 				unsigned int notification)
 {
-	struct media_graph *graph =
+	struct media_entity_graph *graph =
 		&container_of(link->graph_obj.mdev, struct fimc_md,
 			      media_dev)->link_setup_graph;
 	struct media_entity *sink = link->sink->entity;
@@ -1171,7 +1170,7 @@ static int fimc_md_link_notify(struct media_link *link, unsigned int flags,
 
 	/* Before link disconnection */
 	if (notification == MEDIA_DEV_NOTIFY_PRE_LINK_CH) {
-		ret = media_graph_walk_init(graph,
+		ret = media_entity_graph_walk_init(graph,
 						   link->graph_obj.mdev);
 		if (ret)
 			return ret;
@@ -1185,7 +1184,7 @@ static int fimc_md_link_notify(struct media_link *link, unsigned int flags,
 	} else if (notification == MEDIA_DEV_NOTIFY_POST_LINK_CH) {
 		if (link->flags & MEDIA_LNK_FL_ENABLED)
 			ret = __fimc_md_modify_pipelines(sink, true, graph);
-		media_graph_walk_cleanup(graph);
+		media_entity_graph_walk_cleanup(graph);
 	}
 
 	return ret ? -EPIPE : 0;
@@ -1361,8 +1360,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 
 	/* Find platform data for this sensor subdev */
 	for (i = 0; i < ARRAY_SIZE(fmd->sensor); i++)
-		if (fmd->sensor[i].asd.match.fwnode.fwnode ==
-		    of_fwnode_handle(subdev->dev->of_node))
+		if (fmd->sensor[i].asd.match.of.node == subdev->dev->of_node)
 			si = &fmd->sensor[i];
 
 	if (si == NULL)

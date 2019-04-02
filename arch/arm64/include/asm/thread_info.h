@@ -23,35 +23,71 @@
 
 #include <linux/compiler.h>
 
+#ifdef CONFIG_ARM64_4K_PAGES
+#define THREAD_SIZE_ORDER	2
+#elif defined(CONFIG_ARM64_16K_PAGES)
+#define THREAD_SIZE_ORDER	0
+#endif
+
+#define THREAD_SIZE		16384
+#define THREAD_START_SP		(THREAD_SIZE - 16)
+
 #ifndef __ASSEMBLY__
 
 struct task_struct;
 
-#include <asm/memory.h>
-#include <asm/stack_pointer.h>
 #include <asm/types.h>
 
 typedef unsigned long mm_segment_t;
 
 /*
  * low level task data that entry.S needs immediate access to.
+ * __switch_to() assumes cpu_context follows immediately after cpu_domain.
  */
 struct thread_info {
 	unsigned long		flags;		/* low level flags */
 	mm_segment_t		addr_limit;	/* address limit */
-#ifdef CONFIG_ARM64_SW_TTBR0_PAN
-	u64			ttbr0;		/* saved TTBR0_EL1 */
-#endif
+	struct task_struct	*task;		/* main task structure */
 	int			preempt_count;	/* 0 => preemptable, <0 => bug */
+	int			preempt_lazy_count; /* 0 => preemptable, <0 => bug */
+	int			cpu;		/* cpu */
 };
 
 #define INIT_THREAD_INFO(tsk)						\
 {									\
+	.task		= &tsk,						\
+	.flags		= 0,						\
 	.preempt_count	= INIT_PREEMPT_COUNT,				\
 	.addr_limit	= KERNEL_DS,					\
 }
 
+#define init_thread_info	(init_thread_union.thread_info)
 #define init_stack		(init_thread_union.stack)
+
+/*
+ * how to get the current stack pointer from C
+ */
+register unsigned long current_stack_pointer asm ("sp");
+
+/*
+ * how to get the thread information struct from C
+ */
+static inline struct thread_info *current_thread_info(void) __attribute_const__;
+
+/*
+ * struct thread_info can be accessed directly via sp_el0.
+ *
+ * We don't use read_sysreg() as we want the compiler to cache the value where
+ * possible.
+ */
+static inline struct thread_info *current_thread_info(void)
+{
+	unsigned long sp_el0;
+
+	asm ("mrs %0, sp_el0" : "=r" (sp_el0));
+
+	return (struct thread_info *)sp_el0;
+}
 
 #define thread_saved_pc(tsk)	\
 	((unsigned long)(tsk->thread.cpu_context.pc))
@@ -59,9 +95,6 @@ struct thread_info {
 	((unsigned long)(tsk->thread.cpu_context.sp))
 #define thread_saved_fp(tsk)	\
 	((unsigned long)(tsk->thread.cpu_context.fp))
-
-void arch_setup_new_exec(void);
-#define arch_setup_new_exec     arch_setup_new_exec
 
 #endif
 
@@ -80,8 +113,7 @@ void arch_setup_new_exec(void);
 #define TIF_NEED_RESCHED	1
 #define TIF_NOTIFY_RESUME	2	/* callback before returning to user */
 #define TIF_FOREIGN_FPSTATE	3	/* CPU's FP state is not current's */
-#define TIF_UPROBE		4	/* uprobe breakpoint or singlestep */
-#define TIF_FSCHECK		5	/* Check FS is USER_DS on return */
+#define TIF_NEED_RESCHED_LAZY	4
 #define TIF_NOHZ		7
 #define TIF_SYSCALL_TRACE	8
 #define TIF_SYSCALL_AUDIT	9
@@ -92,24 +124,23 @@ void arch_setup_new_exec(void);
 #define TIF_RESTORE_SIGMASK	20
 #define TIF_SINGLESTEP		21
 #define TIF_32BIT		22	/* 32bit process */
-#define TIF_SSBD		23	/* Wants SSB mitigation */
 
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
 #define _TIF_FOREIGN_FPSTATE	(1 << TIF_FOREIGN_FPSTATE)
+#define _TIF_NEED_RESCHED_LAZY	(1 << TIF_NEED_RESCHED_LAZY)
 #define _TIF_NOHZ		(1 << TIF_NOHZ)
 #define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
 #define _TIF_SYSCALL_AUDIT	(1 << TIF_SYSCALL_AUDIT)
 #define _TIF_SYSCALL_TRACEPOINT	(1 << TIF_SYSCALL_TRACEPOINT)
 #define _TIF_SECCOMP		(1 << TIF_SECCOMP)
-#define _TIF_UPROBE		(1 << TIF_UPROBE)
-#define _TIF_FSCHECK		(1 << TIF_FSCHECK)
 #define _TIF_32BIT		(1 << TIF_32BIT)
 
 #define _TIF_WORK_MASK		(_TIF_NEED_RESCHED | _TIF_SIGPENDING | \
 				 _TIF_NOTIFY_RESUME | _TIF_FOREIGN_FPSTATE | \
-				 _TIF_UPROBE | _TIF_FSCHECK)
+				 _TIF_NEED_RESCHED_LAZY)
+#define _TIF_NEED_RESCHED_MASK	(_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY)
 
 #define _TIF_SYSCALL_WORK	(_TIF_SYSCALL_TRACE | _TIF_SYSCALL_AUDIT | \
 				 _TIF_SYSCALL_TRACEPOINT | _TIF_SECCOMP | \

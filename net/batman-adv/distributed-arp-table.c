@@ -1,4 +1,4 @@
-/* Copyright (C) 2011-2017  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2011-2016  B.A.T.M.A.N. contributors:
  *
  * Antonio Quartulli
  *
@@ -43,7 +43,6 @@
 #include <linux/workqueue.h>
 #include <net/arp.h>
 
-#include "bridge_loop_avoidance.h"
 #include "hard-interface.h"
 #include "hash.h"
 #include "log.h"
@@ -331,7 +330,7 @@ static void batadv_dat_entry_add(struct batadv_priv *bat_priv, __be32 ip,
 		batadv_dbg(BATADV_DBG_DAT, bat_priv,
 			   "Entry updated: %pI4 %pM (vid: %d)\n",
 			   &dat_entry->ip, dat_entry->mac_addr,
-			   batadv_print_vid(vid));
+			   BATADV_PRINT_VID(vid));
 		goto out;
 	}
 
@@ -357,7 +356,7 @@ static void batadv_dat_entry_add(struct batadv_priv *bat_priv, __be32 ip,
 	}
 
 	batadv_dbg(BATADV_DBG_DAT, bat_priv, "New entry added: %pI4 %pM (vid: %d)\n",
-		   &dat_entry->ip, dat_entry->mac_addr, batadv_print_vid(vid));
+		   &dat_entry->ip, dat_entry->mac_addr, BATADV_PRINT_VID(vid));
 
 out:
 	if (dat_entry)
@@ -370,11 +369,12 @@ out:
  * batadv_dbg_arp - print a debug message containing all the ARP packet details
  * @bat_priv: the bat priv with all the soft interface information
  * @skb: ARP packet
+ * @type: ARP type
  * @hdr_size: size of the possible header before the ARP packet
  * @msg: message to print together with the debugging information
  */
 static void batadv_dbg_arp(struct batadv_priv *bat_priv, struct sk_buff *skb,
-			   int hdr_size, char *msg)
+			   u16 type, int hdr_size, char *msg)
 {
 	struct batadv_unicast_4addr_packet *unicast_4addr_packet;
 	struct batadv_bcast_packet *bcast_pkt;
@@ -391,7 +391,7 @@ static void batadv_dbg_arp(struct batadv_priv *bat_priv, struct sk_buff *skb,
 		   batadv_arp_hw_src(skb, hdr_size), &ip_src,
 		   batadv_arp_hw_dst(skb, hdr_size), &ip_dst);
 
-	if (hdr_size < sizeof(struct batadv_unicast_packet))
+	if (hdr_size == 0)
 		return;
 
 	unicast_4addr_packet = (struct batadv_unicast_4addr_packet *)skb->data;
@@ -441,7 +441,7 @@ static void batadv_dbg_arp(struct batadv_priv *bat_priv, struct sk_buff *skb,
 #else
 
 static void batadv_dbg_arp(struct batadv_priv *bat_priv, struct sk_buff *skb,
-			   int hdr_size, char *msg)
+			   u16 type, int hdr_size, char *msg)
 {
 }
 
@@ -601,7 +601,7 @@ batadv_dat_select_candidates(struct batadv_priv *bat_priv, __be32 ip_dst,
 						    BATADV_DAT_ADDR_MAX);
 
 	batadv_dbg(BATADV_DBG_DAT, bat_priv,
-		   "%s(): IP=%pI4 hash(IP)=%u\n", __func__, &ip_dst,
+		   "dat_select_candidates(): IP=%pI4 hash(IP)=%u\n", &ip_dst,
 		   ip_key);
 
 	for (select = 0; select < BATADV_DAT_CANDIDATES_NUM; select++)
@@ -834,9 +834,9 @@ int batadv_dat_cache_seq_print_text(struct seq_file *seq, void *offset)
 			last_seen_msecs = last_seen_msecs % 60000;
 			last_seen_secs = last_seen_msecs / 1000;
 
-			seq_printf(seq, " * %15pI4 %pM %4i %6i:%02i\n",
+			seq_printf(seq, " * %15pI4 %14pM %4i %6i:%02i\n",
 				   &dat_entry->ip, dat_entry->mac_addr,
-				   batadv_print_vid(dat_entry->vid),
+				   BATADV_PRINT_VID(dat_entry->vid),
 				   last_seen_mins, last_seen_secs);
 		}
 		rcu_read_unlock();
@@ -950,41 +950,6 @@ static unsigned short batadv_dat_get_vid(struct sk_buff *skb, int *hdr_size)
 }
 
 /**
- * batadv_dat_arp_create_reply - create an ARP Reply
- * @bat_priv: the bat priv with all the soft interface information
- * @ip_src: ARP sender IP
- * @ip_dst: ARP target IP
- * @hw_src: Ethernet source and ARP sender MAC
- * @hw_dst: Ethernet destination and ARP target MAC
- * @vid: VLAN identifier (optional, set to zero otherwise)
- *
- * Creates an ARP Reply from the given values, optionally encapsulated in a
- * VLAN header.
- *
- * Return: An skb containing an ARP Reply.
- */
-static struct sk_buff *
-batadv_dat_arp_create_reply(struct batadv_priv *bat_priv, __be32 ip_src,
-			    __be32 ip_dst, u8 *hw_src, u8 *hw_dst,
-			    unsigned short vid)
-{
-	struct sk_buff *skb;
-
-	skb = arp_create(ARPOP_REPLY, ETH_P_ARP, ip_dst, bat_priv->soft_iface,
-			 ip_src, hw_dst, hw_src, hw_dst);
-	if (!skb)
-		return NULL;
-
-	skb_reset_mac_header(skb);
-
-	if (vid & BATADV_VLAN_HAS_TAG)
-		skb = vlan_insert_tag(skb, htons(ETH_P_8021Q),
-				      vid & VLAN_VID_MASK);
-
-	return skb;
-}
-
-/**
  * batadv_dat_snoop_outgoing_arp_request - snoop the ARP request and try to
  * answer using DAT
  * @bat_priv: the bat priv with all the soft interface information
@@ -1003,7 +968,6 @@ bool batadv_dat_snoop_outgoing_arp_request(struct batadv_priv *bat_priv,
 	bool ret = false;
 	struct batadv_dat_entry *dat_entry = NULL;
 	struct sk_buff *skb_new;
-	struct net_device *soft_iface = bat_priv->soft_iface;
 	int hdr_size = 0;
 	unsigned short vid;
 
@@ -1019,7 +983,8 @@ bool batadv_dat_snoop_outgoing_arp_request(struct batadv_priv *bat_priv,
 	if (type != ARPOP_REQUEST)
 		goto out;
 
-	batadv_dbg_arp(bat_priv, skb, hdr_size, "Parsing outgoing ARP REQUEST");
+	batadv_dbg_arp(bat_priv, skb, type, hdr_size,
+		       "Parsing outgoing ARP REQUEST");
 
 	ip_src = batadv_arp_ip_src(skb, hdr_size);
 	hw_src = batadv_arp_hw_src(skb, hdr_size);
@@ -1042,31 +1007,25 @@ bool batadv_dat_snoop_outgoing_arp_request(struct batadv_priv *bat_priv,
 			goto out;
 		}
 
-		/* If BLA is enabled, only send ARP replies if we have claimed
-		 * the destination for the ARP request or if no one else of
-		 * the backbone gws belonging to our backbone has claimed the
-		 * destination.
-		 */
-		if (!batadv_bla_check_claim(bat_priv,
-					    dat_entry->mac_addr, vid)) {
-			batadv_dbg(BATADV_DBG_DAT, bat_priv,
-				   "Device %pM claimed by another backbone gw. Don't send ARP reply!",
-				   dat_entry->mac_addr);
-			ret = true;
-			goto out;
-		}
-
-		skb_new = batadv_dat_arp_create_reply(bat_priv, ip_dst, ip_src,
-						      dat_entry->mac_addr,
-						      hw_src, vid);
+		skb_new = arp_create(ARPOP_REPLY, ETH_P_ARP, ip_src,
+				     bat_priv->soft_iface, ip_dst, hw_src,
+				     dat_entry->mac_addr, hw_src);
 		if (!skb_new)
 			goto out;
 
-		skb_new->protocol = eth_type_trans(skb_new, soft_iface);
+		if (vid & BATADV_VLAN_HAS_TAG) {
+			skb_new = vlan_insert_tag(skb_new, htons(ETH_P_8021Q),
+						  vid & VLAN_VID_MASK);
+			if (!skb_new)
+				goto out;
+		}
 
-		batadv_inc_counter(bat_priv, BATADV_CNT_RX);
-		batadv_add_counter(bat_priv, BATADV_CNT_RX_BYTES,
-				   skb->len + ETH_HLEN + hdr_size);
+		skb_reset_mac_header(skb_new);
+		skb_new->protocol = eth_type_trans(skb_new,
+						   bat_priv->soft_iface);
+		bat_priv->stats.rx_packets++;
+		bat_priv->stats.rx_bytes += skb->len + ETH_HLEN + hdr_size;
+		bat_priv->soft_iface->last_rx = jiffies;
 
 		netif_rx(skb_new);
 		batadv_dbg(BATADV_DBG_DAT, bat_priv, "ARP request replied locally\n");
@@ -1116,7 +1075,8 @@ bool batadv_dat_snoop_incoming_arp_request(struct batadv_priv *bat_priv,
 	ip_src = batadv_arp_ip_src(skb, hdr_size);
 	ip_dst = batadv_arp_ip_dst(skb, hdr_size);
 
-	batadv_dbg_arp(bat_priv, skb, hdr_size, "Parsing incoming ARP REQUEST");
+	batadv_dbg_arp(bat_priv, skb, type, hdr_size,
+		       "Parsing incoming ARP REQUEST");
 
 	batadv_dat_entry_add(bat_priv, ip_src, hw_src, vid);
 
@@ -1124,10 +1084,24 @@ bool batadv_dat_snoop_incoming_arp_request(struct batadv_priv *bat_priv,
 	if (!dat_entry)
 		goto out;
 
-	skb_new = batadv_dat_arp_create_reply(bat_priv, ip_dst, ip_src,
-					      dat_entry->mac_addr, hw_src, vid);
+	skb_new = arp_create(ARPOP_REPLY, ETH_P_ARP, ip_src,
+			     bat_priv->soft_iface, ip_dst, hw_src,
+			     dat_entry->mac_addr, hw_src);
+
 	if (!skb_new)
 		goto out;
+
+	/* the rest of the TX path assumes that the mac_header offset pointing
+	 * to the inner Ethernet header has been set, therefore reset it now.
+	 */
+	skb_reset_mac_header(skb_new);
+
+	if (vid & BATADV_VLAN_HAS_TAG) {
+		skb_new = vlan_insert_tag(skb_new, htons(ETH_P_8021Q),
+					  vid & VLAN_VID_MASK);
+		if (!skb_new)
+			goto out;
+	}
 
 	/* To preserve backwards compatibility, the node has choose the outgoing
 	 * format based on the incoming request packet type. The assumption is
@@ -1175,7 +1149,8 @@ void batadv_dat_snoop_outgoing_arp_reply(struct batadv_priv *bat_priv,
 	if (type != ARPOP_REPLY)
 		return;
 
-	batadv_dbg_arp(bat_priv, skb, hdr_size, "Parsing outgoing ARP REPLY");
+	batadv_dbg_arp(bat_priv, skb, type, hdr_size,
+		       "Parsing outgoing ARP REPLY");
 
 	hw_src = batadv_arp_hw_src(skb, hdr_size);
 	ip_src = batadv_arp_ip_src(skb, hdr_size);
@@ -1205,7 +1180,6 @@ void batadv_dat_snoop_outgoing_arp_reply(struct batadv_priv *bat_priv,
 bool batadv_dat_snoop_incoming_arp_reply(struct batadv_priv *bat_priv,
 					 struct sk_buff *skb, int hdr_size)
 {
-	struct batadv_dat_entry *dat_entry = NULL;
 	u16 type;
 	__be32 ip_src, ip_dst;
 	u8 *hw_src, *hw_dst;
@@ -1221,47 +1195,19 @@ bool batadv_dat_snoop_incoming_arp_reply(struct batadv_priv *bat_priv,
 	if (type != ARPOP_REPLY)
 		goto out;
 
-	batadv_dbg_arp(bat_priv, skb, hdr_size, "Parsing incoming ARP REPLY");
+	batadv_dbg_arp(bat_priv, skb, type, hdr_size,
+		       "Parsing incoming ARP REPLY");
 
 	hw_src = batadv_arp_hw_src(skb, hdr_size);
 	ip_src = batadv_arp_ip_src(skb, hdr_size);
 	hw_dst = batadv_arp_hw_dst(skb, hdr_size);
 	ip_dst = batadv_arp_ip_dst(skb, hdr_size);
 
-	/* If ip_dst is already in cache and has the right mac address,
-	 * drop this frame if this ARP reply is destined for us because it's
-	 * most probably an ARP reply generated by another node of the DHT.
-	 * We have most probably received already a reply earlier. Delivering
-	 * this frame would lead to doubled receive of an ARP reply.
-	 */
-	dat_entry = batadv_dat_entry_hash_find(bat_priv, ip_src, vid);
-	if (dat_entry && batadv_compare_eth(hw_src, dat_entry->mac_addr)) {
-		batadv_dbg(BATADV_DBG_DAT, bat_priv, "Doubled ARP reply removed: ARP MSG = [src: %pM-%pI4 dst: %pM-%pI4]; dat_entry: %pM-%pI4\n",
-			   hw_src, &ip_src, hw_dst, &ip_dst,
-			   dat_entry->mac_addr,	&dat_entry->ip);
-		dropped = true;
-		goto out;
-	}
-
 	/* Update our internal cache with both the IP addresses the node got
 	 * within the ARP reply
 	 */
 	batadv_dat_entry_add(bat_priv, ip_src, hw_src, vid);
 	batadv_dat_entry_add(bat_priv, ip_dst, hw_dst, vid);
-
-	/* If BLA is enabled, only forward ARP replies if we have claimed the
-	 * source of the ARP reply or if no one else of the same backbone has
-	 * already claimed that client. This prevents that different gateways
-	 * to the same backbone all forward the ARP reply leading to multiple
-	 * replies in the backbone.
-	 */
-	if (!batadv_bla_check_claim(bat_priv, hw_src, vid)) {
-		batadv_dbg(BATADV_DBG_DAT, bat_priv,
-			   "Device %pM claimed by another backbone gw. Drop ARP reply.\n",
-			   hw_src);
-		dropped = true;
-		goto out;
-	}
 
 	/* if this REPLY is directed to a client of mine, let's deliver the
 	 * packet to the interface
@@ -1275,8 +1221,6 @@ bool batadv_dat_snoop_incoming_arp_reply(struct batadv_priv *bat_priv,
 out:
 	if (dropped)
 		kfree_skb(skb);
-	if (dat_entry)
-		batadv_dat_entry_put(dat_entry);
 	/* if dropped == false -> deliver to the interface */
 	return dropped;
 }
@@ -1305,7 +1249,7 @@ bool batadv_dat_drop_broadcast_packet(struct batadv_priv *bat_priv,
 	/* If this packet is an ARP_REQUEST and the node already has the
 	 * information that it is going to ask, then the packet can be dropped
 	 */
-	if (batadv_forw_packet_is_rebroadcast(forw_packet))
+	if (forw_packet->num_packets)
 		goto out;
 
 	vid = batadv_dat_get_vid(forw_packet->skb, &hdr_size);

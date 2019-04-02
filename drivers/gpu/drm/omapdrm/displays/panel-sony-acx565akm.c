@@ -32,6 +32,8 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 
+#include <video/omap-panel-data.h>
+
 #include "../dss/omapdss.h"
 
 #define MIPID_CMD_READ_DISP_ID		0x04
@@ -67,8 +69,9 @@ struct panel_drv_data {
 	struct omap_dss_device *in;
 
 	int reset_gpio;
+	int datapairs;
 
-	struct videomode vm;
+	struct omap_video_timings videomode;
 
 	char		*name;
 	int		enabled;
@@ -89,20 +92,23 @@ struct panel_drv_data {
 	struct backlight_device *bl_dev;
 };
 
-static const struct videomode acx565akm_panel_vm = {
-	.hactive	= 800,
-	.vactive	= 480,
+static const struct omap_video_timings acx565akm_panel_timings = {
+	.x_res		= 800,
+	.y_res		= 480,
 	.pixelclock	= 24000000,
-	.hfront_porch	= 28,
-	.hsync_len	= 4,
-	.hback_porch	= 24,
-	.vfront_porch	= 3,
-	.vsync_len	= 3,
-	.vback_porch	= 4,
+	.hfp		= 28,
+	.hsw		= 4,
+	.hbp		= 24,
+	.vfp		= 3,
+	.vsw		= 3,
+	.vbp		= 4,
 
-	.flags		= DISPLAY_FLAGS_HSYNC_LOW | DISPLAY_FLAGS_VSYNC_LOW |
-			  DISPLAY_FLAGS_DE_HIGH | DISPLAY_FLAGS_SYNC_NEGEDGE |
-			  DISPLAY_FLAGS_PIXDATA_POSEDGE,
+	.vsync_level	= OMAPDSS_SIG_ACTIVE_LOW,
+	.hsync_level	= OMAPDSS_SIG_ACTIVE_LOW,
+
+	.data_pclk_edge	= OMAPDSS_DRIVE_SIG_RISING_EDGE,
+	.de_level	= OMAPDSS_SIG_ACTIVE_HIGH,
+	.sync_pclk_edge	= OMAPDSS_DRIVE_SIG_FALLING_EDGE,
 };
 
 #define to_panel_data(p) container_of(p, struct panel_drv_data, dssdev)
@@ -503,7 +509,7 @@ static struct attribute *bldev_attrs[] = {
 	NULL,
 };
 
-static const struct attribute_group bldev_attr_group = {
+static struct attribute_group bldev_attr_group = {
 	.attrs = bldev_attrs,
 };
 
@@ -542,7 +548,10 @@ static int acx565akm_panel_power_on(struct omap_dss_device *dssdev)
 
 	dev_dbg(&ddata->spi->dev, "%s\n", __func__);
 
-	in->ops.sdi->set_timings(in, &ddata->vm);
+	in->ops.sdi->set_timings(in, &ddata->videomode);
+
+	if (ddata->datapairs > 0)
+		in->ops.sdi->set_datapairs(in, ddata->datapairs);
 
 	r = in->ops.sdi->enable(in);
 	if (r) {
@@ -653,32 +662,32 @@ static void acx565akm_disable(struct omap_dss_device *dssdev)
 }
 
 static void acx565akm_set_timings(struct omap_dss_device *dssdev,
-				  struct videomode *vm)
+		struct omap_video_timings *timings)
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct omap_dss_device *in = ddata->in;
 
-	ddata->vm = *vm;
-	dssdev->panel.vm = *vm;
+	ddata->videomode = *timings;
+	dssdev->panel.timings = *timings;
 
-	in->ops.sdi->set_timings(in, vm);
+	in->ops.sdi->set_timings(in, timings);
 }
 
 static void acx565akm_get_timings(struct omap_dss_device *dssdev,
-				  struct videomode *vm)
+		struct omap_video_timings *timings)
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 
-	*vm = ddata->vm;
+	*timings = ddata->videomode;
 }
 
 static int acx565akm_check_timings(struct omap_dss_device *dssdev,
-				   struct videomode *vm)
+		struct omap_video_timings *timings)
 {
 	struct panel_drv_data *ddata = to_panel_data(dssdev);
 	struct omap_dss_device *in = ddata->in;
 
-	return in->ops.sdi->check_timings(in, vm);
+	return in->ops.sdi->check_timings(in, timings);
 }
 
 static struct omap_dss_driver acx565akm_ops = {
@@ -691,7 +700,35 @@ static struct omap_dss_driver acx565akm_ops = {
 	.set_timings	= acx565akm_set_timings,
 	.get_timings	= acx565akm_get_timings,
 	.check_timings	= acx565akm_check_timings,
+
+	.get_resolution	= omapdss_default_get_resolution,
 };
+
+static int acx565akm_probe_pdata(struct spi_device *spi)
+{
+	const struct panel_acx565akm_platform_data *pdata;
+	struct panel_drv_data *ddata = dev_get_drvdata(&spi->dev);
+	struct omap_dss_device *dssdev, *in;
+
+	pdata = dev_get_platdata(&spi->dev);
+
+	ddata->reset_gpio = pdata->reset_gpio;
+
+	in = omap_dss_find_output(pdata->source);
+	if (in == NULL) {
+		dev_err(&spi->dev, "failed to find video source '%s'\n",
+				pdata->source);
+		return -EPROBE_DEFER;
+	}
+	ddata->in = in;
+
+	ddata->datapairs = pdata->datapairs;
+
+	dssdev = &ddata->dssdev;
+	dssdev->name = pdata->name;
+
+	return 0;
+}
 
 static int acx565akm_probe_of(struct spi_device *spi)
 {
@@ -720,9 +757,6 @@ static int acx565akm_probe(struct spi_device *spi)
 
 	dev_dbg(&spi->dev, "%s\n", __func__);
 
-	if (!spi->dev.of_node)
-		return -ENODEV;
-
 	spi->mode = SPI_MODE_3;
 
 	ddata = devm_kzalloc(&spi->dev, sizeof(*ddata), GFP_KERNEL);
@@ -735,9 +769,18 @@ static int acx565akm_probe(struct spi_device *spi)
 
 	mutex_init(&ddata->mutex);
 
-	r = acx565akm_probe_of(spi);
-	if (r)
-		return r;
+	if (dev_get_platdata(&spi->dev)) {
+		r = acx565akm_probe_pdata(spi);
+		if (r)
+			return r;
+	} else if (spi->dev.of_node) {
+		r = acx565akm_probe_of(spi);
+		if (r)
+			return r;
+	} else {
+		dev_err(&spi->dev, "platform data missing!\n");
+		return -ENODEV;
+	}
 
 	if (gpio_is_valid(ddata->reset_gpio)) {
 		r = devm_gpio_request_one(&spi->dev, ddata->reset_gpio,
@@ -802,14 +845,14 @@ static int acx565akm_probe(struct spi_device *spi)
 	acx565akm_bl_update_status(bldev);
 
 
-	ddata->vm = acx565akm_panel_vm;
+	ddata->videomode = acx565akm_panel_timings;
 
 	dssdev = &ddata->dssdev;
 	dssdev->dev = &spi->dev;
 	dssdev->driver = &acx565akm_ops;
 	dssdev->type = OMAP_DISPLAY_TYPE_SDI;
 	dssdev->owner = THIS_MODULE;
-	dssdev->panel.vm = ddata->vm;
+	dssdev->panel.timings = ddata->videomode;
 
 	r = omapdss_register_display(dssdev);
 	if (r) {

@@ -236,6 +236,7 @@ static struct platform_device gpr_i2c_device = {
 static struct i2c_board_info gpr_i2c_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("lm83", 0x18),
+		.type = "lm83"
 	}
 };
 

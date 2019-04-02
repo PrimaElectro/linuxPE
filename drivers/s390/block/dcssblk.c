@@ -18,8 +18,6 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/pfn_t.h>
-#include <linux/uio.h>
-#include <linux/dax.h>
 #include <asm/extmem.h>
 #include <asm/io.h>
 
@@ -32,8 +30,8 @@ static int dcssblk_open(struct block_device *bdev, fmode_t mode);
 static void dcssblk_release(struct gendisk *disk, fmode_t mode);
 static blk_qc_t dcssblk_make_request(struct request_queue *q,
 						struct bio *bio);
-static long dcssblk_dax_direct_access(struct dax_device *dax_dev, pgoff_t pgoff,
-		long nr_pages, void **kaddr, pfn_t *pfn);
+static long dcssblk_direct_access(struct block_device *bdev, sector_t secnum,
+			 void **kaddr, pfn_t *pfn, long size);
 
 static char dcssblk_segments[DCSSBLK_PARM_LEN] = "\0";
 
@@ -42,17 +40,7 @@ static const struct block_device_operations dcssblk_devops = {
 	.owner   	= THIS_MODULE,
 	.open    	= dcssblk_open,
 	.release 	= dcssblk_release,
-};
-
-static size_t dcssblk_dax_copy_from_iter(struct dax_device *dax_dev,
-		pgoff_t pgoff, void *addr, size_t bytes, struct iov_iter *i)
-{
-	return copy_from_iter(addr, bytes, i);
-}
-
-static const struct dax_operations dcssblk_dax_ops = {
-	.direct_access = dcssblk_dax_direct_access,
-	.copy_from_iter = dcssblk_dax_copy_from_iter,
+	.direct_access 	= dcssblk_direct_access,
 };
 
 struct dcssblk_dev_info {
@@ -69,7 +57,6 @@ struct dcssblk_dev_info {
 	struct request_queue *dcssblk_queue;
 	int num_of_segments;
 	struct list_head seg_list;
-	struct dax_device *dax_dev;
 };
 
 struct segment_info {
@@ -402,8 +389,6 @@ removeseg:
 	}
 	list_del(&dev_info->lh);
 
-	kill_dax(dev_info->dax_dev);
-	put_dax(dev_info->dax_dev);
 	del_gendisk(dev_info->gd);
 	blk_cleanup_queue(dev_info->dcssblk_queue);
 	dev_info->gd->queue = NULL;
@@ -669,13 +654,6 @@ dcssblk_add_store(struct device *dev, struct device_attribute *attr, const char 
 	if (rc)
 		goto put_dev;
 
-	dev_info->dax_dev = alloc_dax(dev_info, dev_info->gd->disk_name,
-			&dcssblk_dax_ops);
-	if (!dev_info->dax_dev) {
-		rc = -ENOMEM;
-		goto put_dev;
-	}
-
 	get_device(&dev_info->dev);
 	device_add_disk(&dev_info->dev, dev_info->gd);
 
@@ -774,8 +752,6 @@ dcssblk_remove_store(struct device *dev, struct device_attribute *attr, const ch
 	}
 
 	list_del(&dev_info->lh);
-	kill_dax(dev_info->dax_dev);
-	put_dax(dev_info->dax_dev);
 	del_gendisk(dev_info->gd);
 	blk_cleanup_queue(dev_info->dcssblk_queue);
 	dev_info->gd->queue = NULL;
@@ -853,17 +829,17 @@ dcssblk_make_request(struct request_queue *q, struct bio *bio)
 	unsigned long source_addr;
 	unsigned long bytes_done;
 
-	blk_queue_split(q, &bio);
+	blk_queue_split(q, &bio, q->bio_split);
 
 	bytes_done = 0;
-	dev_info = bio->bi_disk->private_data;
+	dev_info = bio->bi_bdev->bd_disk->private_data;
 	if (dev_info == NULL)
 		goto fail;
 	if ((bio->bi_iter.bi_sector & 7) != 0 ||
 	    (bio->bi_iter.bi_size & 4095) != 0)
 		/* Request is not page-aligned. */
 		goto fail;
-	if (bio_end_sector(bio) > get_capacity(bio->bi_disk)) {
+	if (bio_end_sector(bio) > get_capacity(bio->bi_bdev->bd_disk)) {
 		/* Request beyond end of DCSS segment. */
 		goto fail;
 	}
@@ -907,26 +883,21 @@ fail:
 }
 
 static long
-__dcssblk_direct_access(struct dcssblk_dev_info *dev_info, pgoff_t pgoff,
-		long nr_pages, void **kaddr, pfn_t *pfn)
+dcssblk_direct_access (struct block_device *bdev, sector_t secnum,
+			void **kaddr, pfn_t *pfn, long size)
 {
-	resource_size_t offset = pgoff * PAGE_SIZE;
-	unsigned long dev_sz;
+	struct dcssblk_dev_info *dev_info;
+	unsigned long offset, dev_sz;
 
+	dev_info = bdev->bd_disk->private_data;
+	if (!dev_info)
+		return -ENODEV;
 	dev_sz = dev_info->end - dev_info->start + 1;
+	offset = secnum * 512;
 	*kaddr = (void *) dev_info->start + offset;
 	*pfn = __pfn_to_pfn_t(PFN_DOWN(dev_info->start + offset), PFN_DEV);
 
-	return (dev_sz - offset) / PAGE_SIZE;
-}
-
-static long
-dcssblk_dax_direct_access(struct dax_device *dax_dev, pgoff_t pgoff,
-		long nr_pages, void **kaddr, pfn_t *pfn)
-{
-	struct dcssblk_dev_info *dev_info = dax_get_private(dax_dev);
-
-	return __dcssblk_direct_access(dev_info, pgoff, nr_pages, kaddr, pfn);
+	return dev_sz - offset;
 }
 
 static void

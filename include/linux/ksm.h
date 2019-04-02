@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __LINUX_KSM_H
 #define __LINUX_KSM_H
 /*
@@ -13,7 +12,6 @@
 #include <linux/pagemap.h>
 #include <linux/rmap.h>
 #include <linux/sched.h>
-#include <linux/sched/coredump.h>
 
 struct stable_node;
 struct mem_cgroup;
@@ -62,7 +60,7 @@ static inline void set_page_stable_node(struct page *page,
 struct page *ksm_might_need_to_copy(struct page *page,
 			struct vm_area_struct *vma, unsigned long address);
 
-void rmap_walk_ksm(struct page *page, struct rmap_walk_control *rwc);
+int rmap_walk_ksm(struct page *page, struct rmap_walk_control *rwc);
 void ksm_migrate_page(struct page *newpage, struct page *oldpage);
 
 #else  /* !CONFIG_KSM */
@@ -95,9 +93,10 @@ static inline int page_referenced_ksm(struct page *page,
 	return 0;
 }
 
-static inline void rmap_walk_ksm(struct page *page,
+static inline int rmap_walk_ksm(struct page *page,
 			struct rmap_walk_control *rwc)
 {
+	return 0;
 }
 
 static inline void ksm_migrate_page(struct page *newpage, struct page *oldpage)

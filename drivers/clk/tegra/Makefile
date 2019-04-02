@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0
 obj-y					+= clk.o
 obj-y					+= clk-audio-sync.o
 obj-y					+= clk-dfll.o
@@ -23,4 +22,3 @@ obj-$(CONFIG_ARCH_TEGRA_124_SOC)	+= clk-tegra124-dfll-fcpu.o
 obj-$(CONFIG_ARCH_TEGRA_132_SOC)	+= clk-tegra124.o
 obj-y					+= cvb.o
 obj-$(CONFIG_ARCH_TEGRA_210_SOC)	+= clk-tegra210.o
-obj-$(CONFIG_CLK_TEGRA_BPMP)		+= clk-bpmp.o

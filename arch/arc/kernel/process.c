@@ -11,9 +11,6 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/sched.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
-
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/unistd.h>
@@ -47,8 +44,7 @@ SYSCALL_DEFINE0(arc_gettls)
 SYSCALL_DEFINE3(arc_usr_cmpxchg, int *, uaddr, int, expected, int, new)
 {
 	struct pt_regs *regs = current_pt_regs();
-	u32 uval;
-	int ret;
+	int uval = -EFAULT;
 
 	/*
 	 * This is only for old cores lacking LLOCK/SCOND, which by defintion
@@ -61,82 +57,33 @@ SYSCALL_DEFINE3(arc_usr_cmpxchg, int *, uaddr, int, expected, int, new)
 	/* Z indicates to userspace if operation succeded */
 	regs->status32 &= ~STATUS_Z_MASK;
 
-	ret = access_ok(VERIFY_WRITE, uaddr, sizeof(*uaddr));
-	if (!ret)
-		 goto fail;
+	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(int)))
+		return -EFAULT;
 
-again:
 	preempt_disable();
 
-	ret = __get_user(uval, uaddr);
-	if (ret)
-		 goto fault;
+	if (__get_user(uval, uaddr))
+		goto done;
 
-	if (uval != expected)
-		 goto out;
+	if (uval == expected) {
+		if (!__put_user(new, uaddr))
+			regs->status32 |= STATUS_Z_MASK;
+	}
 
-	ret = __put_user(new, uaddr);
-	if (ret)
-		 goto fault;
-
-	regs->status32 |= STATUS_Z_MASK;
-
-out:
+done:
 	preempt_enable();
+
 	return uval;
-
-fault:
-	preempt_enable();
-
-	if (unlikely(ret != -EFAULT))
-		 goto fail;
-
-	down_read(&current->mm->mmap_sem);
-	ret = fixup_user_fault(current, current->mm, (unsigned long) uaddr,
-			       FAULT_FLAG_WRITE, NULL);
-	up_read(&current->mm->mmap_sem);
-
-	if (likely(!ret))
-		 goto again;
-
-fail:
-	force_sig(SIGSEGV, current);
-	return ret;
 }
-
-#ifdef CONFIG_ISA_ARCV2
 
 void arch_cpu_idle(void)
 {
-	/* Re-enable interrupts <= default irq priority before commiting SLEEP */
-	const unsigned int arg = 0x10 | ARCV2_IRQ_DEF_PRIO;
-
+	/* sleep, but enable all interrupts before committing */
 	__asm__ __volatile__(
 		"sleep %0	\n"
 		:
-		:"I"(arg)); /* can't be "r" has to be embedded const */
+		:"I"(ISA_SLEEP_ARG)); /* can't be "r" has to be embedded const */
 }
-
-#elif defined(CONFIG_EZNPS_MTM_EXT)	/* ARC700 variant in NPS */
-
-void arch_cpu_idle(void)
-{
-	/* only the calling HW thread needs to sleep */
-	__asm__ __volatile__(
-		".word %0	\n"
-		:
-		:"i"(CTOP_INST_HWSCHD_WFT_IE12));
-}
-
-#else	/* ARC700 */
-
-void arch_cpu_idle(void)
-{
-	/* sleep, but enable both set E1/E2 (levels of interrutps) before committing */
-	__asm__ __volatile__("sleep 0x3	\n");
-}
-
-#endif
 
 asmlinkage void ret_from_fork(void);
 
@@ -241,26 +188,6 @@ int copy_thread(unsigned long clone_flags,
 		task_thread_info(current)->thr_ptr;
 	}
 
-
-	/*
-	 * setup usermode thread pointer #1:
-	 * when child is picked by scheduler, __switch_to() uses @c_callee to
-	 * populate usermode callee regs: this works (despite being in a kernel
-	 * function) since special return path for child @ret_from_fork()
-	 * ensures those regs are not clobbered all the way to RTIE to usermode
-	 */
-	c_callee->r25 = task_thread_info(p)->thr_ptr;
-
-#ifdef CONFIG_ARC_CURR_IN_REG
-	/*
-	 * setup usermode thread pointer #2:
-	 * however for this special use of r25 in kernel, __switch_to() sets
-	 * r25 for kernel needs and only in the final return path is usermode
-	 * r25 setup, from pt_regs->user_r25. So set that up as well
-	 */
-	c_regs->user_r25 = c_callee->r25;
-#endif
-
 	return 0;
 }
 
@@ -278,10 +205,6 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long usp)
 	 * Interrupts enabled
 	 */
 	regs->status32 = STATUS_U_MASK | STATUS_L_MASK | ISA_INIT_STATUS_BITS;
-
-#ifdef CONFIG_EZNPS_MTM_EXT
-	regs->eflags = 0;
-#endif
 
 	/* bogus seed values for debugging */
 	regs->lp_start = 0x10;

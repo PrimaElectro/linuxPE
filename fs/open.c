@@ -19,7 +19,7 @@
 #include <linux/mount.h>
 #include <linux/fcntl.h>
 #include <linux/slab.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/fs.h>
 #include <linux/personality.h>
 #include <linux/pagemap.h>
@@ -96,7 +96,7 @@ long vfs_truncate(const struct path *path, loff_t length)
 	 * write access on the upper inode, not on the overlay inode.  For
 	 * non-overlay filesystems d_real() is an identity function.
 	 */
-	upperdentry = d_real(path->dentry, NULL, O_WRONLY, 0);
+	upperdentry = d_real(path->dentry, NULL, O_WRONLY);
 	error = PTR_ERR(upperdentry);
 	if (IS_ERR(upperdentry))
 		goto mnt_drop_write_and_out;
@@ -193,8 +193,7 @@ static long do_sys_ftruncate(unsigned int fd, loff_t length, int small)
 		goto out_putf;
 
 	error = -EPERM;
-	/* Check IS_APPEND on real upper inode */
-	if (IS_APPEND(file_inode(f.file)))
+	if (IS_APPEND(inode))
 		goto out_putf;
 
 	sb_start_write(inode->i_sb);
@@ -302,10 +301,12 @@ int vfs_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	if (S_ISFIFO(inode->i_mode))
 		return -ESPIPE;
 
-	if (S_ISDIR(inode->i_mode))
-		return -EISDIR;
-
-	if (!S_ISREG(inode->i_mode) && !S_ISBLK(inode->i_mode))
+	/*
+	 * Let individual file system decide if it supports preallocation
+	 * for directories or not.
+	 */
+	if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode) &&
+	    !S_ISBLK(inode->i_mode))
 		return -ENODEV;
 
 	/* Check for wrap through zero too */
@@ -315,7 +316,7 @@ int vfs_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	if (!file->f_op->fallocate)
 		return -EOPNOTSUPP;
 
-	file_start_write(file);
+	sb_start_write(inode->i_sb);
 	ret = file->f_op->fallocate(file, mode, offset, len);
 
 	/*
@@ -328,7 +329,7 @@ int vfs_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	if (ret == 0)
 		fsnotify_modify(file);
 
-	file_end_write(file);
+	sb_end_write(inode->i_sb);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(vfs_fallocate);
@@ -460,17 +461,20 @@ out:
 SYSCALL_DEFINE1(fchdir, unsigned int, fd)
 {
 	struct fd f = fdget_raw(fd);
-	int error;
+	struct inode *inode;
+	int error = -EBADF;
 
 	error = -EBADF;
 	if (!f.file)
 		goto out;
 
+	inode = file_inode(f.file);
+
 	error = -ENOTDIR;
-	if (!d_can_lookup(f.file->f_path.dentry))
+	if (!S_ISDIR(inode->i_mode))
 		goto out_putf;
 
-	error = inode_permission(file_inode(f.file), MAY_EXEC | MAY_CHDIR);
+	error = inode_permission(inode, MAY_EXEC | MAY_CHDIR);
 	if (!error)
 		set_fs_pwd(current->fs, &f.file->f_path);
 out_putf:
@@ -670,12 +674,12 @@ SYSCALL_DEFINE3(fchown, unsigned int, fd, uid_t, user, gid_t, group)
 	if (!f.file)
 		goto out;
 
-	error = mnt_want_write_file_path(f.file);
+	error = mnt_want_write_file(f.file);
 	if (error)
 		goto out_fput;
 	audit_file(f.file);
 	error = chown_common(&f.file->f_path, user, group);
-	mnt_drop_write_file_path(f.file);
+	mnt_drop_write_file(f.file);
 out_fput:
 	fdput(f);
 out:
@@ -706,9 +710,6 @@ static int do_dentry_open(struct file *f,
 	path_get(&f->f_path);
 	f->f_inode = inode;
 	f->f_mapping = inode->i_mapping;
-
-	/* Ensure that we skip any errors that predate opening of the file */
-	f->f_wb_err = filemap_sample_wb_err(f->f_mapping);
 
 	if (unlikely(f->f_flags & O_PATH)) {
 		f->f_mode = FMODE_PATH;
@@ -762,7 +763,6 @@ static int do_dentry_open(struct file *f,
 	     likely(f->f_op->write || f->f_op->write_iter))
 		f->f_mode |= FMODE_CAN_WRITE;
 
-	f->f_write_hint = WRITE_LIFE_NOT_SET;
 	f->f_flags &= ~(O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC);
 
 	file_ra_state_init(&f->f_ra, f->f_mapping->host->i_mapping);
@@ -857,7 +857,7 @@ EXPORT_SYMBOL(file_path);
 int vfs_open(const struct path *path, struct file *file,
 	     const struct cred *cred)
 {
-	struct dentry *dentry = d_real(path->dentry, NULL, file->f_flags, 0);
+	struct dentry *dentry = d_real(path->dentry, NULL, file->f_flags);
 
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
@@ -1085,26 +1085,6 @@ SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags,
 
 	return do_sys_open(dfd, filename, flags, mode);
 }
-
-#ifdef CONFIG_COMPAT
-/*
- * Exactly like sys_open(), except that it doesn't set the
- * O_LARGEFILE flag.
- */
-COMPAT_SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t, mode)
-{
-	return do_sys_open(AT_FDCWD, filename, flags, mode);
-}
-
-/*
- * Exactly like sys_openat(), except that it doesn't set the
- * O_LARGEFILE flag.
- */
-COMPAT_SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags, umode_t, mode)
-{
-	return do_sys_open(dfd, filename, flags, mode);
-}
-#endif
 
 #ifndef __alpha__
 

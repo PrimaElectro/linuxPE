@@ -286,12 +286,9 @@ int ieee802154_del_iface(struct sk_buff *skb, struct genl_info *info)
 	if (name[nla_len(info->attrs[IEEE802154_ATTR_DEV_NAME]) - 1] != '\0')
 		return -EINVAL; /* name should be null-terminated */
 
-	rc = -ENODEV;
 	dev = dev_get_by_name(genl_info_net(info), name);
 	if (!dev)
-		return rc;
-	if (dev->type != ARPHRD_IEEE802154)
-		goto out;
+		return -ENODEV;
 
 	phy = dev->ieee802154_ptr->wpan_phy;
 	BUG_ON(!phy);
@@ -345,7 +342,6 @@ nla_put_failure:
 	nlmsg_free(msg);
 out_dev:
 	wpan_phy_put(phy);
-out:
 	if (dev)
 		dev_put(dev);
 

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * NTP state machine interfaces and logic.
  *
@@ -18,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/rtc.h>
 #include <linux/math64.h>
+#include <linux/swork.h>
 
 #include "ntp_internal.h"
 #include "timekeeping_internal.h"
@@ -382,7 +382,7 @@ ktime_t ntp_get_next_leap(void)
 
 	if ((time_state == TIME_INS) && (time_status & STA_INS))
 		return ktime_set(ntp_next_leap_sec, 0);
-	ret = KTIME_MAX;
+	ret.tv64 = KTIME_MAX;
 	return ret;
 }
 
@@ -569,10 +569,35 @@ static void sync_cmos_clock(struct work_struct *work)
 			   &sync_cmos_work, timespec64_to_jiffies(&next));
 }
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+
+static void run_clock_set_delay(struct swork_event *event)
+{
+	queue_delayed_work(system_power_efficient_wq, &sync_cmos_work, 0);
+}
+
+static struct swork_event ntp_cmos_swork;
+
+void ntp_notify_cmos_timer(void)
+{
+	swork_queue(&ntp_cmos_swork);
+}
+
+static __init int create_cmos_delay_thread(void)
+{
+	WARN_ON(swork_get());
+	INIT_SWORK(&ntp_cmos_swork, run_clock_set_delay);
+	return 0;
+}
+early_initcall(create_cmos_delay_thread);
+
+#else
+
 void ntp_notify_cmos_timer(void)
 {
 	queue_delayed_work(system_power_efficient_wq, &sync_cmos_work, 0);
 }
+#endif /* CONFIG_PREEMPT_RT_FULL */
 
 #else
 void ntp_notify_cmos_timer(void) { }

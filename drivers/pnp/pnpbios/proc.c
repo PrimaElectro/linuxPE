@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * /proc/bus/pnp interface for Plug and Play devices
  *
@@ -27,7 +26,7 @@
 #include <linux/seq_file.h>
 #include <linux/init.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "pnpbios.h"
 

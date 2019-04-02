@@ -201,7 +201,7 @@ void free_all_swap_pages(int swap)
 		struct swsusp_extent *ext;
 		unsigned long offset;
 
-		ext = rb_entry(node, struct swsusp_extent, node);
+		ext = container_of(node, struct swsusp_extent, node);
 		rb_erase(node, &swsusp_extents);
 		for (offset = ext->start; offset <= ext->end; offset++)
 			swap_free(swp_entry(swap, offset));
@@ -225,14 +225,14 @@ static struct block_device *hib_resume_bdev;
 struct hib_bio_batch {
 	atomic_t		count;
 	wait_queue_head_t	wait;
-	blk_status_t		error;
+	int			error;
 };
 
 static void hib_init_batch(struct hib_bio_batch *hb)
 {
 	atomic_set(&hb->count, 0);
 	init_waitqueue_head(&hb->wait);
-	hb->error = BLK_STS_OK;
+	hb->error = 0;
 }
 
 static void hib_end_io(struct bio *bio)
@@ -240,9 +240,10 @@ static void hib_end_io(struct bio *bio)
 	struct hib_bio_batch *hb = bio->bi_private;
 	struct page *page = bio->bi_io_vec[0].bv_page;
 
-	if (bio->bi_status) {
+	if (bio->bi_error) {
 		printk(KERN_ALERT "Read-error on swap-device (%u:%u:%Lu)\n",
-				MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
+				imajor(bio->bi_bdev->bd_inode),
+				iminor(bio->bi_bdev->bd_inode),
 				(unsigned long long)bio->bi_iter.bi_sector);
 	}
 
@@ -252,8 +253,8 @@ static void hib_end_io(struct bio *bio)
 		flush_icache_range((unsigned long)page_address(page),
 				   (unsigned long)page_address(page) + PAGE_SIZE);
 
-	if (bio->bi_status && !hb->error)
-		hb->error = bio->bi_status;
+	if (bio->bi_error && !hb->error)
+		hb->error = bio->bi_error;
 	if (atomic_dec_and_test(&hb->count))
 		wake_up(&hb->wait);
 
@@ -269,7 +270,7 @@ static int hib_submit_io(int op, int op_flags, pgoff_t page_off, void *addr,
 
 	bio = bio_alloc(__GFP_RECLAIM | __GFP_HIGH, 1);
 	bio->bi_iter.bi_sector = page_off * (PAGE_SIZE >> 9);
-	bio_set_dev(bio, hib_resume_bdev);
+	bio->bi_bdev = hib_resume_bdev;
 	bio_set_op_attrs(bio, op, op_flags);
 
 	if (bio_add_page(bio, page, PAGE_SIZE, 0) < PAGE_SIZE) {
@@ -292,10 +293,10 @@ static int hib_submit_io(int op, int op_flags, pgoff_t page_off, void *addr,
 	return error;
 }
 
-static blk_status_t hib_wait_io(struct hib_bio_batch *hb)
+static int hib_wait_io(struct hib_bio_batch *hb)
 {
 	wait_event(hb->wait, atomic_read(&hb->count) == 0);
-	return blk_status_to_errno(hb->error);
+	return hb->error;
 }
 
 /*
@@ -306,7 +307,7 @@ static int mark_swapfiles(struct swap_map_handle *handle, unsigned int flags)
 {
 	int error;
 
-	hib_submit_io(REQ_OP_READ, 0, swsusp_resume_block,
+	hib_submit_io(REQ_OP_READ, READ_SYNC, swsusp_resume_block,
 		      swsusp_header, NULL);
 	if (!memcmp("SWAP-SPACE",swsusp_header->sig, 10) ||
 	    !memcmp("SWAPSPACE2",swsusp_header->sig, 10)) {
@@ -316,7 +317,7 @@ static int mark_swapfiles(struct swap_map_handle *handle, unsigned int flags)
 		swsusp_header->flags = flags;
 		if (flags & SF_CRC32_MODE)
 			swsusp_header->crc32 = handle->crc32;
-		error = hib_submit_io(REQ_OP_WRITE, REQ_SYNC,
+		error = hib_submit_io(REQ_OP_WRITE, WRITE_SYNC,
 				      swsusp_resume_block, swsusp_header, NULL);
 	} else {
 		printk(KERN_ERR "PM: Swap header not found!\n");
@@ -396,7 +397,7 @@ static int write_page(void *buf, sector_t offset, struct hib_bio_batch *hb)
 	} else {
 		src = buf;
 	}
-	return hib_submit_io(REQ_OP_WRITE, REQ_SYNC, offset, src, hb);
+	return hib_submit_io(REQ_OP_WRITE, WRITE_SYNC, offset, src, hb);
 }
 
 static void release_swap_writer(struct swap_map_handle *handle)
@@ -999,7 +1000,8 @@ static int get_swap_reader(struct swap_map_handle *handle,
 			return -ENOMEM;
 		}
 
-		error = hib_submit_io(REQ_OP_READ, 0, offset, tmp->map, NULL);
+		error = hib_submit_io(REQ_OP_READ, READ_SYNC, offset,
+				      tmp->map, NULL);
 		if (error) {
 			release_swap_reader(handle);
 			return error;
@@ -1023,7 +1025,7 @@ static int swap_read_page(struct swap_map_handle *handle, void *buf,
 	offset = handle->cur->entries[handle->k];
 	if (!offset)
 		return -EFAULT;
-	error = hib_submit_io(REQ_OP_READ, 0, offset, buf, hb);
+	error = hib_submit_io(REQ_OP_READ, READ_SYNC, offset, buf, hb);
 	if (error)
 		return error;
 	if (++handle->k >= MAP_PAGE_ENTRIES) {
@@ -1532,7 +1534,7 @@ int swsusp_check(void)
 	if (!IS_ERR(hib_resume_bdev)) {
 		set_blocksize(hib_resume_bdev, PAGE_SIZE);
 		clear_page(swsusp_header);
-		error = hib_submit_io(REQ_OP_READ, 0,
+		error = hib_submit_io(REQ_OP_READ, READ_SYNC,
 					swsusp_resume_block,
 					swsusp_header, NULL);
 		if (error)
@@ -1541,7 +1543,7 @@ int swsusp_check(void)
 		if (!memcmp(HIBERNATE_SIG, swsusp_header->sig, 10)) {
 			memcpy(swsusp_header->sig, swsusp_header->orig_sig, 10);
 			/* Reset swap signature now */
-			error = hib_submit_io(REQ_OP_WRITE, REQ_SYNC,
+			error = hib_submit_io(REQ_OP_WRITE, WRITE_SYNC,
 						swsusp_resume_block,
 						swsusp_header, NULL);
 		} else {
@@ -1586,11 +1588,11 @@ int swsusp_unmark(void)
 {
 	int error;
 
-	hib_submit_io(REQ_OP_READ, 0, swsusp_resume_block,
+	hib_submit_io(REQ_OP_READ, READ_SYNC, swsusp_resume_block,
 		      swsusp_header, NULL);
 	if (!memcmp(HIBERNATE_SIG,swsusp_header->sig, 10)) {
 		memcpy(swsusp_header->sig,swsusp_header->orig_sig, 10);
-		error = hib_submit_io(REQ_OP_WRITE, REQ_SYNC,
+		error = hib_submit_io(REQ_OP_WRITE, WRITE_SYNC,
 					swsusp_resume_block,
 					swsusp_header, NULL);
 	} else {

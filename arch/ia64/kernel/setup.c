@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Architecture-specific setup.
  *
@@ -30,12 +29,9 @@
 #include <linux/bootmem.h>
 #include <linux/console.h>
 #include <linux/delay.h>
-#include <linux/cpu.h>
 #include <linux/kernel.h>
 #include <linux/reboot.h>
-#include <linux/sched/mm.h>
-#include <linux/sched/clock.h>
-#include <linux/sched/task_stack.h>
+#include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/string.h>
 #include <linux/threads.h>
@@ -623,8 +619,6 @@ setup_arch (char **cmdline_p)
 	check_sal_cache_flush();
 #endif
 	paging_init();
-
-	clear_sched_clock_stable();
 }
 
 /*
@@ -998,7 +992,7 @@ cpu_init (void)
 	 */
 	ia64_setreg(_IA64_REG_CR_DCR,  (  IA64_DCR_DP | IA64_DCR_DK | IA64_DCR_DX | IA64_DCR_DR
 					| IA64_DCR_DA | IA64_DCR_DD | IA64_DCR_LC));
-	mmgrab(&init_mm);
+	atomic_inc(&init_mm.mm_count);
 	current->active_mm = &init_mm;
 	BUG_ON(current->mm);
 

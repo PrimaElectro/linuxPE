@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __LINUX_BACKING_DEV_DEFS_H
 #define __LINUX_BACKING_DEV_DEFS_H
 
@@ -11,7 +10,6 @@
 #include <linux/flex_proportions.h>
 #include <linux/timer.h>
 #include <linux/workqueue.h>
-#include <linux/kref.h>
 
 struct page;
 struct device;
@@ -55,9 +53,7 @@ struct bdi_writeback_congested {
 	atomic_t refcnt;		/* nr of attached wb's and blkg */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct backing_dev_info *__bdi;	/* the associated bdi, set to NULL
-					 * on bdi unregistration. For memcg-wb
-					 * internal use only! */
+	struct backing_dev_info *bdi;	/* the associated bdi */
 	int blkcg_id;			/* ID of the associated blkcg */
 	struct rb_node rb_node;		/* on bdi->cgwb_congestion_tree */
 #endif
@@ -120,8 +116,6 @@ struct bdi_writeback {
 	struct list_head work_list;
 	struct delayed_work dwork;	/* work item used for writeback */
 
-	unsigned long dirty_sleep;	/* last wait */
-
 	struct list_head bdi_node;	/* anchored at bdi->wb_list */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
@@ -142,14 +136,12 @@ struct bdi_writeback {
 struct backing_dev_info {
 	struct list_head bdi_list;
 	unsigned long ra_pages;	/* max readahead in PAGE_SIZE units */
-	unsigned long io_pages;	/* max allowed IO size */
+	unsigned int capabilities; /* Device capabilities */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
 
-	const char *name;
+	char *name;
 
-	struct kref refcnt;	/* Reference counter for the structure */
-	unsigned int capabilities; /* Device capabilities */
 	unsigned int min_ratio;
 	unsigned int max_ratio, max_prop_frac;
 
@@ -164,8 +156,7 @@ struct backing_dev_info {
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
 	struct rb_root cgwb_congested_tree; /* their congested states */
-	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */
-	struct rw_semaphore wb_switch_rwsem; /* no cgwb switch while syncing */
+	atomic_t usage_cnt; /* counts both cgwbs and cgwb_contested's */
 #else
 	struct bdi_writeback_congested *wb_congested;
 #endif
@@ -200,11 +191,6 @@ static inline void set_bdi_congested(struct backing_dev_info *bdi, int sync)
 	set_wb_congested(bdi->wb.congested, sync);
 }
 
-struct wb_lock_cookie {
-	bool locked;
-	unsigned long flags;
-};
-
 #ifdef CONFIG_CGROUP_WRITEBACK
 
 /**
@@ -234,14 +220,6 @@ static inline void wb_get(struct bdi_writeback *wb)
  */
 static inline void wb_put(struct bdi_writeback *wb)
 {
-	if (WARN_ON_ONCE(!wb->bdi)) {
-		/*
-		 * A driver bug might cause a file to be removed before bdi was
-		 * initialized.
-		 */
-		return;
-	}
-
 	if (wb != &wb->bdi->wb)
 		percpu_ref_put(&wb->refcnt);
 }

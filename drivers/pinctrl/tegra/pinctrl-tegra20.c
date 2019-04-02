@@ -1,8 +1,6 @@
 /*
  * Pinctrl data for the NVIDIA Tegra20 pinmux
  *
- * Author: Stephen Warren <swarren@nvidia.com>
- *
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  *
  * Derived from code:
@@ -19,7 +17,7 @@
  * more details.
  */
 
-#include <linux/init.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinctrl.h>
@@ -2248,4 +2246,9 @@ static struct platform_driver tegra20_pinctrl_driver = {
 	},
 	.probe = tegra20_pinctrl_probe,
 };
-builtin_platform_driver(tegra20_pinctrl_driver);
+module_platform_driver(tegra20_pinctrl_driver);
+
+MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
+MODULE_DESCRIPTION("NVIDIA Tegra20 pinctrl driver");
+MODULE_LICENSE("GPL v2");
+MODULE_DEVICE_TABLE(of, tegra20_pinctrl_of_match);

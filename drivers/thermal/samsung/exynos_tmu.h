@@ -70,6 +70,7 @@ struct exynos_tmu_platform_data {
 
 	enum soc_type type;
 	u32 cal_type;
+	u32 cal_mode;
 };
 
 #endif /* _EXYNOS_TMU_H */

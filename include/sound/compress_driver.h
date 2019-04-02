@@ -155,7 +155,6 @@ struct snd_compr {
 	struct mutex lock;
 	int device;
 #ifdef CONFIG_SND_VERBOSE_PROCFS
-	/* private: */
 	char id[64];
 	struct snd_info_entry *proc_root;
 	struct snd_info_entry *proc_info_entry;
@@ -186,11 +185,7 @@ static inline void snd_compr_drain_notify(struct snd_compr_stream *stream)
 	if (snd_BUG_ON(!stream))
 		return;
 
-	if (stream->direction == SND_COMPRESS_PLAYBACK)
-		stream->runtime->state = SNDRV_PCM_STATE_SETUP;
-	else
-		stream->runtime->state = SNDRV_PCM_STATE_PREPARED;
-
+	stream->runtime->state = SNDRV_PCM_STATE_SETUP;
 	wake_up(&stream->runtime->sleep);
 }
 

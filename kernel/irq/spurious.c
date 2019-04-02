@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/kernel/irq/spurious.c
  *
@@ -176,9 +175,7 @@ out:
 
 static inline int bad_action_ret(irqreturn_t action_ret)
 {
-	unsigned int r = action_ret;
-
-	if (likely(r <= (IRQ_HANDLED | IRQ_WAKE_THREAD)))
+	if (likely(action_ret <= (IRQ_HANDLED | IRQ_WAKE_THREAD)))
 		return 0;
 	return 1;
 }
@@ -445,6 +442,10 @@ MODULE_PARM_DESC(noirqdebug, "Disable irq lockup detection when true");
 
 static int __init irqfixup_setup(char *str)
 {
+#ifdef CONFIG_PREEMPT_RT_BASE
+	pr_warn("irqfixup boot option not supported w/ CONFIG_PREEMPT_RT_BASE\n");
+	return 1;
+#endif
 	irqfixup = 1;
 	printk(KERN_WARNING "Misrouted IRQ fixup support enabled.\n");
 	printk(KERN_WARNING "This may impact system performance.\n");
@@ -457,6 +458,10 @@ module_param(irqfixup, int, 0644);
 
 static int __init irqpoll_setup(char *str)
 {
+#ifdef CONFIG_PREEMPT_RT_BASE
+	pr_warn("irqpoll boot option not supported w/ CONFIG_PREEMPT_RT_BASE\n");
+	return 1;
+#endif
 	irqfixup = 2;
 	printk(KERN_WARNING "Misrouted IRQ fixup and polling support "
 				"enabled\n");

@@ -168,7 +168,7 @@ static int pxa27x_cpu_pm_valid(suspend_state_t state)
 static int pxa27x_cpu_pm_prepare(void)
 {
 	/* set resume return address */
-	PSPR = __pa_symbol(cpu_resume);
+	PSPR = virt_to_phys(cpu_resume);
 	return 0;
 }
 

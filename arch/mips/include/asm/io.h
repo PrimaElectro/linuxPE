@@ -141,14 +141,14 @@ static inline void * phys_to_virt(unsigned long address)
 /*
  * ISA I/O bus memory addresses are 1:1 with the physical address.
  */
-static inline unsigned long isa_virt_to_bus(volatile void *address)
+static inline unsigned long isa_virt_to_bus(volatile void * address)
 {
-	return virt_to_phys(address);
+	return (unsigned long)address - PAGE_OFFSET;
 }
 
-static inline void *isa_bus_to_virt(unsigned long address)
+static inline void * isa_bus_to_virt(unsigned long address)
 {
-	return phys_to_virt(address);
+	return (void *)(address + PAGE_OFFSET);
 }
 
 #define isa_page_to_bus page_to_phys
@@ -307,7 +307,7 @@ static inline void iounmap(const volatile void __iomem *addr)
 #if defined(CONFIG_CPU_CAVIUM_OCTEON) || defined(CONFIG_LOONGSON3_ENHANCEMENT)
 #define war_io_reorder_wmb()		wmb()
 #else
-#define war_io_reorder_wmb()		barrier()
+#define war_io_reorder_wmb()		do { } while (0)
 #endif
 
 #define __BUILD_MEMORY_SINGLE(pfx, bwlq, type, irq)			\
@@ -377,8 +377,6 @@ static inline type pfx##read##bwlq(const volatile void __iomem *mem)	\
 		BUG();							\
 	}								\
 									\
-	/* prevent prefetching of coherent DMA data prematurely */	\
-	rmb();								\
 	return pfx##ioswab##bwlq(__mem, __val);				\
 }
 
@@ -414,8 +412,6 @@ static inline type pfx##in##bwlq##p(unsigned long port)			\
 	__val = *__addr;						\
 	slow;								\
 									\
-	/* prevent prefetching of coherent DMA data prematurely */	\
-	rmb();								\
 	return pfx##ioswab##bwlq(__addr, __val);			\
 }
 
@@ -635,7 +631,5 @@ extern void (*_dma_cache_inv)(unsigned long start, unsigned long size);
  * Convert a virtual cached pointer to an uncached pointer
  */
 #define xlate_dev_kmem_ptr(p)	p
-
-void __ioread64_copy(void *to, const void __iomem *from, size_t count);
 
 #endif /* _ASM_IO_H */

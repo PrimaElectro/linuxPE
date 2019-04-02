@@ -27,38 +27,30 @@
 #include "sas_internal.h"
 #include "sas_dump.h"
 
-int sas_queue_work(struct sas_ha_struct *ha, struct sas_work *sw)
+void sas_queue_work(struct sas_ha_struct *ha, struct sas_work *sw)
 {
-	int rc = 0;
-
 	if (!test_bit(SAS_HA_REGISTERED, &ha->state))
-		return 0;
+		return;
 
 	if (test_bit(SAS_HA_DRAINING, &ha->state)) {
 		/* add it to the defer list, if not already pending */
 		if (list_empty(&sw->drain_node))
 			list_add(&sw->drain_node, &ha->defer_q);
 	} else
-		rc = scsi_queue_work(ha->core.shost, &sw->work);
-
-	return rc;
+		scsi_queue_work(ha->core.shost, &sw->work);
 }
 
-static int sas_queue_event(int event, unsigned long *pending,
+static void sas_queue_event(int event, unsigned long *pending,
 			    struct sas_work *work,
 			    struct sas_ha_struct *ha)
 {
-	int rc = 0;
-
 	if (!test_and_set_bit(event, pending)) {
 		unsigned long flags;
 
 		spin_lock_irqsave(&ha->lock, flags);
-		rc = sas_queue_work(ha, work);
+		sas_queue_work(ha, work);
 		spin_unlock_irqrestore(&ha->lock, flags);
 	}
-
-	return rc;
 }
 
 
@@ -124,32 +116,32 @@ void sas_enable_revalidation(struct sas_ha_struct *ha)
 	mutex_unlock(&ha->disco_mutex);
 }
 
-static int notify_ha_event(struct sas_ha_struct *sas_ha, enum ha_event event)
+static void notify_ha_event(struct sas_ha_struct *sas_ha, enum ha_event event)
 {
 	BUG_ON(event >= HA_NUM_EVENTS);
 
-	return sas_queue_event(event, &sas_ha->pending,
-			       &sas_ha->ha_events[event].work, sas_ha);
+	sas_queue_event(event, &sas_ha->pending,
+			&sas_ha->ha_events[event].work, sas_ha);
 }
 
-static int notify_port_event(struct asd_sas_phy *phy, enum port_event event)
+static void notify_port_event(struct asd_sas_phy *phy, enum port_event event)
 {
 	struct sas_ha_struct *ha = phy->ha;
 
 	BUG_ON(event >= PORT_NUM_EVENTS);
 
-	return sas_queue_event(event, &phy->port_events_pending,
-			       &phy->port_events[event].work, ha);
+	sas_queue_event(event, &phy->port_events_pending,
+			&phy->port_events[event].work, ha);
 }
 
-int sas_notify_phy_event(struct asd_sas_phy *phy, enum phy_event event)
+void sas_notify_phy_event(struct asd_sas_phy *phy, enum phy_event event)
 {
 	struct sas_ha_struct *ha = phy->ha;
 
 	BUG_ON(event >= PHY_NUM_EVENTS);
 
-	return sas_queue_event(event, &phy->phy_events_pending,
-			       &phy->phy_events[event].work, ha);
+	sas_queue_event(event, &phy->phy_events_pending,
+			&phy->phy_events[event].work, ha);
 }
 
 int sas_init_events(struct sas_ha_struct *sas_ha)

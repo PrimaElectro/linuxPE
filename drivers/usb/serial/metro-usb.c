@@ -136,8 +136,23 @@ static void metrousb_read_int_callback(struct urb *urb)
 	throttled = metro_priv->throttled;
 	spin_unlock_irqrestore(&metro_priv->lock, flags);
 
-	if (throttled)
-		return;
+	/* Continue trying to read if set. */
+	if (!throttled) {
+		usb_fill_int_urb(port->interrupt_in_urb, port->serial->dev,
+				 usb_rcvintpipe(port->serial->dev, port->interrupt_in_endpointAddress),
+				 port->interrupt_in_urb->transfer_buffer,
+				 port->interrupt_in_urb->transfer_buffer_length,
+				 metrousb_read_int_callback, port, 1);
+
+		result = usb_submit_urb(port->interrupt_in_urb, GFP_ATOMIC);
+
+		if (result)
+			dev_err(&port->dev,
+				"%s - failed submitting interrupt in urb, error code=%d\n",
+				__func__, result);
+	}
+	return;
+
 exit:
 	/* Try to resubmit the urb. */
 	result = usb_submit_urb(urb, GFP_ATOMIC);
@@ -147,8 +162,19 @@ exit:
 			__func__, result);
 }
 
+static void metrousb_write_int_callback(struct urb *urb)
+{
+	struct usb_serial_port *port = urb->context;
+
+	dev_warn(&port->dev, "%s not implemented yet.\n",
+		__func__);
+}
+
 static void metrousb_cleanup(struct usb_serial_port *port)
 {
+	dev_dbg(&port->dev, "%s\n", __func__);
+
+	usb_unlink_urb(port->interrupt_in_urb);
 	usb_kill_urb(port->interrupt_in_urb);
 
 	metrousb_send_unidirectional_cmd(UNI_CMD_CLOSE, port);
@@ -160,6 +186,8 @@ static int metrousb_open(struct tty_struct *tty, struct usb_serial_port *port)
 	struct metrousb_private *metro_priv = usb_get_serial_port_data(port);
 	unsigned long flags = 0;
 	int result = 0;
+
+	dev_dbg(&port->dev, "%s\n", __func__);
 
 	/* Make sure the urb is initialized. */
 	if (!port->interrupt_in_urb) {
@@ -189,7 +217,7 @@ static int metrousb_open(struct tty_struct *tty, struct usb_serial_port *port)
 		dev_err(&port->dev,
 			"%s - failed submitting interrupt in urb, error code=%d\n",
 			__func__, result);
-		return result;
+		goto exit;
 	}
 
 	/* Send activate cmd to device */
@@ -198,14 +226,11 @@ static int metrousb_open(struct tty_struct *tty, struct usb_serial_port *port)
 		dev_err(&port->dev,
 			"%s - failed to configure device, error code=%d\n",
 			__func__, result);
-		goto err_kill_urb;
+		goto exit;
 	}
 
-	return 0;
-
-err_kill_urb:
-	usb_kill_urb(port->interrupt_in_urb);
-
+	dev_dbg(&port->dev, "%s - port open\n", __func__);
+exit:
 	return result;
 }
 
@@ -266,6 +291,8 @@ static void metrousb_throttle(struct tty_struct *tty)
 	struct metrousb_private *metro_priv = usb_get_serial_port_data(port);
 	unsigned long flags = 0;
 
+	dev_dbg(tty->dev, "%s\n", __func__);
+
 	/* Set the private information for the port to stop reading data. */
 	spin_lock_irqsave(&metro_priv->lock, flags);
 	metro_priv->throttled = 1;
@@ -278,6 +305,8 @@ static int metrousb_tiocmget(struct tty_struct *tty)
 	struct usb_serial_port *port = tty->driver_data;
 	struct metrousb_private *metro_priv = usb_get_serial_port_data(port);
 	unsigned long flags = 0;
+
+	dev_dbg(tty->dev, "%s\n", __func__);
 
 	spin_lock_irqsave(&metro_priv->lock, flags);
 	control_state = metro_priv->control_state;
@@ -322,12 +351,15 @@ static void metrousb_unthrottle(struct tty_struct *tty)
 	unsigned long flags = 0;
 	int result = 0;
 
+	dev_dbg(tty->dev, "%s\n", __func__);
+
 	/* Set the private information for the port to resume reading data. */
 	spin_lock_irqsave(&metro_priv->lock, flags);
 	metro_priv->throttled = 0;
 	spin_unlock_irqrestore(&metro_priv->lock, flags);
 
 	/* Submit the urb to read from the port. */
+	port->interrupt_in_urb->dev = port->serial->dev;
 	result = usb_submit_urb(port->interrupt_in_urb, GFP_ATOMIC);
 	if (result)
 		dev_err(tty->dev,
@@ -346,6 +378,7 @@ static struct usb_serial_driver metrousb_device = {
 	.open			= metrousb_open,
 	.close			= metrousb_cleanup,
 	.read_int_callback	= metrousb_read_int_callback,
+	.write_int_callback	= metrousb_write_int_callback,
 	.port_probe		= metrousb_port_probe,
 	.port_remove		= metrousb_port_remove,
 	.throttle		= metrousb_throttle,

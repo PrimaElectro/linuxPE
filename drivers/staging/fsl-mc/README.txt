@@ -131,7 +131,9 @@ in creating a network interfaces.
 
     DPRCs can be defined statically and populated with objects
     via a config file passed to the MC when firmware starts
-    it.
+    it.  There is also a Linux user space tool called "restool"
+    that can be used to create/destroy containers and objects
+    dynamically.
 
 -DPAA2 Objects for an Ethernet Network Interface
 
@@ -320,8 +322,6 @@ A brief description of each driver is provided below.
        -creates an MSI IRQ domain
        -doing a 'device add' to expose the 'root' DPRC, in turn triggering
         a bind of the root DPRC to the DPRC driver
-    The binding for the MC-bus device-tree node can be consulted here:
-        Documentation/devicetree/bindings/misc/fsl,qoriq-mc.txt
 
     DPRC driver
     -----------

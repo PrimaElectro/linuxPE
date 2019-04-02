@@ -1,7 +1,7 @@
 /*
    3w-sas.c -- LSI 3ware SAS/SATA-RAID Controller device driver for Linux.
 
-   Written By: Adam Radford <aradford@gmail.com>
+   Written By: Adam Radford <linuxraid@lsi.com>
 
    Copyright (C) 2009 LSI Corporation.
 
@@ -43,7 +43,10 @@
    LSI 3ware 9750 6Gb/s SAS/SATA-RAID
 
    Bugs/Comments/Suggestions should be mailed to:
-   aradford@gmail.com
+   linuxraid@lsi.com
+
+   For more information, goto:
+   http://www.lsi.com
 
    History
    -------
@@ -64,7 +67,7 @@
 #include <linux/slab.h>
 #include <asm/io.h>
 #include <asm/irq.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_tcq.h>
@@ -1597,7 +1600,6 @@ static int twl_probe(struct pci_dev *pdev, const struct pci_device_id *dev_id)
 
 	if (twl_initialize_device_extension(tw_dev)) {
 		TW_PRINTK(tw_dev->host, TW_DRIVER, 0x1a, "Failed to initialize device extension");
-		retval = -ENOMEM;
 		goto out_free_device_extension;
 	}
 
@@ -1612,7 +1614,6 @@ static int twl_probe(struct pci_dev *pdev, const struct pci_device_id *dev_id)
 	tw_dev->base_addr = pci_iomap(pdev, 1, 0);
 	if (!tw_dev->base_addr) {
 		TW_PRINTK(tw_dev->host, TW_DRIVER, 0x1c, "Failed to ioremap");
-		retval = -ENOMEM;
 		goto out_release_mem_region;
 	}
 
@@ -1622,7 +1623,6 @@ static int twl_probe(struct pci_dev *pdev, const struct pci_device_id *dev_id)
 	/* Initialize the card */
 	if (twl_reset_sequence(tw_dev, 0)) {
 		TW_PRINTK(tw_dev->host, TW_DRIVER, 0x1d, "Controller reset failed during probe");
-		retval = -ENOMEM;
 		goto out_iounmap;
 	}
 

@@ -14,7 +14,7 @@
 #include <linux/init.h>
 #include <linux/debugfs.h>
 #include <asm/mce.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "mce-internal.h"
 
@@ -142,11 +142,6 @@ static struct severity {
 		AR, "Action required: instruction fetch error in a user process",
 		SER, MASK(MCI_STATUS_OVER|MCI_UC_SAR|MCI_ADDR|MCACOD, MCI_UC_SAR|MCI_ADDR|MCACOD_INSTR),
 		USER
-		),
-	MCESEV(
-		PANIC, "Data load in unrecoverable area of kernel",
-		SER, MASK(MCI_STATUS_OVER|MCI_UC_SAR|MCI_ADDR|MCACOD, MCI_UC_SAR|MCI_ADDR|MCACOD_DATA),
-		KERNEL
 		),
 #endif
 	MCESEV(
@@ -315,7 +310,7 @@ static int mce_severity_intel(struct mce *m, int tolerant, char **msg, bool is_e
 			*msg = s->msg;
 		s->covered = 1;
 		if (s->sev >= MCE_UC_SEVERITY && ctx == IN_KERNEL) {
-			if (tolerant < 1)
+			if (panic_on_oops || tolerant < 1)
 				return MCE_PANIC_SEVERITY;
 		}
 		return s->sev;

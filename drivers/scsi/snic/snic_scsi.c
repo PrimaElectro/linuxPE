@@ -359,6 +359,8 @@ snic_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *sc)
 	SNIC_SCSI_DBG(shost, "sc %p Tag %d (sc %0x) lun %lld in snic_qcmd\n",
 		      sc, snic_cmd_tag(sc), sc->cmnd[0], sc->device->lun);
 
+	memset(scsi_cmd_priv(sc), 0, sizeof(struct snic_internal_io_state));
+
 	ret = snic_issue_scsi_req(snic, tgt, sc);
 	if (ret) {
 		SNIC_HOST_ERR(shost, "Failed to Q, Scsi Req w/ err %d.\n", ret);
@@ -1064,7 +1066,7 @@ ioctl_hba_rst:
 	if (!snic->remove_wait) {
 		spin_unlock_irqrestore(io_lock, flags);
 		SNIC_HOST_ERR(snic->shost,
-			      "reset_cmpl:host reset completed after timeout\n");
+			      "reset_cmpl:host reset completed after timout\n");
 		ret = 1;
 
 		return ret;
@@ -1260,7 +1262,7 @@ snic_io_cmpl_handler(struct vnic_dev *vdev,
 	default:
 		SNIC_BUG_ON(1);
 		SNIC_SCSI_DBG(snic->shost,
-			      "Unknown Firmware completion request type %d\n",
+			      "Unknown Firmwqre completion request type %d\n",
 			      fwreq->hdr.type);
 		break;
 	}

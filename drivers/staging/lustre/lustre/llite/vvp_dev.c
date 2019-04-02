@@ -37,7 +37,7 @@
 
 #define DEBUG_SUBSYSTEM S_LLITE
 
-#include <obd.h>
+#include "../include/obd.h"
 #include "llite_internal.h"
 #include "vvp_internal.h"
 
@@ -55,6 +55,7 @@
 static struct kmem_cache *ll_thread_kmem;
 struct kmem_cache *vvp_lock_kmem;
 struct kmem_cache *vvp_object_kmem;
+struct kmem_cache *vvp_req_kmem;
 static struct kmem_cache *vvp_session_kmem;
 static struct kmem_cache *vvp_thread_kmem;
 
@@ -73,6 +74,11 @@ static struct lu_kmem_descr vvp_caches[] = {
 		.ckd_cache = &vvp_object_kmem,
 		.ckd_name  = "vvp_object_kmem",
 		.ckd_size  = sizeof(struct vvp_object),
+	},
+	{
+		.ckd_cache = &vvp_req_kmem,
+		.ckd_name  = "vvp_req_kmem",
+		.ckd_size  = sizeof(struct vvp_req),
 	},
 	{
 		.ckd_cache = &vvp_session_kmem,
@@ -171,6 +177,10 @@ static const struct lu_device_operations vvp_lu_ops = {
 	.ldo_object_alloc      = vvp_object_alloc
 };
 
+static const struct cl_device_operations vvp_cl_ops = {
+	.cdo_req_init = vvp_req_init
+};
+
 static struct lu_device *vvp_device_free(const struct lu_env *env,
 					 struct lu_device *d)
 {
@@ -203,6 +213,7 @@ static struct lu_device *vvp_device_alloc(const struct lu_env *env,
 	lud = &vdv->vdv_cl.cd_lu_dev;
 	cl_device_init(&vdv->vdv_cl, t);
 	vvp2lu_dev(vdv)->ld_ops = &vvp_lu_ops;
+	vdv->vdv_cl.cd_ops = &vvp_cl_ops;
 
 	site = kzalloc(sizeof(*site), GFP_NOFS);
 	if (site) {
@@ -313,7 +324,7 @@ int cl_sb_init(struct super_block *sb)
 	struct cl_device  *cl;
 	struct lu_env     *env;
 	int rc = 0;
-	u16 refcheck;
+	int refcheck;
 
 	sbi  = ll_s2sbi(sb);
 	env = cl_env_get(&refcheck);
@@ -321,6 +332,7 @@ int cl_sb_init(struct super_block *sb)
 		cl = cl_type_setup(env, NULL, &vvp_device_type,
 				   sbi->ll_dt_exp->exp_obd->obd_lu_dev);
 		if (!IS_ERR(cl)) {
+			cl2vvp_dev(cl)->vdv_sb = sb;
 			sbi->ll_cl = cl;
 			sbi->ll_site = cl2lu_dev(cl)->ld_site;
 		}
@@ -336,7 +348,7 @@ int cl_sb_fini(struct super_block *sb)
 	struct ll_sb_info *sbi;
 	struct lu_env     *env;
 	struct cl_device  *cld;
-	u16 refcheck;
+	int		refcheck;
 	int		result;
 
 	sbi = ll_s2sbi(sb);
@@ -381,17 +393,17 @@ int cl_sb_fini(struct super_block *sb)
 #define PGC_DEPTH_SHIFT (32)
 
 struct vvp_pgcache_id {
-	unsigned int		 vpi_bucket;
-	unsigned int		 vpi_depth;
+	unsigned		 vpi_bucket;
+	unsigned		 vpi_depth;
 	uint32_t		 vpi_index;
 
-	unsigned int		 vpi_curdep;
+	unsigned		 vpi_curdep;
 	struct lu_object_header *vpi_obj;
 };
 
 static void vvp_pgcache_id_unpack(loff_t pos, struct vvp_pgcache_id *id)
 {
-	BUILD_BUG_ON(sizeof(pos) != sizeof(__u64));
+	CLASSERT(sizeof(pos) == sizeof(__u64));
 
 	id->vpi_index  = pos & 0xffffffff;
 	id->vpi_depth  = (pos >> PGC_DEPTH_SHIFT) & 0xf;
@@ -509,10 +521,11 @@ static void vvp_pgcache_page_show(const struct lu_env *env,
 
 	vpg = cl2vvp_page(cl_page_at(page, &vvp_device_type));
 	vmpage = vpg->vpg_page;
-	seq_printf(seq, " %5i | %p %p %s %s %s | %p " DFID "(%p) %lu %u [",
+	seq_printf(seq, " %5i | %p %p %s %s %s %s | %p "DFID"(%p) %lu %u [",
 		   0 /* gen */,
 		   vpg, page,
 		   "none",
+		   vpg->vpg_write_queued ? "wq" : "- ",
 		   vpg->vpg_defer_uptodate ? "du" : "- ",
 		   PageWriteback(vmpage) ? "wb" : "-",
 		   vmpage, PFID(ll_inode2fid(vmpage->mapping->host)),
@@ -535,7 +548,7 @@ static int vvp_pgcache_show(struct seq_file *f, void *v)
 	struct cl_object	*clob;
 	struct lu_env	   *env;
 	struct vvp_pgcache_id    id;
-	u16 refcheck;
+	int		      refcheck;
 	int		      result;
 
 	env = cl_env_get(&refcheck);
@@ -584,17 +597,16 @@ static void *vvp_pgcache_start(struct seq_file *f, loff_t *pos)
 {
 	struct ll_sb_info *sbi;
 	struct lu_env     *env;
-	u16 refcheck;
+	int		refcheck;
 
 	sbi = f->private;
 
 	env = cl_env_get(&refcheck);
 	if (!IS_ERR(env)) {
 		sbi = f->private;
-		if (sbi->ll_site->ls_obj_hash->hs_cur_bits >
-		    64 - PGC_OBJ_SHIFT) {
+		if (sbi->ll_site->ls_obj_hash->hs_cur_bits > 64 - PGC_OBJ_SHIFT)
 			pos = ERR_PTR(-EFBIG);
-		} else {
+		else {
 			*pos = vvp_pgcache_find(env, &sbi->ll_cl->cd_lu_dev,
 						*pos);
 			if (*pos == ~0ULL)
@@ -609,7 +621,7 @@ static void *vvp_pgcache_next(struct seq_file *f, void *v, loff_t *pos)
 {
 	struct ll_sb_info *sbi;
 	struct lu_env     *env;
-	u16 refcheck;
+	int		refcheck;
 
 	env = cl_env_get(&refcheck);
 	if (!IS_ERR(env)) {

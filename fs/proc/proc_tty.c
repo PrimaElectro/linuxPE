@@ -1,11 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * proc_tty.c -- handles /proc/tty
  *
  * Copyright 1997, Theodore Ts'o
  */
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/errno.h>

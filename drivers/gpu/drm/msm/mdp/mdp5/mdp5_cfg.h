@@ -32,23 +32,15 @@ extern const struct mdp5_cfg_hw *mdp5_cfg;
 typedef DECLARE_BITMAP(mdp5_smp_state_t, MAX_SMP_BLOCKS);
 
 #define MDP5_SUB_BLOCK_DEFINITION \
-	unsigned int count; \
+	int count; \
 	uint32_t base[MAX_BASES]
 
 struct mdp5_sub_block {
 	MDP5_SUB_BLOCK_DEFINITION;
 };
 
-struct mdp5_lm_instance {
-	int id;
-	int pp;
-	int dspp;
-	uint32_t caps;
-};
-
 struct mdp5_lm_block {
 	MDP5_SUB_BLOCK_DEFINITION;
-	struct mdp5_lm_instance instances[MAX_BASES];
 	uint32_t nb_stages;		/* number of stages per blender */
 	uint32_t max_width;		/* Maximum output resolution */
 	uint32_t max_height;
@@ -93,7 +85,6 @@ struct mdp5_cfg_hw {
 	struct mdp5_pipe_block pipe_vig;
 	struct mdp5_pipe_block pipe_rgb;
 	struct mdp5_pipe_block pipe_dma;
-	struct mdp5_pipe_block pipe_cursor;
 	struct mdp5_lm_block  lm;
 	struct mdp5_sub_block dspp;
 	struct mdp5_sub_block ad;

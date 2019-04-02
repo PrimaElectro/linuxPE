@@ -9,7 +9,7 @@
 #include <net/netns/generic.h>
 #include <linux/fs.h>
 
-static unsigned int grace_net_id;
+static int grace_net_id;
 static DEFINE_SPINLOCK(grace_lock);
 
 /**

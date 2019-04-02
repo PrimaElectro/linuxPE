@@ -2925,10 +2925,6 @@ static void bnx2x_handle_update_svid_cmd(struct bnx2x *bp)
 	func_params.f_obj = &bp->func_obj;
 	func_params.cmd = BNX2X_F_CMD_SWITCH_UPDATE;
 
-	/* Prepare parameters for function state transitions */
-	__set_bit(RAMROD_COMP_WAIT, &func_params.ramrod_flags);
-	__set_bit(RAMROD_RETRY, &func_params.ramrod_flags);
-
 	if (IS_MF_UFP(bp) || IS_MF_BD(bp)) {
 		int func = BP_ABS_FUNC(bp);
 		u32 val;
@@ -4170,14 +4166,14 @@ static void bnx2x_attn_int_deasserted0(struct bnx2x *bp, u32 attn)
 		bnx2x_release_phy_lock(bp);
 	}
 
-	if (attn & HW_INTERRUPT_ASSERT_SET_0) {
+	if (attn & HW_INTERRUT_ASSERT_SET_0) {
 
 		val = REG_RD(bp, reg_offset);
-		val &= ~(attn & HW_INTERRUPT_ASSERT_SET_0);
+		val &= ~(attn & HW_INTERRUT_ASSERT_SET_0);
 		REG_WR(bp, reg_offset, val);
 
 		BNX2X_ERR("FATAL HW block attention set0 0x%x\n",
-			  (u32)(attn & HW_INTERRUPT_ASSERT_SET_0));
+			  (u32)(attn & HW_INTERRUT_ASSERT_SET_0));
 		bnx2x_panic();
 	}
 }
@@ -4195,7 +4191,7 @@ static void bnx2x_attn_int_deasserted1(struct bnx2x *bp, u32 attn)
 			BNX2X_ERR("FATAL error from DORQ\n");
 	}
 
-	if (attn & HW_INTERRUPT_ASSERT_SET_1) {
+	if (attn & HW_INTERRUT_ASSERT_SET_1) {
 
 		int port = BP_PORT(bp);
 		int reg_offset;
@@ -4204,11 +4200,11 @@ static void bnx2x_attn_int_deasserted1(struct bnx2x *bp, u32 attn)
 				     MISC_REG_AEU_ENABLE1_FUNC_0_OUT_1);
 
 		val = REG_RD(bp, reg_offset);
-		val &= ~(attn & HW_INTERRUPT_ASSERT_SET_1);
+		val &= ~(attn & HW_INTERRUT_ASSERT_SET_1);
 		REG_WR(bp, reg_offset, val);
 
 		BNX2X_ERR("FATAL HW block attention set1 0x%x\n",
-			  (u32)(attn & HW_INTERRUPT_ASSERT_SET_1));
+			  (u32)(attn & HW_INTERRUT_ASSERT_SET_1));
 		bnx2x_panic();
 	}
 }
@@ -4239,7 +4235,7 @@ static void bnx2x_attn_int_deasserted2(struct bnx2x *bp, u32 attn)
 		}
 	}
 
-	if (attn & HW_INTERRUPT_ASSERT_SET_2) {
+	if (attn & HW_INTERRUT_ASSERT_SET_2) {
 
 		int port = BP_PORT(bp);
 		int reg_offset;
@@ -4248,11 +4244,11 @@ static void bnx2x_attn_int_deasserted2(struct bnx2x *bp, u32 attn)
 				     MISC_REG_AEU_ENABLE1_FUNC_0_OUT_2);
 
 		val = REG_RD(bp, reg_offset);
-		val &= ~(attn & HW_INTERRUPT_ASSERT_SET_2);
+		val &= ~(attn & HW_INTERRUT_ASSERT_SET_2);
 		REG_WR(bp, reg_offset, val);
 
 		BNX2X_ERR("FATAL HW block attention set2 0x%x\n",
-			  (u32)(attn & HW_INTERRUPT_ASSERT_SET_2));
+			  (u32)(attn & HW_INTERRUT_ASSERT_SET_2));
 		bnx2x_panic();
 	}
 }
@@ -4305,8 +4301,7 @@ static void bnx2x_attn_int_deasserted3(struct bnx2x *bp, u32 attn)
 				bnx2x_handle_eee_event(bp);
 
 			if (val & DRV_STATUS_OEM_UPDATE_SVID)
-				bnx2x_schedule_sp_rtnl(bp,
-					BNX2X_SP_RTNL_UPDATE_SVID, 0);
+				bnx2x_handle_update_svid_cmd(bp);
 
 			if (bp->link_vars.periodic_flags &
 			    PERIODIC_FLAGS_LINK_EVENT) {
@@ -8467,7 +8462,6 @@ int bnx2x_set_vlan_one(struct bnx2x *bp, u16 vlan,
 	/* Fill a user request section if needed */
 	if (!test_bit(RAMROD_CONT, ramrod_flags)) {
 		ramrod_param.user_req.u.vlan.vlan = vlan;
-		__set_bit(BNX2X_VLAN, &ramrod_param.user_req.vlan_mac_flags);
 		/* Set the command: ADD or DEL */
 		if (set)
 			ramrod_param.user_req.cmd = BNX2X_VLAN_MAC_ADD;
@@ -8486,27 +8480,6 @@ int bnx2x_set_vlan_one(struct bnx2x *bp, u16 vlan,
 	}
 
 	return rc;
-}
-
-static int bnx2x_del_all_vlans(struct bnx2x *bp)
-{
-	struct bnx2x_vlan_mac_obj *vlan_obj = &bp->sp_objs[0].vlan_obj;
-	unsigned long ramrod_flags = 0, vlan_flags = 0;
-	struct bnx2x_vlan_entry *vlan;
-	int rc;
-
-	__set_bit(RAMROD_COMP_WAIT, &ramrod_flags);
-	__set_bit(BNX2X_VLAN, &vlan_flags);
-	rc = vlan_obj->delete_all(bp, vlan_obj, &vlan_flags, &ramrod_flags);
-	if (rc)
-		return rc;
-
-	/* Mark that hw forgot all entries */
-	list_for_each_entry(vlan, &bp->vlan_reg, link)
-		vlan->hw = false;
-	bp->vlan_cnt = 0;
-
-	return 0;
 }
 
 int bnx2x_del_all_macs(struct bnx2x *bp,
@@ -9346,17 +9319,6 @@ void bnx2x_chip_cleanup(struct bnx2x *bp, int unload_mode, bool keep_link)
 	if (rc < 0)
 		BNX2X_ERR("Failed to schedule DEL commands for UC MACs list: %d\n",
 			  rc);
-
-	/* The whole *vlan_obj structure may be not initialized if VLAN
-	 * filtering offload is not supported by hardware. Currently this is
-	 * true for all hardware covered by CHIP_IS_E1x().
-	 */
-	if (!CHIP_IS_E1x(bp)) {
-		/* Remove all currently configured VLANs */
-		rc = bnx2x_del_all_vlans(bp);
-		if (rc < 0)
-			BNX2X_ERR("Failed to delete all VLANs\n");
-	}
 
 	/* Disable LLH */
 	if (!CHIP_IS_E1(bp))
@@ -10317,12 +10279,6 @@ static void bnx2x_sp_rtnl_task(struct work_struct *work)
 		bp->sp_rtnl_state = 0;
 		smp_mb();
 
-		/* Immediately indicate link as down */
-		bp->link_vars.link_up = 0;
-		bp->force_link_down = true;
-		netif_carrier_off(bp->dev);
-		BNX2X_ERR("Indicating link is down due to Tx-timeout\n");
-
 		bnx2x_nic_unload(bp, UNLOAD_NORMAL, true);
 		bnx2x_nic_load(bp, LOAD_NORMAL);
 
@@ -10356,7 +10312,7 @@ sp_rtnl_not_reset:
 	}
 	if (test_and_clear_bit(BNX2X_SP_RTNL_VFPF_CHANNEL_DOWN,
 			       &bp->sp_rtnl_state)){
-		if (netif_carrier_ok(bp->dev)) {
+		if (!test_bit(__LINK_STATE_NOCARRIER, &bp->dev->state)) {
 			bnx2x_tx_disable(bp);
 			BNX2X_ERR("PF indicated channel is not servicable anymore. This means this VF device is no longer operational\n");
 		}
@@ -10379,9 +10335,6 @@ sp_rtnl_not_reset:
 	if (test_and_clear_bit(BNX2X_SP_RTNL_GET_DRV_VERSION,
 			       &bp->sp_rtnl_state))
 		bnx2x_update_mng_version(bp);
-
-	if (test_and_clear_bit(BNX2X_SP_RTNL_UPDATE_SVID, &bp->sp_rtnl_state))
-		bnx2x_handle_update_svid_cmd(bp);
 
 	if (test_and_clear_bit(BNX2X_SP_RTNL_CHANGE_UDP_PORT,
 			       &bp->sp_rtnl_state)) {
@@ -11774,10 +11727,8 @@ static void bnx2x_get_fcoe_info(struct bnx2x *bp)
 	 * If maximum allowed number of connections is zero -
 	 * disable the feature.
 	 */
-	if (!bp->cnic_eth_dev.max_fcoe_conn) {
+	if (!bp->cnic_eth_dev.max_fcoe_conn)
 		bp->flags |= NO_FCOE_FLAG;
-		eth_zero_addr(bp->fip_mac);
-	}
 }
 
 static void bnx2x_get_cnic_info(struct bnx2x *bp)
@@ -12138,7 +12089,8 @@ static int bnx2x_get_hwinfo(struct bnx2x *bp)
 					   mtu_size, mtu);
 
 					/* if valid: update device mtu */
-					if ((mtu_size >= ETH_MIN_PACKET_SIZE) &&
+					if (((mtu_size + ETH_HLEN) >=
+					     ETH_MIN_PACKET_SIZE) &&
 					    (mtu_size <=
 					     ETH_MAX_JUMBO_PACKET_SIZE))
 						bp->dev->mtu = mtu_size;
@@ -12787,7 +12739,7 @@ static int bnx2x_set_mc_list(struct bnx2x *bp)
 	} else {
 		/* If no mc addresses are required, flush the configuration */
 		rc = bnx2x_config_mcast(bp, &rparam, BNX2X_MCAST_CMD_DEL);
-		if (rc < 0)
+		if (rc)
 			BNX2X_ERR("Failed to clear multicast configuration %d\n",
 				  rc);
 	}
@@ -12978,24 +12930,6 @@ static netdev_features_t bnx2x_features_check(struct sk_buff *skb,
 					      struct net_device *dev,
 					      netdev_features_t features)
 {
-	/*
-	 * A skb with gso_size + header length > 9700 will cause a
-	 * firmware panic. Drop GSO support.
-	 *
-	 * Eventually the upper layer should not pass these packets down.
-	 *
-	 * For speed, if the gso_size is <= 9000, assume there will
-	 * not be 700 bytes of headers and pass it through. Only do a
-	 * full (slow) validation if the gso_size is > 9000.
-	 *
-	 * (Due to the way SKB_BY_FRAGS works this will also do a full
-	 * validation in that case.)
-	 */
-	if (unlikely(skb_is_gso(skb) &&
-		     (skb_shinfo(skb)->gso_size > 9000) &&
-		     !skb_gso_validate_mac_len(skb, 9700)))
-		features &= ~NETIF_F_GSO_MASK;
-
 	features = vlan_features_check(skb, features);
 	return vxlan_features_check(skb, features);
 }
@@ -13065,6 +12999,13 @@ static void bnx2x_vlan_configure(struct bnx2x *bp, bool set_rx_mode)
 
 int bnx2x_vlan_reconfigure_vid(struct bnx2x *bp)
 {
+	struct bnx2x_vlan_entry *vlan;
+
+	/* The hw forgot all entries after reload */
+	list_for_each_entry(vlan, &bp->vlan_reg, link)
+		vlan->hw = false;
+	bp->vlan_cnt = 0;
+
 	/* Don't set rx mode here. Our caller will do it. */
 	bnx2x_vlan_configure(bp, false);
 
@@ -13380,10 +13321,6 @@ static int bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 #ifdef BCM_DCBNL
 	dev->dcbnl_ops = &bnx2x_dcbnl_ops;
 #endif
-
-	/* MTU range, 46 - 9600 */
-	dev->min_mtu = ETH_MIN_PACKET_SIZE;
-	dev->max_mtu = ETH_MAX_JUMBO_PACKET_SIZE;
 
 	/* get_port_hwinfo() will set prtad and mmds properly */
 	bp->mdio.prtad = MDIO_PRTAD_NONE;
@@ -15319,7 +15256,7 @@ void bnx2x_set_rx_ts(struct bnx2x *bp, struct sk_buff *skb)
 }
 
 /* Read the PHC */
-static u64 bnx2x_cyclecounter_read(const struct cyclecounter *cc)
+static cycle_t bnx2x_cyclecounter_read(const struct cyclecounter *cc)
 {
 	struct bnx2x *bp = container_of(cc, struct bnx2x, cyclecounter);
 	int port = BP_PORT(bp);
@@ -15423,7 +15360,6 @@ int bnx2x_configure_ptp_filters(struct bnx2x *bp)
 		break;
 	case HWTSTAMP_FILTER_ALL:
 	case HWTSTAMP_FILTER_SOME:
-	case HWTSTAMP_FILTER_NTP_ALL:
 		bp->rx_filter = HWTSTAMP_FILTER_NONE;
 		break;
 	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:

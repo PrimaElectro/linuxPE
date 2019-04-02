@@ -160,20 +160,18 @@ static ssize_t disabled_store(struct class *class, struct class_attribute *attr,
 
 	return count;
 }
-static CLASS_ATTR_RW(disabled);
 
-static struct attribute *devcd_class_attrs[] = {
-	&class_attr_disabled.attr,
-	NULL,
+static struct class_attribute devcd_class_attrs[] = {
+	__ATTR_RW(disabled),
+	__ATTR_NULL
 };
-ATTRIBUTE_GROUPS(devcd_class);
 
 static struct class devcd_class = {
 	.name		= "devcoredump",
 	.owner		= THIS_MODULE,
 	.dev_release	= devcd_dev_release,
 	.dev_groups	= devcd_dev_groups,
-	.class_groups	= devcd_class_groups,
+	.class_attrs	= devcd_class_attrs,
 };
 
 static ssize_t devcd_readv(char *buffer, loff_t offset, size_t count,

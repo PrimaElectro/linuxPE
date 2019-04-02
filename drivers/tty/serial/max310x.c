@@ -236,7 +236,7 @@
 
 /* Misc definitions */
 #define MAX310X_FIFO_SIZE		(128)
-#define MAX310x_REV_MASK		(0xf8)
+#define MAX310x_REV_MASK		(0xfc)
 
 /* MAX3107 specific */
 #define MAX3107_REV_ID			(0xa0)

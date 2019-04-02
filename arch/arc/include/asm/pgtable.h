@@ -35,11 +35,10 @@
 #ifndef _ASM_ARC_PGTABLE_H
 #define _ASM_ARC_PGTABLE_H
 
-#include <linux/const.h>
-#define __ARCH_USE_5LEVEL_HACK
-#include <asm-generic/pgtable-nopmd.h>
 #include <asm/page.h>
-#include <asm/mmu.h>	/* to propagate CONFIG_ARC_MMU_VER <n> */
+#include <asm/mmu.h>
+#include <asm-generic/pgtable-nopmd.h>
+#include <linux/const.h>
 
 /**************************************************************************
  * Page Table Flags
@@ -379,7 +378,7 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 
 /* Decode a PTE containing swap "identifier "into constituents */
 #define __swp_type(pte_lookalike)	(((pte_lookalike).val) & 0x1f)
-#define __swp_offset(pte_lookalike)	((pte_lookalike).val >> 13)
+#define __swp_offset(pte_lookalike)	((pte_lookalike).val << 13)
 
 /* NOPs, to keep generic kernel happy */
 #define __pte_to_swp_entry(pte)	((swp_entry_t) { pte_val(pte) })

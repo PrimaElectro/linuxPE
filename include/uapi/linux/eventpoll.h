@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0+ WITH Linux-syscall-note */
 /*
  *  include/linux/eventpoll.h ( Efficient event polling implementation )
  *  Copyright (C) 2001,...,2006	 Davide Libenzi
@@ -41,7 +40,7 @@
 #define EPOLLRDHUP	0x00002000
 
 /* Set exclusive wakeup mode for the target file descriptor */
-#define EPOLLEXCLUSIVE (1U << 28)
+#define EPOLLEXCLUSIVE (1 << 28)
 
 /*
  * Request the handling of system wakeup events so as to prevent system suspends
@@ -53,13 +52,13 @@
  *
  * Requires CAP_BLOCK_SUSPEND
  */
-#define EPOLLWAKEUP (1U << 29)
+#define EPOLLWAKEUP (1 << 29)
 
 /* Set the One Shot behaviour for the target file descriptor */
-#define EPOLLONESHOT (1U << 30)
+#define EPOLLONESHOT (1 << 30)
 
 /* Set the Edge Triggered behaviour for the target file descriptor */
-#define EPOLLET (1U << 31)
+#define EPOLLET (1 << 31)
 
 /* 
  * On x86-64 make the 64bit structure have the same alignment as the

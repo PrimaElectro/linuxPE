@@ -1,11 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _X_TABLES_H
 #define _X_TABLES_H
 
 
 #include <linux/netdevice.h>
 #include <linux/static_key.h>
-#include <linux/netfilter.h>
+#include <linux/locallock.h>
 #include <uapi/linux/netfilter/x_tables.h>
 
 /* Test a struct->invflags and a boolean for inequality */
@@ -19,9 +18,14 @@
  * @target:	the target extension
  * @matchinfo:	per-match data
  * @targetinfo:	per-target data
- * @state:	pointer to hook state this packet came from
+ * @net		network namespace through which the action was invoked
+ * @in:		input netdevice
+ * @out:	output netdevice
  * @fragoff:	packet is a fragment, this is the data offset
  * @thoff:	position of transport header relative to skb->data
+ * @hook:	hook number given packet came from
+ * @family:	Actual NFPROTO_* through which the function is invoked
+ * 		(helpful when match->family == NFPROTO_UNSPEC)
  *
  * Fields written to by extensions:
  *
@@ -35,46 +39,14 @@ struct xt_action_param {
 	union {
 		const void *matchinfo, *targinfo;
 	};
-	const struct nf_hook_state *state;
+	struct net *net;
+	const struct net_device *in, *out;
 	int fragoff;
 	unsigned int thoff;
+	unsigned int hooknum;
+	u_int8_t family;
 	bool hotdrop;
 };
-
-static inline struct net *xt_net(const struct xt_action_param *par)
-{
-	return par->state->net;
-}
-
-static inline struct net_device *xt_in(const struct xt_action_param *par)
-{
-	return par->state->in;
-}
-
-static inline const char *xt_inname(const struct xt_action_param *par)
-{
-	return par->state->in->name;
-}
-
-static inline struct net_device *xt_out(const struct xt_action_param *par)
-{
-	return par->state->out;
-}
-
-static inline const char *xt_outname(const struct xt_action_param *par)
-{
-	return par->state->out->name;
-}
-
-static inline unsigned int xt_hooknum(const struct xt_action_param *par)
-{
-	return par->state->hook;
-}
-
-static inline u_int8_t xt_family(const struct xt_action_param *par)
-{
-	return par->state->pf;
-}
 
 /**
  * struct xt_mtchk_param - parameters for match extensions'
@@ -168,7 +140,6 @@ struct xt_match {
 
 	const char *table;
 	unsigned int matchsize;
-	unsigned int usersize;
 #ifdef CONFIG_COMPAT
 	unsigned int compatsize;
 #endif
@@ -209,7 +180,6 @@ struct xt_target {
 
 	const char *table;
 	unsigned int targetsize;
-	unsigned int usersize;
 #ifdef CONFIG_COMPAT
 	unsigned int compatsize;
 #endif
@@ -285,23 +255,13 @@ unsigned int *xt_alloc_entry_offsets(unsigned int size);
 bool xt_find_jump_offset(const unsigned int *offsets,
 			 unsigned int target, unsigned int size);
 
-int xt_check_proc_name(const char *name, unsigned int size);
-
 int xt_check_match(struct xt_mtchk_param *, unsigned int size, u_int8_t proto,
 		   bool inv_proto);
 int xt_check_target(struct xt_tgchk_param *, unsigned int size, u_int8_t proto,
 		    bool inv_proto);
 
-int xt_match_to_user(const struct xt_entry_match *m,
-		     struct xt_entry_match __user *u);
-int xt_target_to_user(const struct xt_entry_target *t,
-		      struct xt_entry_target __user *u);
-int xt_data_to_user(void __user *dst, const void *src,
-		    int usersize, int size, int aligned_size);
-
 void *xt_copy_counters_from_user(const void __user *user, unsigned int len,
 				 struct xt_counters_info *info, bool compat);
-struct xt_counters *xt_counters_alloc(unsigned int counters);
 
 struct xt_table *xt_register_table(struct net *net,
 				   const struct xt_table *table,
@@ -341,6 +301,8 @@ void xt_free_table_info(struct xt_table_info *info);
  */
 DECLARE_PER_CPU(seqcount_t, xt_recseq);
 
+DECLARE_LOCAL_IRQ_LOCK(xt_write_lock);
+
 /* xt_tee_enabled - true if x_tables needs to handle reentrancy
  *
  * Enabled if current ip(6)tables ruleset has at least one -j TEE rule.
@@ -360,6 +322,9 @@ extern struct static_key xt_tee_enabled;
 static inline unsigned int xt_write_recseq_begin(void)
 {
 	unsigned int addend;
+
+	/* RT protection */
+	local_lock(xt_write_lock);
 
 	/*
 	 * Low order bit of sequence is set if we already
@@ -391,6 +356,7 @@ static inline void xt_write_recseq_end(unsigned int addend)
 	/* this is kind of a write_seqcount_end(), but addend is 0 or 1 */
 	smp_wmb();
 	__this_cpu_add(xt_recseq.sequence, addend);
+	local_unlock(xt_write_lock);
 }
 
 /*
@@ -416,14 +382,38 @@ static inline unsigned long ifname_compare_aligned(const char *_a,
 	return ret;
 }
 
-struct xt_percpu_counter_alloc_state {
-	unsigned int off;
-	const char __percpu *mem;
-};
 
-bool xt_percpu_counter_alloc(struct xt_percpu_counter_alloc_state *state,
-			     struct xt_counters *counter);
-void xt_percpu_counter_free(struct xt_counters *cnt);
+/* On SMP, ip(6)t_entry->counters.pcnt holds address of the
+ * real (percpu) counter.  On !SMP, its just the packet count,
+ * so nothing needs to be done there.
+ *
+ * xt_percpu_counter_alloc returns the address of the percpu
+ * counter, or 0 on !SMP. We force an alignment of 16 bytes
+ * so that bytes/packets share a common cache line.
+ *
+ * Hence caller must use IS_ERR_VALUE to check for error, this
+ * allows us to return 0 for single core systems without forcing
+ * callers to deal with SMP vs. NONSMP issues.
+ */
+static inline unsigned long xt_percpu_counter_alloc(void)
+{
+	if (nr_cpu_ids > 1) {
+		void __percpu *res = __alloc_percpu(sizeof(struct xt_counters),
+						    sizeof(struct xt_counters));
+
+		if (res == NULL)
+			return -ENOMEM;
+
+		return (__force unsigned long) res;
+	}
+
+	return 0;
+}
+static inline void xt_percpu_counter_free(u64 pcnt)
+{
+	if (nr_cpu_ids > 1)
+		free_percpu((void __percpu *) (unsigned long) pcnt);
+}
 
 static inline struct xt_counters *
 xt_get_this_cpu_counter(struct xt_counters *cnt)
@@ -508,7 +498,7 @@ void xt_compat_unlock(u_int8_t af);
 
 int xt_compat_add_offset(u_int8_t af, unsigned int offset, int delta);
 void xt_compat_flush_offsets(u_int8_t af);
-int xt_compat_init_offsets(u8 af, unsigned int number);
+void xt_compat_init_offsets(u_int8_t af, unsigned int number);
 int xt_compat_calc_jump(u_int8_t af, unsigned int offset);
 
 int xt_compat_match_offset(const struct xt_match *match);

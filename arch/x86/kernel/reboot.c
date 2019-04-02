@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/export.h>
@@ -10,7 +9,6 @@
 #include <linux/sched.h>
 #include <linux/tboot.h>
 #include <linux/delay.h>
-#include <linux/frame.h>
 #include <acpi/reboot.h>
 #include <asm/io.h>
 #include <asm/apic.h>
@@ -38,6 +36,8 @@
  */
 void (*pm_power_off)(void);
 EXPORT_SYMBOL(pm_power_off);
+
+static const struct desc_ptr no_idt = {};
 
 /*
  * This is set if we need to go through the 'emergency' path.
@@ -127,7 +127,6 @@ void __noreturn machine_real_restart(unsigned int type)
 #ifdef CONFIG_APM_MODULE
 EXPORT_SYMBOL(machine_real_restart);
 #endif
-STACK_FRAME_NON_STANDARD(machine_real_restart);
 
 /*
  * Some Apple MacBook and MacBookPro's needs reboot=p to be able to reboot
@@ -155,7 +154,7 @@ static int __init set_kbd_reboot(const struct dmi_system_id *d)
 /*
  * This is a single dmi_table handling all reboot quirks.
  */
-static const struct dmi_system_id reboot_dmi_table[] __initconst = {
+static struct dmi_system_id __initdata reboot_dmi_table[] = {
 
 	/* Acer */
 	{	/* Handle reboot issue on Acer Aspire one */
@@ -474,12 +473,12 @@ static int __init reboot_init(void)
 
 	/*
 	 * The DMI quirks table takes precedence. If no quirks entry
-	 * matches and the ACPI Hardware Reduced bit is set and EFI
-	 * runtime services are enabled, force EFI reboot.
+	 * matches and the ACPI Hardware Reduced bit is set, force EFI
+	 * reboot.
 	 */
 	rv = dmi_check_system(reboot_dmi_table);
 
-	if (!rv && efi_reboot_required() && !efi_runtime_disabled())
+	if (!rv && efi_reboot_required())
 		reboot_type = BOOT_EFI;
 
 	return 0;
@@ -641,7 +640,7 @@ static void native_machine_emergency_restart(void)
 			break;
 
 		case BOOT_TRIPLE:
-			idt_invalidate(NULL);
+			load_idt(&no_idt);
 			__asm__ __volatile__("int3");
 
 			/* We're probably dead after this, but... */
@@ -770,11 +769,10 @@ void machine_crash_shutdown(struct pt_regs *regs)
 #endif
 
 
-/* This is the CPU performing the emergency shutdown work. */
-int crashing_cpu = -1;
-
 #if defined(CONFIG_SMP)
 
+/* This keeps a track of which one is crashing cpu. */
+static int crashing_cpu;
 static nmi_shootdown_cb shootdown_callback;
 
 static atomic_t waiting_for_crash_ipi;

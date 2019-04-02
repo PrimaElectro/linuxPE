@@ -168,9 +168,10 @@ static void mtk_drm_crtc_mode_set_nofb(struct drm_crtc *crtc)
 	state->pending_config = true;
 }
 
-static int mtk_drm_crtc_enable_vblank(struct drm_crtc *crtc)
+int mtk_drm_crtc_enable_vblank(struct drm_device *drm, unsigned int pipe)
 {
-	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_drm_private *priv = drm->dev_private;
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(priv->crtc[pipe]);
 	struct mtk_ddp_comp *ovl = mtk_crtc->ddp_comp[0];
 
 	mtk_ddp_comp_enable_vblank(ovl, &mtk_crtc->base);
@@ -178,9 +179,10 @@ static int mtk_drm_crtc_enable_vblank(struct drm_crtc *crtc)
 	return 0;
 }
 
-static void mtk_drm_crtc_disable_vblank(struct drm_crtc *crtc)
+void mtk_drm_crtc_disable_vblank(struct drm_device *drm, unsigned int pipe)
 {
-	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_drm_private *priv = drm->dev_private;
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(priv->crtc[pipe]);
 	struct mtk_ddp_comp *ovl = mtk_crtc->ddp_comp[0];
 
 	mtk_ddp_comp_disable_vblank(ovl);
@@ -221,7 +223,6 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 	struct drm_crtc *crtc = &mtk_crtc->base;
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
-	struct drm_connector_list_iter conn_iter;
 	unsigned int width, height, vrefresh, bpc = MTK_MAX_BPC;
 	int ret;
 	int i;
@@ -238,15 +239,13 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 		if (encoder->crtc != crtc)
 			continue;
 
-		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
-		drm_for_each_connector_iter(connector, &conn_iter) {
+		drm_for_each_connector(connector, crtc->dev) {
 			if (connector->encoder != encoder)
 				continue;
 			if (connector->display_info.bpc != 0 &&
 			    bpc > connector->display_info.bpc)
 				bpc = connector->display_info.bpc;
 		}
-		drm_connector_list_iter_end(&conn_iter);
 	}
 
 	ret = pm_runtime_get_sync(crtc->dev->dev);
@@ -330,44 +329,7 @@ static void mtk_crtc_ddp_hw_fini(struct mtk_drm_crtc *mtk_crtc)
 	pm_runtime_put(drm->dev);
 }
 
-static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
-{
-	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
-	struct mtk_crtc_state *state = to_mtk_crtc_state(mtk_crtc->base.state);
-	struct mtk_ddp_comp *ovl = mtk_crtc->ddp_comp[0];
-	unsigned int i;
-
-	/*
-	 * TODO: instead of updating the registers here, we should prepare
-	 * working registers in atomic_commit and let the hardware command
-	 * queue update module registers on vblank.
-	 */
-	if (state->pending_config) {
-		mtk_ddp_comp_config(ovl, state->pending_width,
-				    state->pending_height,
-				    state->pending_vrefresh, 0);
-
-		state->pending_config = false;
-	}
-
-	if (mtk_crtc->pending_planes) {
-		for (i = 0; i < OVL_LAYER_NR; i++) {
-			struct drm_plane *plane = &mtk_crtc->planes[i];
-			struct mtk_plane_state *plane_state;
-
-			plane_state = to_mtk_plane_state(plane->state);
-
-			if (plane_state->pending.config) {
-				mtk_ddp_comp_layer_config(ovl, i, plane_state);
-				plane_state->pending.config = false;
-			}
-		}
-		mtk_crtc->pending_planes = false;
-	}
-}
-
-static void mtk_drm_crtc_atomic_enable(struct drm_crtc *crtc,
-				       struct drm_crtc_state *old_state)
+static void mtk_drm_crtc_enable(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_ddp_comp *ovl = mtk_crtc->ddp_comp[0];
@@ -391,8 +353,7 @@ static void mtk_drm_crtc_atomic_enable(struct drm_crtc *crtc,
 	mtk_crtc->enabled = true;
 }
 
-static void mtk_drm_crtc_atomic_disable(struct drm_crtc *crtc,
-					struct drm_crtc_state *old_state)
+static void mtk_drm_crtc_disable(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_ddp_comp *ovl = mtk_crtc->ddp_comp[0];
@@ -444,7 +405,6 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 				      struct drm_crtc_state *old_crtc_state)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
-	struct mtk_drm_private *priv = crtc->dev->dev_private;
 	unsigned int pending_planes = 0;
 	int i;
 
@@ -466,12 +426,6 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 	if (crtc->state->color_mgmt_changed)
 		for (i = 0; i < mtk_crtc->ddp_comp_nr; i++)
 			mtk_ddp_gamma_set(mtk_crtc->ddp_comp[i], crtc->state);
-
-	if (priv->data->shadow_register) {
-		mtk_disp_mutex_acquire(mtk_crtc->mutex);
-		mtk_crtc_ddp_config(crtc);
-		mtk_disp_mutex_release(mtk_crtc->mutex);
-	}
 }
 
 static const struct drm_crtc_funcs mtk_crtc_funcs = {
@@ -482,17 +436,15 @@ static const struct drm_crtc_funcs mtk_crtc_funcs = {
 	.atomic_duplicate_state	= mtk_drm_crtc_duplicate_state,
 	.atomic_destroy_state	= mtk_drm_crtc_destroy_state,
 	.gamma_set		= drm_atomic_helper_legacy_gamma_set,
-	.enable_vblank		= mtk_drm_crtc_enable_vblank,
-	.disable_vblank		= mtk_drm_crtc_disable_vblank,
 };
 
 static const struct drm_crtc_helper_funcs mtk_crtc_helper_funcs = {
 	.mode_fixup	= mtk_drm_crtc_mode_fixup,
 	.mode_set_nofb	= mtk_drm_crtc_mode_set_nofb,
+	.enable		= mtk_drm_crtc_enable,
+	.disable	= mtk_drm_crtc_disable,
 	.atomic_begin	= mtk_drm_crtc_atomic_begin,
 	.atomic_flush	= mtk_drm_crtc_atomic_flush,
-	.atomic_enable	= mtk_drm_crtc_atomic_enable,
-	.atomic_disable	= mtk_drm_crtc_atomic_disable,
 };
 
 static int mtk_drm_crtc_init(struct drm_device *drm,
@@ -519,10 +471,36 @@ err_cleanup_crtc:
 void mtk_crtc_ddp_irq(struct drm_crtc *crtc, struct mtk_ddp_comp *ovl)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
-	struct mtk_drm_private *priv = crtc->dev->dev_private;
+	struct mtk_crtc_state *state = to_mtk_crtc_state(mtk_crtc->base.state);
+	unsigned int i;
 
-	if (!priv->data->shadow_register)
-		mtk_crtc_ddp_config(crtc);
+	/*
+	 * TODO: instead of updating the registers here, we should prepare
+	 * working registers in atomic_commit and let the hardware command
+	 * queue update module registers on vblank.
+	 */
+	if (state->pending_config) {
+		mtk_ddp_comp_config(ovl, state->pending_width,
+				    state->pending_height,
+				    state->pending_vrefresh, 0);
+
+		state->pending_config = false;
+	}
+
+	if (mtk_crtc->pending_planes) {
+		for (i = 0; i < OVL_LAYER_NR; i++) {
+			struct drm_plane *plane = &mtk_crtc->planes[i];
+			struct mtk_plane_state *plane_state;
+
+			plane_state = to_mtk_plane_state(plane->state);
+
+			if (plane_state->pending.config) {
+				mtk_ddp_comp_layer_config(ovl, i, plane_state);
+				plane_state->pending.config = false;
+			}
+		}
+		mtk_crtc->pending_planes = false;
+	}
 
 	mtk_drm_finish_page_flip(mtk_crtc);
 }
@@ -561,8 +539,6 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 	mtk_crtc->ddp_comp = devm_kmalloc_array(dev, mtk_crtc->ddp_comp_nr,
 						sizeof(*mtk_crtc->ddp_comp),
 						GFP_KERNEL);
-	if (!mtk_crtc->ddp_comp)
-		return -ENOMEM;
 
 	mtk_crtc->mutex = mtk_disp_mutex_get(priv->mutex_dev, pipe);
 	if (IS_ERR(mtk_crtc->mutex)) {
@@ -579,7 +555,8 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 		node = priv->comp_node[comp_id];
 		comp = priv->ddp_comp[comp_id];
 		if (!comp) {
-			dev_err(dev, "Component %pOF not initialized\n", node);
+			dev_err(dev, "Component %s not initialized\n",
+				node->full_name);
 			ret = -ENODEV;
 			goto unprepare;
 		}
@@ -587,8 +564,8 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 		ret = clk_prepare(comp->clk);
 		if (ret) {
 			dev_err(dev,
-				"Failed to prepare clock for component %pOF: %d\n",
-				node, ret);
+				"Failed to prepare clock for component %s: %d\n",
+				node->full_name, ret);
 			goto unprepare;
 		}
 
@@ -611,6 +588,7 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 		goto unprepare;
 	drm_mode_crtc_set_gamma_size(&mtk_crtc->base, MTK_LUT_SIZE);
 	drm_crtc_enable_color_mgmt(&mtk_crtc->base, 0, false, MTK_LUT_SIZE);
+	priv->crtc[pipe] = &mtk_crtc->base;
 	priv->num_pipes++;
 
 	return 0;

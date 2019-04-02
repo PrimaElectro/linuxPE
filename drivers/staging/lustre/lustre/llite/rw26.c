@@ -71,6 +71,8 @@ static void ll_invalidatepage(struct page *vmpage, unsigned int offset,
 	struct cl_page   *page;
 	struct cl_object *obj;
 
+	int refcheck;
+
 	LASSERT(PageLocked(vmpage));
 	LASSERT(!PageWriteback(vmpage));
 
@@ -80,27 +82,28 @@ static void ll_invalidatepage(struct page *vmpage, unsigned int offset,
 	 * happening with locked page too
 	 */
 	if (offset == 0 && length == PAGE_SIZE) {
-		/* See the comment in ll_releasepage() */
-		env = cl_env_percpu_get();
-		LASSERT(!IS_ERR(env));
-		inode = vmpage->mapping->host;
-		obj = ll_i2info(inode)->lli_clob;
-		if (obj) {
-			page = cl_vmpage_page(vmpage, obj);
-			if (page) {
-				cl_page_delete(env, page);
-				cl_page_put(env, page);
+		env = cl_env_get(&refcheck);
+		if (!IS_ERR(env)) {
+			inode = vmpage->mapping->host;
+			obj = ll_i2info(inode)->lli_clob;
+			if (obj) {
+				page = cl_vmpage_page(vmpage, obj);
+				if (page) {
+					cl_page_delete(env, page);
+					cl_page_put(env, page);
+				}
+			} else {
+				LASSERT(vmpage->private == 0);
 			}
-		} else {
-			LASSERT(vmpage->private == 0);
+			cl_env_put(env, &refcheck);
 		}
-		cl_env_percpu_put(env);
 	}
 }
 
 static int ll_releasepage(struct page *vmpage, gfp_t gfp_mask)
 {
 	struct lu_env     *env;
+	void			*cookie;
 	struct cl_object  *obj;
 	struct cl_page    *page;
 	struct address_space *mapping;
@@ -126,6 +129,7 @@ static int ll_releasepage(struct page *vmpage, gfp_t gfp_mask)
 	if (!page)
 		return 1;
 
+	cookie = cl_env_reenter();
 	env = cl_env_percpu_get();
 	LASSERT(!IS_ERR(env));
 
@@ -151,10 +155,37 @@ static int ll_releasepage(struct page *vmpage, gfp_t gfp_mask)
 	cl_page_put(env, page);
 
 	cl_env_percpu_put(env);
+	cl_env_reexit(cookie);
 	return result;
 }
 
 #define MAX_DIRECTIO_SIZE (2 * 1024 * 1024 * 1024UL)
+
+static inline int ll_get_user_pages(int rw, unsigned long user_addr,
+				    size_t size, struct page ***pages,
+				    int *max_pages)
+{
+	int result = -ENOMEM;
+
+	/* set an arbitrary limit to prevent arithmetic overflow */
+	if (size > MAX_DIRECTIO_SIZE) {
+		*pages = NULL;
+		return -EFBIG;
+	}
+
+	*max_pages = (user_addr + size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	*max_pages -= user_addr >> PAGE_SHIFT;
+
+	*pages = libcfs_kvzalloc(*max_pages * sizeof(**pages), GFP_NOFS);
+	if (*pages) {
+		result = get_user_pages_fast(user_addr, *max_pages,
+					     (rw == READ), *pages);
+		if (unlikely(result <= 0))
+			kvfree(*pages);
+	}
+
+	return result;
+}
 
 /*  ll_free_user_pages - tear down page struct array
  *  @pages: array of page struct pointers underlying target buffer
@@ -309,15 +340,19 @@ static ssize_t ll_direct_IO_26_seg(const struct lu_env *env, struct cl_io *io,
 		       PAGE_SIZE) & ~(DT_MAX_BRW_SIZE - 1))
 static ssize_t ll_direct_IO_26(struct kiocb *iocb, struct iov_iter *iter)
 {
-	struct ll_cl_context *lcc;
-	const struct lu_env *env;
+	struct lu_env *env;
 	struct cl_io *io;
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	loff_t file_offset = iocb->ki_pos;
 	ssize_t count = iov_iter_count(iter);
 	ssize_t tot_bytes = 0, result = 0;
+	struct ll_inode_info *lli = ll_i2info(inode);
 	long size = MAX_DIO_SIZE;
+	int refcheck;
+
+	if (!lli->lli_has_smd)
+		return -EBADF;
 
 	/* Check EOF by ourselves */
 	if (iov_iter_rw(iter) == READ && file_offset >= i_size_read(inode))
@@ -327,7 +362,7 @@ static ssize_t ll_direct_IO_26(struct kiocb *iocb, struct iov_iter *iter)
 	if ((file_offset & ~PAGE_MASK) || (count & ~PAGE_MASK))
 		return -EINVAL;
 
-	CDEBUG(D_VFSTRACE, "VFS Op:inode=" DFID "(%p), size=%zd (max %lu), offset=%lld=%llx, pages %zd (max %lu)\n",
+	CDEBUG(D_VFSTRACE, "VFS Op:inode="DFID"(%p), size=%zd (max %lu), offset=%lld=%llx, pages %zd (max %lu)\n",
 	       PFID(ll_inode2fid(inode)), inode, count, MAX_DIO_SIZE,
 	       file_offset, file_offset, count >> PAGE_SHIFT,
 	       MAX_DIO_SIZE >> PAGE_SHIFT);
@@ -336,13 +371,9 @@ static ssize_t ll_direct_IO_26(struct kiocb *iocb, struct iov_iter *iter)
 	if (iov_iter_alignment(iter) & ~PAGE_MASK)
 		return -EINVAL;
 
-	lcc = ll_cl_find(file);
-	if (!lcc)
-		return -EIO;
-
-	env = lcc->lcc_env;
+	env = cl_env_get(&refcheck);
 	LASSERT(!IS_ERR(env));
-	io = lcc->lcc_io;
+	io = vvp_env_io(env)->vui_cl.cis_io;
 	LASSERT(io);
 
 	while (iov_iter_count(iter)) {
@@ -399,6 +430,7 @@ out:
 		vio->u.write.vui_written += tot_bytes;
 	}
 
+	cl_env_put(env, &refcheck);
 	return tot_bytes ? tot_bytes : result;
 }
 
@@ -438,13 +470,13 @@ static int ll_prepare_partial_page(const struct lu_env *env, struct cl_io *io,
 }
 
 static int ll_write_begin(struct file *file, struct address_space *mapping,
-			  loff_t pos, unsigned int len, unsigned int flags,
+			  loff_t pos, unsigned len, unsigned flags,
 			  struct page **pagep, void **fsdata)
 {
 	struct ll_cl_context *lcc;
-	const struct lu_env *env = NULL;
+	const struct lu_env  *env;
 	struct cl_io   *io;
-	struct cl_page *page = NULL;
+	struct cl_page *page;
 	struct cl_object *clob = ll_i2info(mapping->host)->lli_clob;
 	pgoff_t index = pos >> PAGE_SHIFT;
 	struct page *vmpage = NULL;
@@ -456,7 +488,6 @@ static int ll_write_begin(struct file *file, struct address_space *mapping,
 
 	lcc = ll_cl_find(file);
 	if (!lcc) {
-		io = NULL;
 		result = -EIO;
 		goto out;
 	}
@@ -533,12 +564,6 @@ out:
 			unlock_page(vmpage);
 			put_page(vmpage);
 		}
-		if (!IS_ERR_OR_NULL(page)) {
-			lu_ref_del(&page->cp_reference, "cl_io", io);
-			cl_page_put(env, page);
-		}
-		if (io)
-			io->ci_result = result;
 	} else {
 		*pagep = vmpage;
 		*fsdata = lcc;
@@ -547,7 +572,7 @@ out:
 }
 
 static int ll_write_end(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned int len, unsigned int copied,
+			loff_t pos, unsigned len, unsigned copied,
 			struct page *vmpage, void *fsdata)
 {
 	struct ll_cl_context *lcc = fsdata;
@@ -555,7 +580,7 @@ static int ll_write_end(struct file *file, struct address_space *mapping,
 	struct cl_io *io;
 	struct vvp_io *vio;
 	struct cl_page *page;
-	unsigned int from = pos & (PAGE_SIZE - 1);
+	unsigned from = pos & (PAGE_SIZE - 1);
 	bool unplug = false;
 	int result = 0;
 
@@ -608,8 +633,6 @@ static int ll_write_end(struct file *file, struct address_space *mapping,
 	    file->f_flags & O_SYNC || IS_SYNC(file_inode(file)))
 		result = vvp_io_write_commit(env, io);
 
-	if (result < 0)
-		io->ci_result = result;
 	return result >= 0 ? copied : result;
 }
 

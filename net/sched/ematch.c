@@ -314,7 +314,7 @@ int tcf_em_tree_validate(struct tcf_proto *tp, struct nlattr *nla,
 	if (!nla)
 		return 0;
 
-	err = nla_parse_nested(tb, TCA_EMATCH_TREE_MAX, nla, em_policy, NULL);
+	err = nla_parse_nested(tb, TCA_EMATCH_TREE_MAX, nla, em_policy);
 	if (err < 0)
 		goto errout;
 

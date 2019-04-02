@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Device driver for the via-pmu on Apple Powermacs.
  *
@@ -24,7 +23,7 @@
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/miscdevice.h>
 #include <linux/blkdev.h>
 #include <linux/pci.h>
@@ -58,7 +57,7 @@
 #include <asm/pmac_feature.h>
 #include <asm/pmac_pfunc.h>
 #include <asm/pmac_low_i2c.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/cputable.h>
 #include <asm/time.h>
@@ -532,9 +531,8 @@ init_pmu(void)
 	int timeout;
 	struct adb_request req;
 
-	/* Negate TREQ. Set TACK to input and TREQ to output. */
-	out_8(&via[B], in_8(&via[B]) | TREQ);
-	out_8(&via[DIRB], (in_8(&via[DIRB]) | TREQ) & ~TACK);
+	out_8(&via[B], via[B] | TREQ);			/* negate TREQ */
+	out_8(&via[DIRB], (via[DIRB] | TREQ) & ~TACK);	/* TACK in, TREQ out */
 
 	pmu_request(&req, NULL, 2, PMU_SET_INTR_MASK, pmu_intr_mask);
 	timeout =  100000;
@@ -1456,8 +1454,8 @@ pmu_sr_intr(void)
 	struct adb_request *req;
 	int bite = 0;
 
-	if (in_8(&via[B]) & TREQ) {
-		printk(KERN_ERR "PMU: spurious SR intr (%x)\n", in_8(&via[B]));
+	if (via[B] & TREQ) {
+		printk(KERN_ERR "PMU: spurious SR intr (%x)\n", via[B]);
 		out_8(&via[IFR], SR_INT);
 		return NULL;
 	}

@@ -35,58 +35,32 @@
 #define AMDGPU_BO_LIST_MAX_PRIORITY	32u
 #define AMDGPU_BO_LIST_NUM_BUCKETS	(AMDGPU_BO_LIST_MAX_PRIORITY + 1)
 
-static int amdgpu_bo_list_set(struct amdgpu_device *adev,
-				     struct drm_file *filp,
-				     struct amdgpu_bo_list *list,
-				     struct drm_amdgpu_bo_list_entry *info,
-				     unsigned num_entries);
-
-static void amdgpu_bo_list_release_rcu(struct kref *ref)
-{
-	unsigned i;
-	struct amdgpu_bo_list *list = container_of(ref, struct amdgpu_bo_list,
-						   refcount);
-
-	for (i = 0; i < list->num_entries; ++i)
-		amdgpu_bo_unref(&list->array[i].robj);
-
-	mutex_destroy(&list->lock);
-	kvfree(list->array);
-	kfree_rcu(list, rhead);
-}
-
-static int amdgpu_bo_list_create(struct amdgpu_device *adev,
-				 struct drm_file *filp,
-				 struct drm_amdgpu_bo_list_entry *info,
-				 unsigned num_entries,
+static int amdgpu_bo_list_create(struct amdgpu_fpriv *fpriv,
+				 struct amdgpu_bo_list **result,
 				 int *id)
 {
 	int r;
-	struct amdgpu_fpriv *fpriv = filp->driver_priv;
-	struct amdgpu_bo_list *list;
 
-	list = kzalloc(sizeof(struct amdgpu_bo_list), GFP_KERNEL);
-	if (!list)
+	*result = kzalloc(sizeof(struct amdgpu_bo_list), GFP_KERNEL);
+	if (!*result)
 		return -ENOMEM;
 
-	/* initialize bo list*/
-	mutex_init(&list->lock);
-	kref_init(&list->refcount);
-	r = amdgpu_bo_list_set(adev, filp, list, info, num_entries);
-	if (r) {
-		kfree(list);
-		return r;
-	}
-
-	/* idr alloc should be called only after initialization of bo list. */
 	mutex_lock(&fpriv->bo_list_lock);
-	r = idr_alloc(&fpriv->bo_list_handles, list, 1, 0, GFP_KERNEL);
-	mutex_unlock(&fpriv->bo_list_lock);
+	r = idr_alloc(&fpriv->bo_list_handles, *result,
+		      1, 0, GFP_KERNEL);
 	if (r < 0) {
-		amdgpu_bo_list_free(list);
+		mutex_unlock(&fpriv->bo_list_lock);
+		kfree(*result);
 		return r;
 	}
 	*id = r;
+
+	mutex_init(&(*result)->lock);
+	(*result)->num_entries = 0;
+	(*result)->array = NULL;
+
+	mutex_lock(&(*result)->lock);
+	mutex_unlock(&fpriv->bo_list_lock);
 
 	return 0;
 }
@@ -96,10 +70,14 @@ static void amdgpu_bo_list_destroy(struct amdgpu_fpriv *fpriv, int id)
 	struct amdgpu_bo_list *list;
 
 	mutex_lock(&fpriv->bo_list_lock);
-	list = idr_remove(&fpriv->bo_list_handles, id);
+	list = idr_find(&fpriv->bo_list_handles, id);
+	if (list) {
+		mutex_lock(&list->lock);
+		idr_remove(&fpriv->bo_list_handles, id);
+		mutex_unlock(&list->lock);
+		amdgpu_bo_list_free(list);
+	}
 	mutex_unlock(&fpriv->bo_list_lock);
-	if (list)
-		kref_put(&list->refcount, amdgpu_bo_list_release_rcu);
 }
 
 static int amdgpu_bo_list_set(struct amdgpu_device *adev,
@@ -118,7 +96,7 @@ static int amdgpu_bo_list_set(struct amdgpu_device *adev,
 	int r;
 	unsigned long total_size = 0;
 
-	array = kvmalloc_array(num_entries, sizeof(struct amdgpu_bo_list_entry), GFP_KERNEL);
+	array = drm_malloc_ab(num_entries, sizeof(struct amdgpu_bo_list_entry));
 	if (!array)
 		return -ENOMEM;
 	memset(array, 0, num_entries * sizeof(struct amdgpu_bo_list_entry));
@@ -136,7 +114,7 @@ static int amdgpu_bo_list_set(struct amdgpu_device *adev,
 		}
 
 		bo = amdgpu_bo_ref(gem_to_amdgpu_bo(gobj));
-		drm_gem_object_put_unlocked(gobj);
+		drm_gem_object_unreference_unlocked(gobj);
 
 		usermm = amdgpu_ttm_tt_get_usermm(bo->tbo.ttm);
 		if (usermm) {
@@ -156,11 +134,11 @@ static int amdgpu_bo_list_set(struct amdgpu_device *adev,
 		entry->tv.bo = &entry->robj->tbo;
 		entry->tv.shared = !entry->robj->prime_shared_count;
 
-		if (entry->robj->preferred_domains == AMDGPU_GEM_DOMAIN_GDS)
+		if (entry->robj->prefered_domains == AMDGPU_GEM_DOMAIN_GDS)
 			gds_obj = entry->robj;
-		if (entry->robj->preferred_domains == AMDGPU_GEM_DOMAIN_GWS)
+		if (entry->robj->prefered_domains == AMDGPU_GEM_DOMAIN_GWS)
 			gws_obj = entry->robj;
-		if (entry->robj->preferred_domains == AMDGPU_GEM_DOMAIN_OA)
+		if (entry->robj->prefered_domains == AMDGPU_GEM_DOMAIN_OA)
 			oa_obj = entry->robj;
 
 		total_size += amdgpu_bo_size(entry->robj);
@@ -170,7 +148,7 @@ static int amdgpu_bo_list_set(struct amdgpu_device *adev,
 	for (i = 0; i < list->num_entries; ++i)
 		amdgpu_bo_unref(&list->array[i].robj);
 
-	kvfree(list->array);
+	drm_free_large(list->array);
 
 	list->gds_obj = gds_obj;
 	list->gws_obj = gws_obj;
@@ -185,7 +163,7 @@ static int amdgpu_bo_list_set(struct amdgpu_device *adev,
 error_free:
 	while (i--)
 		amdgpu_bo_unref(&array[i].robj);
-	kvfree(array);
+	drm_free_large(array);
 	return r;
 }
 
@@ -194,21 +172,11 @@ amdgpu_bo_list_get(struct amdgpu_fpriv *fpriv, int id)
 {
 	struct amdgpu_bo_list *result;
 
-	rcu_read_lock();
+	mutex_lock(&fpriv->bo_list_lock);
 	result = idr_find(&fpriv->bo_list_handles, id);
-
-	if (result) {
-		if (kref_get_unless_zero(&result->refcount)) {
-			rcu_read_unlock();
-			mutex_lock(&result->lock);
-		} else {
-			rcu_read_unlock();
-			result = NULL;
-		}
-	} else {
-		rcu_read_unlock();
-	}
-
+	if (result)
+		mutex_lock(&result->lock);
+	mutex_unlock(&fpriv->bo_list_lock);
 	return result;
 }
 
@@ -233,10 +201,8 @@ void amdgpu_bo_list_get_list(struct amdgpu_bo_list *list,
 	for (i = 0; i < list->num_entries; i++) {
 		unsigned priority = list->array[i].priority;
 
-		if (!list->array[i].robj->parent)
-			list_add_tail(&list->array[i].tv.head,
-				      &bucket[priority]);
-
+		list_add_tail(&list->array[i].tv.head,
+			      &bucket[priority]);
 		list->array[i].user_pages = NULL;
 	}
 
@@ -248,7 +214,6 @@ void amdgpu_bo_list_get_list(struct amdgpu_bo_list *list,
 void amdgpu_bo_list_put(struct amdgpu_bo_list *list)
 {
 	mutex_unlock(&list->lock);
-	kref_put(&list->refcount, amdgpu_bo_list_release_rcu);
 }
 
 void amdgpu_bo_list_free(struct amdgpu_bo_list *list)
@@ -259,7 +224,7 @@ void amdgpu_bo_list_free(struct amdgpu_bo_list *list)
 		amdgpu_bo_unref(&list->array[i].robj);
 
 	mutex_destroy(&list->lock);
-	kvfree(list->array);
+	drm_free_large(list->array);
 	kfree(list);
 }
 
@@ -272,15 +237,15 @@ int amdgpu_bo_list_ioctl(struct drm_device *dev, void *data,
 	struct amdgpu_fpriv *fpriv = filp->driver_priv;
 	union drm_amdgpu_bo_list *args = data;
 	uint32_t handle = args->in.list_handle;
-	const void __user *uptr = u64_to_user_ptr(args->in.bo_info_ptr);
+	const void __user *uptr = (const void*)(long)args->in.bo_info_ptr;
 
 	struct drm_amdgpu_bo_list_entry *info;
 	struct amdgpu_bo_list *list;
 
 	int r;
 
-	info = kvmalloc_array(args->in.bo_number,
-			     sizeof(struct drm_amdgpu_bo_list_entry), GFP_KERNEL);
+	info = drm_malloc_ab(args->in.bo_number,
+			     sizeof(struct drm_amdgpu_bo_list_entry));
 	if (!info)
 		return -ENOMEM;
 
@@ -308,10 +273,16 @@ int amdgpu_bo_list_ioctl(struct drm_device *dev, void *data,
 
 	switch (args->in.operation) {
 	case AMDGPU_BO_LIST_OP_CREATE:
-		r = amdgpu_bo_list_create(adev, filp, info, args->in.bo_number,
-					  &handle);
+		r = amdgpu_bo_list_create(fpriv, &list, &handle);
 		if (r)
 			goto error_free;
+
+		r = amdgpu_bo_list_set(adev, filp, list, info,
+					      args->in.bo_number);
+		amdgpu_bo_list_put(list);
+		if (r)
+			goto error_free;
+
 		break;
 
 	case AMDGPU_BO_LIST_OP_DESTROY:
@@ -340,11 +311,11 @@ int amdgpu_bo_list_ioctl(struct drm_device *dev, void *data,
 
 	memset(args, 0, sizeof(*args));
 	args->out.list_handle = handle;
-	kvfree(info);
+	drm_free_large(info);
 
 	return 0;
 
 error_free:
-	kvfree(info);
+	drm_free_large(info);
 	return r;
 }

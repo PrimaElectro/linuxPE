@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *   Copyright (C) 2000 Tilmann Bitterberg
  *   (tilmann@bitterberg.de)
@@ -25,7 +24,7 @@
 #include <linux/bitops.h>
 #include <linux/rtc.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/processor.h>
 #include <asm/io.h>
 #include <asm/prom.h>

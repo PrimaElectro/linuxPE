@@ -32,7 +32,6 @@ struct private_data {
 	struct device *cpu_dev;
 	struct thermal_cooling_device *cdev;
 	const char *reg_name;
-	bool have_static_opps;
 };
 
 static struct freq_attr *cpufreq_dt_attr[] = {
@@ -149,6 +148,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	struct private_data *priv;
 	struct device *cpu_dev;
 	struct clk *cpu_clk;
+	struct dev_pm_opp *suspend_opp;
 	unsigned int transition_latency;
 	bool fallback = false;
 	const char *name;
@@ -188,7 +188,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 */
 	name = find_supply_name(cpu_dev);
 	if (name) {
-		opp_table = dev_pm_opp_set_regulators(cpu_dev, &name, 1);
+		opp_table = dev_pm_opp_set_regulator(cpu_dev, name);
 		if (IS_ERR(opp_table)) {
 			ret = PTR_ERR(opp_table);
 			dev_err(cpu_dev, "Failed to set regulator for cpu%d: %d\n",
@@ -196,15 +196,6 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 			goto out_put_clk;
 		}
 	}
-
-	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-	if (!priv) {
-		ret = -ENOMEM;
-		goto out_put_regulator;
-	}
-
-	priv->reg_name = name;
-	priv->opp_table = opp_table;
 
 	/*
 	 * Initialize OPP tables for all policy->cpus. They will be shared by
@@ -216,8 +207,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 *
 	 * OPPs might be populated at runtime, don't check for error here
 	 */
-	if (!dev_pm_opp_of_cpumask_add_table(policy->cpus))
-		priv->have_static_opps = true;
+	dev_pm_opp_of_cpumask_add_table(policy->cpus);
 
 	/*
 	 * But we need OPP table to function so if it is not there let's
@@ -243,17 +233,30 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 				__func__, ret);
 	}
 
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (!priv) {
+		ret = -ENOMEM;
+		goto out_free_opp;
+	}
+
+	priv->reg_name = name;
+	priv->opp_table = opp_table;
+
 	ret = dev_pm_opp_init_cpufreq_table(cpu_dev, &freq_table);
 	if (ret) {
 		dev_err(cpu_dev, "failed to init cpufreq table: %d\n", ret);
-		goto out_free_opp;
+		goto out_free_priv;
 	}
 
 	priv->cpu_dev = cpu_dev;
 	policy->driver_data = priv;
 	policy->clk = cpu_clk;
 
-	policy->suspend_freq = dev_pm_opp_get_suspend_opp_freq(cpu_dev) / 1000;
+	rcu_read_lock();
+	suspend_opp = dev_pm_opp_get_suspend_opp(cpu_dev);
+	if (suspend_opp)
+		policy->suspend_freq = dev_pm_opp_get_freq(suspend_opp) / 1000;
+	rcu_read_unlock();
 
 	ret = cpufreq_table_validate_and_show(policy, freq_table);
 	if (ret) {
@@ -276,19 +279,17 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 		transition_latency = CPUFREQ_ETERNAL;
 
 	policy->cpuinfo.transition_latency = transition_latency;
-	policy->dvfs_possible_from_any_cpu = true;
 
 	return 0;
 
 out_free_cpufreq_table:
 	dev_pm_opp_free_cpufreq_table(cpu_dev, &freq_table);
-out_free_opp:
-	if (priv->have_static_opps)
-		dev_pm_opp_of_cpumask_remove_table(policy->cpus);
+out_free_priv:
 	kfree(priv);
-out_put_regulator:
+out_free_opp:
+	dev_pm_opp_of_cpumask_remove_table(policy->cpus);
 	if (name)
-		dev_pm_opp_put_regulators(opp_table);
+		dev_pm_opp_put_regulator(opp_table);
 out_put_clk:
 	clk_put(cpu_clk);
 
@@ -301,10 +302,9 @@ static int cpufreq_exit(struct cpufreq_policy *policy)
 
 	cpufreq_cooling_unregister(priv->cdev);
 	dev_pm_opp_free_cpufreq_table(priv->cpu_dev, &policy->freq_table);
-	if (priv->have_static_opps)
-		dev_pm_opp_of_cpumask_remove_table(policy->related_cpus);
+	dev_pm_opp_of_cpumask_remove_table(policy->related_cpus);
 	if (priv->reg_name)
-		dev_pm_opp_put_regulators(priv->opp_table);
+		dev_pm_opp_put_regulator(priv->opp_table);
 
 	clk_put(policy->clk);
 	kfree(priv);
@@ -331,7 +331,7 @@ static void cpufreq_ready(struct cpufreq_policy *policy)
 				     &power_coefficient);
 
 		priv->cdev = of_cpufreq_power_cooling_register(np,
-				policy, power_coefficient, NULL);
+				policy->related_cpus, power_coefficient, NULL);
 		if (IS_ERR(priv->cdev)) {
 			dev_err(priv->cpu_dev,
 				"running cpufreq without cooling device: %ld\n",

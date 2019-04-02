@@ -100,43 +100,39 @@ static DEFINE_MUTEX(ashmem_mutex);
 static struct kmem_cache *ashmem_area_cachep __read_mostly;
 static struct kmem_cache *ashmem_range_cachep __read_mostly;
 
-static inline unsigned long range_size(struct ashmem_range *range)
+#define range_size(range) \
+	((range)->pgend - (range)->pgstart + 1)
+
+#define range_on_lru(range) \
+	((range)->purged == ASHMEM_NOT_PURGED)
+
+static inline int page_range_subsumes_range(struct ashmem_range *range,
+					    size_t start, size_t end)
 {
-	return range->pgend - range->pgstart + 1;
+	return (((range)->pgstart >= (start)) && ((range)->pgend <= (end)));
 }
 
-static inline bool range_on_lru(struct ashmem_range *range)
+static inline int page_range_subsumed_by_range(struct ashmem_range *range,
+					       size_t start, size_t end)
 {
-	return range->purged == ASHMEM_NOT_PURGED;
+	return (((range)->pgstart <= (start)) && ((range)->pgend >= (end)));
 }
 
-static inline bool page_range_subsumes_range(struct ashmem_range *range,
-					     size_t start, size_t end)
+static inline int page_in_range(struct ashmem_range *range, size_t page)
 {
-	return (range->pgstart >= start) && (range->pgend <= end);
+	return (((range)->pgstart <= (page)) && ((range)->pgend >= (page)));
 }
 
-static inline bool page_range_subsumed_by_range(struct ashmem_range *range,
-						size_t start, size_t end)
+static inline int page_range_in_range(struct ashmem_range *range,
+				      size_t start, size_t end)
 {
-	return (range->pgstart <= start) && (range->pgend >= end);
+	return (page_in_range(range, start) || page_in_range(range, end) ||
+		page_range_subsumes_range(range, start, end));
 }
 
-static inline bool page_in_range(struct ashmem_range *range, size_t page)
+static inline int range_before_page(struct ashmem_range *range, size_t page)
 {
-	return (range->pgstart <= page) && (range->pgend >= page);
-}
-
-static inline bool page_range_in_range(struct ashmem_range *range,
-				       size_t start, size_t end)
-{
-	return page_in_range(range, start) || page_in_range(range, end) ||
-		page_range_subsumes_range(range, start, end);
-}
-
-static inline bool range_before_page(struct ashmem_range *range, size_t page)
-{
-	return range->pgend < page;
+	return ((range)->pgend < (page));
 }
 
 #define PROT_MASK		(PROT_EXEC | PROT_READ | PROT_WRITE)
@@ -294,9 +290,19 @@ static int ashmem_release(struct inode *ignored, struct file *file)
 	return 0;
 }
 
-static ssize_t ashmem_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+/**
+ * ashmem_read() - Reads a set of bytes from an Ashmem-enabled file
+ * @file:	   The associated backing file.
+ * @buf:	   The buffer of data being written to
+ * @len:	   The number of bytes being read
+ * @pos:	   The position of the first byte to read.
+ *
+ * Return: 0 if successful, or another return code if not.
+ */
+static ssize_t ashmem_read(struct file *file, char __user *buf,
+			   size_t len, loff_t *pos)
 {
-	struct ashmem_area *asma = iocb->ki_filp->private_data;
+	struct ashmem_area *asma = file->private_data;
 	int ret = 0;
 
 	mutex_lock(&ashmem_mutex);
@@ -310,17 +316,20 @@ static ssize_t ashmem_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		goto out_unlock;
 	}
 
+	mutex_unlock(&ashmem_mutex);
+
 	/*
 	 * asma and asma->file are used outside the lock here.  We assume
 	 * once asma->file is set it will never be changed, and will not
 	 * be destroyed until all references to the file are dropped and
 	 * ashmem_release is called.
 	 */
-	mutex_unlock(&ashmem_mutex);
-	ret = vfs_iter_read(asma->file, iter, &iocb->ki_pos, 0);
-	mutex_lock(&ashmem_mutex);
-	if (ret > 0)
-		asma->file->f_pos = iocb->ki_pos;
+	ret = __vfs_read(asma->file, buf, len, pos);
+	if (ret >= 0)
+		/** Update backing file pos, since f_ops->read() doesn't */
+		asma->file->f_pos = *pos;
+	return ret;
+
 out_unlock:
 	mutex_unlock(&ashmem_mutex);
 	return ret;
@@ -334,23 +343,24 @@ static loff_t ashmem_llseek(struct file *file, loff_t offset, int origin)
 	mutex_lock(&ashmem_mutex);
 
 	if (asma->size == 0) {
-		mutex_unlock(&ashmem_mutex);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	if (!asma->file) {
-		mutex_unlock(&ashmem_mutex);
-		return -EBADF;
+		ret = -EBADF;
+		goto out;
 	}
-
-	mutex_unlock(&ashmem_mutex);
 
 	ret = vfs_llseek(asma->file, offset, origin);
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	/** Copy f_pos from backing file, since f_ops->llseek() sets it */
 	file->f_pos = asma->file->f_pos;
+
+out:
+	mutex_unlock(&ashmem_mutex);
 	return ret;
 }
 
@@ -370,12 +380,6 @@ static int ashmem_mmap(struct file *file, struct vm_area_struct *vma)
 
 	/* user needs to SET_SIZE before mapping */
 	if (unlikely(!asma->size)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	/* requested mapping size larger than object size */
-	if (vma->vm_end - vma->vm_start > PAGE_ALIGN(asma->size)) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -715,13 +719,15 @@ static int ashmem_pin_unpin(struct ashmem_area *asma, unsigned long cmd,
 	size_t pgstart, pgend;
 	int ret = -EINVAL;
 
-	if (unlikely(copy_from_user(&pin, p, sizeof(pin))))
-		return -EFAULT;
-
 	mutex_lock(&ashmem_mutex);
 
 	if (unlikely(!asma->file))
 		goto out_unlock;
+
+	if (unlikely(copy_from_user(&pin, p, sizeof(pin)))) {
+		ret = -EFAULT;
+		goto out_unlock;
+	}
 
 	/* per custom, you can pass zero for len to mean "everything onward" */
 	if (!pin.len)
@@ -829,7 +835,7 @@ static const struct file_operations ashmem_fops = {
 	.owner = THIS_MODULE,
 	.open = ashmem_open,
 	.release = ashmem_release,
-	.read_iter = ashmem_read_iter,
+	.read = ashmem_read,
 	.llseek = ashmem_llseek,
 	.mmap = ashmem_mmap,
 	.unlocked_ioctl = ashmem_ioctl,

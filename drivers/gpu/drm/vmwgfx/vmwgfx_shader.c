@@ -25,11 +25,10 @@
  *
  **************************************************************************/
 
-#include <drm/ttm/ttm_placement.h>
-
 #include "vmwgfx_drv.h"
 #include "vmwgfx_resource_priv.h"
 #include "vmwgfx_binding.h"
+#include "ttm/ttm_placement.h"
 
 struct vmw_shader {
 	struct vmw_resource res;
@@ -751,7 +750,7 @@ static int vmw_user_shader_alloc(struct vmw_private *dev_priv,
 	}
 
 	ushader = kzalloc(sizeof(*ushader), GFP_KERNEL);
-	if (unlikely(!ushader)) {
+	if (unlikely(ushader == NULL)) {
 		ttm_mem_global_free(vmw_mem_glob(dev_priv),
 				    vmw_user_shader_size);
 		ret = -ENOMEM;
@@ -821,7 +820,7 @@ static struct vmw_resource *vmw_shader_alloc(struct vmw_private *dev_priv,
 	}
 
 	shader = kzalloc(sizeof(*shader), GFP_KERNEL);
-	if (unlikely(!shader)) {
+	if (unlikely(shader == NULL)) {
 		ttm_mem_global_free(vmw_mem_glob(dev_priv),
 				    vmw_shader_size);
 		ret = -ENOMEM;
@@ -981,7 +980,7 @@ int vmw_compat_shader_add(struct vmw_private *dev_priv,
 
 	/* Allocate and pin a DMA buffer */
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
-	if (unlikely(!buf))
+	if (unlikely(buf == NULL))
 		return -ENOMEM;
 
 	ret = vmw_dmabuf_init(dev_priv, buf, size, &vmw_sys_ne_placement,

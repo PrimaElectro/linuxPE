@@ -46,6 +46,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	model = "Lamobo R1";
@@ -83,6 +84,10 @@
 		enable-active-high;
 		gpio = <&pio 7 23 GPIO_ACTIVE_HIGH>; /* PH23 */
 	};
+};
+
+&ahci_pwr_pin_a {
+	allwinner,pins = "PB3";
 };
 
 &ahci {
@@ -217,25 +222,31 @@
 
 &pio {
 	usb0_id_detect_pin: usb0_id_detect_pin@0 {
-		pins = "PH4";
-		function = "gpio_in";
-		bias-pull-up;
+		allwinner,pins = "PH4";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 
 	mmc0_cd_pin_lamobo_r1: mmc0_cd_pin@0 {
-		pins = "PH10";
-		function = "gpio_in";
-		bias-pull-up;
+		allwinner,pins = "PH10";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 
 	gmac_power_pin_lamobo_r1: gmac_power_pin@0 {
-		pins = "PH23";
-		function = "gpio_out";
+		allwinner,pins = "PH23";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
 	led_pins_lamobo_r1: led_pins@0 {
-		pins = "PH24";
-		function = "gpio_out";
+		allwinner,pins = "PH24";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 };
 
@@ -313,6 +324,10 @@
 
 &usb_power_supply {
 	status = "okay";
+};
+
+&usb2_vbus_pin_a {
+	allwinner,pins = "PH12";
 };
 
 &usbphy {

@@ -90,7 +90,6 @@ static int crypto_authenc_esn_setkey(struct crypto_aead *authenc_esn, const u8 *
 					   CRYPTO_TFM_RES_MASK);
 
 out:
-	memzero_explicit(&keys, sizeof(keys));
 	return err;
 
 badkey:
@@ -279,7 +278,7 @@ static void authenc_esn_verify_ahash_done(struct crypto_async_request *areq,
 	struct aead_request *req = areq->data;
 
 	err = err ?: crypto_authenc_esn_decrypt_tail(req, 0);
-	authenc_esn_request_complete(req, err);
+	aead_request_complete(req, err);
 }
 
 static int crypto_authenc_esn_decrypt(struct aead_request *req)
@@ -348,7 +347,7 @@ static int crypto_authenc_esn_init_tfm(struct crypto_aead *tfm)
 	if (IS_ERR(auth))
 		return PTR_ERR(auth);
 
-	enc = crypto_spawn_skcipher(&ictx->enc);
+	enc = crypto_spawn_skcipher2(&ictx->enc);
 	err = PTR_ERR(enc);
 	if (IS_ERR(enc))
 		goto err_free_ahash;
@@ -447,9 +446,9 @@ static int crypto_authenc_esn_create(struct crypto_template *tmpl,
 		goto err_free_inst;
 
 	crypto_set_skcipher_spawn(&ctx->enc, aead_crypto_instance(inst));
-	err = crypto_grab_skcipher(&ctx->enc, enc_name, 0,
-				   crypto_requires_sync(algt->type,
-							algt->mask));
+	err = crypto_grab_skcipher2(&ctx->enc, enc_name, 0,
+				    crypto_requires_sync(algt->type,
+							 algt->mask));
 	if (err)
 		goto err_drop_auth;
 

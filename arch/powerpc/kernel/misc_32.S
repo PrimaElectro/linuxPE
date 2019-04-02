@@ -41,6 +41,7 @@
  * We store the saved ksp_limit in the unused part
  * of the STACK_FRAME_OVERHEAD
  */
+#ifndef CONFIG_PREEMPT_RT_FULL
 _GLOBAL(call_do_softirq)
 	mflr	r0
 	stw	r0,4(r1)
@@ -57,6 +58,7 @@ _GLOBAL(call_do_softirq)
 	stw	r10,THREAD+KSP_LIMIT(r2)
 	mtlr	r0
 	blr
+#endif
 
 /*
  * void call_do_irq(struct pt_regs *regs, struct thread_info *irqtp);
@@ -244,7 +246,8 @@ _GLOBAL(_nmask_and_or_msr)
  */
 _GLOBAL(real_readb)
 	mfmsr	r7
-	rlwinm	r0,r7,0,~MSR_DR
+	ori	r0,r7,MSR_DR
+	xori	r0,r0,MSR_DR
 	sync
 	mtmsr	r0
 	sync
@@ -261,7 +264,8 @@ _GLOBAL(real_readb)
  */
 _GLOBAL(real_writeb)
 	mfmsr	r7
-	rlwinm	r0,r7,0,~MSR_DR
+	ori	r0,r7,MSR_DR
+	xori	r0,r0,MSR_DR
 	sync
 	mtmsr	r0
 	sync
@@ -612,7 +616,7 @@ _GLOBAL(start_secondary_resume)
 _GLOBAL(__main)
 	blr
 
-#ifdef CONFIG_KEXEC_CORE
+#ifdef CONFIG_KEXEC
 	/*
 	 * Must be relocatable PIC code callable as a C function.
 	 */

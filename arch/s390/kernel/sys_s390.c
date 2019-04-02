@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  S390 version
  *    Copyright IBM Corp. 1999, 2000
@@ -28,7 +27,7 @@
 #include <linux/personality.h>
 #include <linux/unistd.h>
 #include <linux/ipc.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include "entry.h"
 
 /*

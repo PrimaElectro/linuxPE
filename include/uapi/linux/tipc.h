@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause) */
 /*
  * include/uapi/linux/tipc.h: Header for TIPC socket interface
  *
- * Copyright (c) 2003-2006, 2015-2016 Ericsson AB
+ * Copyright (c) 2003-2006, Ericsson AB
  * Copyright (c) 2005, 2010-2011, Wind River Systems
  * All rights reserved.
  *
@@ -221,7 +220,7 @@ struct sockaddr_tipc {
 #define TIPC_DESTNAME	3	/* destination name */
 
 /*
- * TIPC-specific socket option names
+ * TIPC-specific socket option values
  */
 
 #define TIPC_IMPORTANCE		127	/* Default: TIPC_LOW_IMPORTANCE */
@@ -230,8 +229,6 @@ struct sockaddr_tipc {
 #define TIPC_CONN_TIMEOUT	130	/* Default: 8000 (ms)  */
 #define TIPC_NODE_RECVQ_DEPTH	131	/* Default: none (read only) */
 #define TIPC_SOCK_RECVQ_DEPTH	132	/* Default: none (read only) */
-#define TIPC_MCAST_BROADCAST    133     /* Default: TIPC selects. No arg */
-#define TIPC_MCAST_REPLICAST    134     /* Default: TIPC selects. No arg */
 
 /*
  * Maximum sizes of TIPC bearer-related names (including terminating NULL)

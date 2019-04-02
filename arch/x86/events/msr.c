@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/perf_event.h>
-#include <linux/nospec.h>
 #include <asm/intel-family.h>
 
 enum perf_msr_id {
@@ -65,14 +63,6 @@ static bool test_intel(int idx)
 	case INTEL_FAM6_ATOM_SILVERMONT1:
 	case INTEL_FAM6_ATOM_SILVERMONT2:
 	case INTEL_FAM6_ATOM_AIRMONT:
-
-	case INTEL_FAM6_ATOM_GOLDMONT:
-	case INTEL_FAM6_ATOM_DENVERTON:
-
-	case INTEL_FAM6_ATOM_GEMINI_LAKE:
-
-	case INTEL_FAM6_XEON_PHI_KNL:
-	case INTEL_FAM6_XEON_PHI_KNM:
 		if (idx == PERF_MSR_SMI)
 			return true;
 		break;
@@ -146,6 +136,9 @@ static int msr_event_init(struct perf_event *event)
 	if (event->attr.type != event->pmu->type)
 		return -ENOENT;
 
+	if (cfg >= PERF_MSR_EVENT_MAX)
+		return -EINVAL;
+
 	/* unsupported modes and filters */
 	if (event->attr.exclude_user   ||
 	    event->attr.exclude_kernel ||
@@ -155,11 +148,6 @@ static int msr_event_init(struct perf_event *event)
 	    event->attr.exclude_guest  ||
 	    event->attr.sample_period) /* no sampling */
 		return -EINVAL;
-
-	if (cfg >= PERF_MSR_EVENT_MAX)
-		return -EINVAL;
-
-	cfg = array_index_nospec((unsigned long)cfg, PERF_MSR_EVENT_MAX);
 
 	if (!msr[cfg].attr)
 		return -EINVAL;

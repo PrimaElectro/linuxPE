@@ -19,6 +19,9 @@
 
 #include <asm-generic/sections.h>
 
+/* Write-once data is writable only till the end of initialization. */
+extern char __w1data_begin[], __w1data_end[];
+
 extern char vdso_start[], vdso_end[];
 #ifdef CONFIG_COMPAT
 extern char vdso32_start[], vdso32_end[];

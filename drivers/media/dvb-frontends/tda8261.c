@@ -152,12 +152,13 @@ static int tda8261_set_params(struct dvb_frontend *fe)
 	return 0;
 }
 
-static void tda8261_release(struct dvb_frontend *fe)
+static int tda8261_release(struct dvb_frontend *fe)
 {
 	struct tda8261_state *state = fe->tuner_priv;
 
 	fe->tuner_priv = NULL;
 	kfree(state);
+	return 0;
 }
 
 static const struct dvb_tuner_ops tda8261_ops = {

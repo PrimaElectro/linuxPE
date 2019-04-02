@@ -25,7 +25,6 @@
 #include "rootnv50.h"
 
 #include <core/client.h>
-#include <core/notify.h>
 #include <core/ramht.h>
 #include <engine/dma.h>
 
@@ -154,7 +153,7 @@ nv50_disp_chan_uevent = {
 	.fini = nv50_disp_chan_uevent_fini,
 };
 
-static int
+int
 nv50_disp_chan_rd32(struct nvkm_object *object, u64 addr, u32 *data)
 {
 	struct nv50_disp_chan *chan = nv50_disp_chan(object);
@@ -164,7 +163,7 @@ nv50_disp_chan_rd32(struct nvkm_object *object, u64 addr, u32 *data)
 	return 0;
 }
 
-static int
+int
 nv50_disp_chan_wr32(struct nvkm_object *object, u64 addr, u32 data)
 {
 	struct nv50_disp_chan *chan = nv50_disp_chan(object);
@@ -174,7 +173,7 @@ nv50_disp_chan_wr32(struct nvkm_object *object, u64 addr, u32 data)
 	return 0;
 }
 
-static int
+int
 nv50_disp_chan_ntfy(struct nvkm_object *object, u32 type,
 		    struct nvkm_event **pevent)
 {
@@ -190,7 +189,7 @@ nv50_disp_chan_ntfy(struct nvkm_object *object, u32 type,
 	return -EINVAL;
 }
 
-static int
+int
 nv50_disp_chan_map(struct nvkm_object *object, u64 *addr, u32 *size)
 {
 	struct nv50_disp_chan *chan = nv50_disp_chan(object);

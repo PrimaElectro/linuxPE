@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2017  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2007-2016  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner, Simon Wunderlich
  *
@@ -23,7 +23,6 @@
 #include <linux/crc32c.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
-#include <linux/genetlink.h>
 #include <linux/if_ether.h>
 #include <linux/if_vlan.h>
 #include <linux/init.h>
@@ -45,7 +44,6 @@
 #include <linux/workqueue.h>
 #include <net/dsfield.h>
 #include <net/rtnetlink.h>
-#include <uapi/linux/batman_adv.h>
 
 #include "bat_algo.h"
 #include "bat_iv_ogm.h"
@@ -162,7 +160,7 @@ int batadv_mesh_init(struct net_device *soft_iface)
 
 	INIT_HLIST_HEAD(&bat_priv->forw_bat_list);
 	INIT_HLIST_HEAD(&bat_priv->forw_bcast_list);
-	INIT_HLIST_HEAD(&bat_priv->gw.gateway_list);
+	INIT_HLIST_HEAD(&bat_priv->gw.list);
 #ifdef CONFIG_BATMAN_ADV_MCAST
 	INIT_HLIST_HEAD(&bat_priv->mcast.want_all_unsnoopables_list);
 	INIT_HLIST_HEAD(&bat_priv->mcast.want_all_ipv4_list);
@@ -404,8 +402,6 @@ void batadv_skb_set_priority(struct sk_buff *skb, int offset)
 static int batadv_recv_unhandled_packet(struct sk_buff *skb,
 					struct batadv_hard_iface *recv_if)
 {
-	kfree_skb(skb);
-
 	return NET_RX_DROP;
 }
 
@@ -420,6 +416,7 @@ int batadv_batman_skb_recv(struct sk_buff *skb, struct net_device *dev,
 	struct batadv_ogm_packet *batadv_ogm_packet;
 	struct batadv_hard_iface *hard_iface;
 	u8 idx;
+	int ret;
 
 	hard_iface = container_of(ptype, struct batadv_hard_iface,
 				  batman_adv_ptype);
@@ -469,8 +466,14 @@ int batadv_batman_skb_recv(struct sk_buff *skb, struct net_device *dev,
 	/* reset control block to avoid left overs from previous users */
 	memset(skb->cb, 0, sizeof(struct batadv_skb_cb));
 
+	/* all receive handlers return whether they received or reused
+	 * the supplied skb. if not, we have to free the skb.
+	 */
 	idx = batadv_ogm_packet->packet_type;
-	(*batadv_rx_handler[idx])(skb, hard_iface);
+	ret = (*batadv_rx_handler[idx])(skb, hard_iface);
+
+	if (ret == NET_RX_DROP)
+		kfree_skb(skb);
 
 	batadv_hardif_put(hard_iface);
 
@@ -515,9 +518,6 @@ static void batadv_recv_handler_init(void)
 	BUILD_BUG_ON(sizeof(struct batadv_tvlv_tt_vlan_data) != 8);
 	BUILD_BUG_ON(sizeof(struct batadv_tvlv_tt_change) != 12);
 	BUILD_BUG_ON(sizeof(struct batadv_tvlv_roam_adv) != 8);
-
-	i = FIELD_SIZEOF(struct sk_buff, cb);
-	BUILD_BUG_ON(sizeof(struct batadv_skb_cb) > i);
 
 	/* broadcast packet */
 	batadv_rx_handler[BATADV_BCAST] = batadv_recv_bcast_packet;
@@ -653,4 +653,3 @@ MODULE_DESCRIPTION(BATADV_DRIVER_DESC);
 MODULE_SUPPORTED_DEVICE(BATADV_DRIVER_DEVICE);
 MODULE_VERSION(BATADV_SOURCE_VERSION);
 MODULE_ALIAS_RTNL_LINK("batadv");
-MODULE_ALIAS_GENL_FAMILY(BATADV_NL_NAME);

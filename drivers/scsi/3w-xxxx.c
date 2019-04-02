@@ -1,7 +1,7 @@
 /* 
    3w-xxxx.c -- 3ware Storage Controller device driver for Linux.
 
-   Written By: Adam Radford <aradford@gmail.com>
+   Written By: Adam Radford <linuxraid@lsi.com>
    Modifications By: Joel Jacobson <linux@3ware.com>
    		     Arnaldo Carvalho de Melo <acme@conectiva.com.br>
                      Brad Strand <linux@3ware.com>
@@ -47,9 +47,10 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
 
    Bugs/Comments/Suggestions should be mailed to:                            
+   linuxraid@lsi.com
 
-   aradford@gmail.com
-
+   For more information, goto:
+   http://www.lsi.com
 
    History
    -------
@@ -210,7 +211,7 @@
 #include <linux/mutex.h>
 #include <asm/io.h>
 #include <asm/irq.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_tcq.h>
@@ -1032,9 +1033,6 @@ static int tw_chrdev_open(struct inode *inode, struct file *file)
 	unsigned int minor_number;
 
 	dprintk(KERN_WARNING "3w-xxxx: tw_ioctl_open()\n");
-
-	if (!capable(CAP_SYS_ADMIN))
-		return -EACCES;
 
 	minor_number = iminor(inode);
 	if (minor_number >= tw_device_extension_count)
@@ -2280,7 +2278,6 @@ static int tw_probe(struct pci_dev *pdev, const struct pci_device_id *dev_id)
 
 	if (tw_initialize_device_extension(tw_dev)) {
 		printk(KERN_WARNING "3w-xxxx: Failed to initialize device extension.");
-		retval = -ENOMEM;
 		goto out_free_device_extension;
 	}
 
@@ -2295,7 +2292,6 @@ static int tw_probe(struct pci_dev *pdev, const struct pci_device_id *dev_id)
 	tw_dev->base_addr = pci_resource_start(pdev, 0);
 	if (!tw_dev->base_addr) {
 		printk(KERN_WARNING "3w-xxxx: Failed to get io address.");
-		retval = -ENOMEM;
 		goto out_release_mem_region;
 	}
 

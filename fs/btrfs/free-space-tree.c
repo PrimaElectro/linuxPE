@@ -17,7 +17,7 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/sched/mm.h>
+#include <linux/vmalloc.h>
 #include "ctree.h"
 #include "disk-io.h"
 #include "locking.h"
@@ -39,7 +39,7 @@ void set_free_space_tree_thresholds(struct btrfs_block_group_cache *cache)
 	 * We convert to bitmaps when the disk space required for using extents
 	 * exceeds that required for using bitmaps.
 	 */
-	bitmap_range = cache->fs_info->sectorsize * BTRFS_FREE_SPACE_BITMAP_BITS;
+	bitmap_range = cache->sectorsize * BTRFS_FREE_SPACE_BITMAP_BITS;
 	num_bitmaps = div_u64(cache->key.offset + bitmap_range - 1,
 			      bitmap_range);
 	bitmap_size = sizeof(struct btrfs_item) + BTRFS_FREE_SPACE_BITMAP_SIZE;
@@ -153,21 +153,22 @@ static inline u32 free_space_bitmap_size(u64 size, u32 sectorsize)
 
 static u8 *alloc_bitmap(u32 bitmap_size)
 {
-	u8 *ret;
-	unsigned int nofs_flag;
+	void *mem;
 
 	/*
-	 * GFP_NOFS doesn't work with kvmalloc(), but we really can't recurse
-	 * into the filesystem as the free space bitmap can be modified in the
-	 * critical section of a transaction commit.
-	 *
-	 * TODO: push the memalloc_nofs_{save,restore}() to the caller where we
-	 * know that recursion is unsafe.
+	 * The allocation size varies, observed numbers were < 4K up to 16K.
+	 * Using vmalloc unconditionally would be too heavy, we'll try
+	 * contiguous allocations first.
 	 */
-	nofs_flag = memalloc_nofs_save();
-	ret = kvzalloc(bitmap_size, GFP_KERNEL);
-	memalloc_nofs_restore(nofs_flag);
-	return ret;
+	if  (bitmap_size <= PAGE_SIZE)
+		return kzalloc(bitmap_size, GFP_NOFS);
+
+	mem = kzalloc(bitmap_size, GFP_NOFS | __GFP_NOWARN);
+	if (mem)
+		return mem;
+
+	return __vmalloc(bitmap_size, GFP_NOFS | __GFP_HIGHMEM | __GFP_ZERO,
+			 PAGE_KERNEL);
 }
 
 int convert_free_space_to_bitmaps(struct btrfs_trans_handle *trans,
@@ -188,7 +189,7 @@ int convert_free_space_to_bitmaps(struct btrfs_trans_handle *trans,
 	int ret;
 
 	bitmap_size = free_space_bitmap_size(block_group->key.offset,
-					     fs_info->sectorsize);
+					     block_group->sectorsize);
 	bitmap = alloc_bitmap(bitmap_size);
 	if (!bitmap) {
 		ret = -ENOMEM;
@@ -226,9 +227,9 @@ int convert_free_space_to_bitmaps(struct btrfs_trans_handle *trans,
 				ASSERT(found_key.objectid + found_key.offset <= end);
 
 				first = div_u64(found_key.objectid - start,
-						fs_info->sectorsize);
+						block_group->sectorsize);
 				last = div_u64(found_key.objectid + found_key.offset - start,
-					       fs_info->sectorsize);
+					       block_group->sectorsize);
 				le_bitmap_set(bitmap, first, last - first);
 
 				extent_count++;
@@ -269,7 +270,7 @@ int convert_free_space_to_bitmaps(struct btrfs_trans_handle *trans,
 	}
 
 	bitmap_cursor = bitmap;
-	bitmap_range = fs_info->sectorsize * BTRFS_FREE_SPACE_BITMAP_BITS;
+	bitmap_range = block_group->sectorsize * BTRFS_FREE_SPACE_BITMAP_BITS;
 	i = start;
 	while (i < end) {
 		unsigned long ptr;
@@ -278,7 +279,7 @@ int convert_free_space_to_bitmaps(struct btrfs_trans_handle *trans,
 
 		extent_size = min(end - i, bitmap_range);
 		data_size = free_space_bitmap_size(extent_size,
-						   fs_info->sectorsize);
+						   block_group->sectorsize);
 
 		key.objectid = i;
 		key.type = BTRFS_FREE_SPACE_BITMAP_KEY;
@@ -329,7 +330,7 @@ int convert_free_space_to_extents(struct btrfs_trans_handle *trans,
 	int ret;
 
 	bitmap_size = free_space_bitmap_size(block_group->key.offset,
-					     fs_info->sectorsize);
+					     block_group->sectorsize);
 	bitmap = alloc_bitmap(bitmap_size);
 	if (!bitmap) {
 		ret = -ENOMEM;
@@ -369,11 +370,11 @@ int convert_free_space_to_extents(struct btrfs_trans_handle *trans,
 				ASSERT(found_key.objectid + found_key.offset <= end);
 
 				bitmap_pos = div_u64(found_key.objectid - start,
-						     fs_info->sectorsize *
+						     block_group->sectorsize *
 						     BITS_PER_BYTE);
 				bitmap_cursor = bitmap + bitmap_pos;
 				data_size = free_space_bitmap_size(found_key.offset,
-								   fs_info->sectorsize);
+								   block_group->sectorsize);
 
 				ptr = btrfs_item_ptr_offset(leaf, path->slots[0] - 1);
 				read_extent_buffer(leaf, bitmap_cursor, ptr,
@@ -424,7 +425,7 @@ int convert_free_space_to_extents(struct btrfs_trans_handle *trans,
 			extent_count++;
 		}
 		prev_bit = bit;
-		offset += fs_info->sectorsize;
+		offset += block_group->sectorsize;
 		bitnr++;
 	}
 	if (prev_bit == 1) {
@@ -516,8 +517,7 @@ int free_space_test_bit(struct btrfs_block_group_cache *block_group,
 	ASSERT(offset >= found_start && offset < found_end);
 
 	ptr = btrfs_item_ptr_offset(leaf, path->slots[0]);
-	i = div_u64(offset - found_start,
-		    block_group->fs_info->sectorsize);
+	i = div_u64(offset - found_start, block_group->sectorsize);
 	return !!extent_buffer_test_bit(leaf, ptr, i);
 }
 
@@ -525,7 +525,6 @@ static void free_space_set_bits(struct btrfs_block_group_cache *block_group,
 				struct btrfs_path *path, u64 *start, u64 *size,
 				int bit)
 {
-	struct btrfs_fs_info *fs_info = block_group->fs_info;
 	struct extent_buffer *leaf;
 	struct btrfs_key key;
 	u64 end = *start + *size;
@@ -545,8 +544,8 @@ static void free_space_set_bits(struct btrfs_block_group_cache *block_group,
 		end = found_end;
 
 	ptr = btrfs_item_ptr_offset(leaf, path->slots[0]);
-	first = div_u64(*start - found_start, fs_info->sectorsize);
-	last = div_u64(end - found_start, fs_info->sectorsize);
+	first = div_u64(*start - found_start, block_group->sectorsize);
+	last = div_u64(end - found_start, block_group->sectorsize);
 	if (bit)
 		extent_buffer_bitmap_set(leaf, ptr, first, last - first);
 	else
@@ -607,7 +606,7 @@ static int modify_free_space_bitmap(struct btrfs_trans_handle *trans,
 	 * that block is within the block group.
 	 */
 	if (start > block_group->key.objectid) {
-		u64 prev_block = start - block_group->fs_info->sectorsize;
+		u64 prev_block = start - block_group->sectorsize;
 
 		key.objectid = prev_block;
 		key.type = (u8)-1;
@@ -1122,7 +1121,7 @@ static int populate_free_space_tree(struct btrfs_trans_handle *trans,
 			}
 			start = key.objectid;
 			if (key.type == BTRFS_METADATA_ITEM_KEY)
-				start += fs_info->nodesize;
+				start += fs_info->tree_root->nodesize;
 			else
 				start += key.offset;
 		} else if (key.type == BTRFS_BLOCK_GROUP_ITEM_KEY) {
@@ -1188,12 +1187,16 @@ int btrfs_create_free_space_tree(struct btrfs_fs_info *fs_info)
 	btrfs_set_fs_compat_ro(fs_info, FREE_SPACE_TREE_VALID);
 	clear_bit(BTRFS_FS_CREATING_FREE_SPACE_TREE, &fs_info->flags);
 
-	return btrfs_commit_transaction(trans);
+	ret = btrfs_commit_transaction(trans, tree_root);
+	if (ret)
+		return ret;
+
+	return 0;
 
 abort:
 	clear_bit(BTRFS_FS_CREATING_FREE_SPACE_TREE, &fs_info->flags);
 	btrfs_abort_transaction(trans, ret);
-	btrfs_end_transaction(trans);
+	btrfs_end_transaction(trans, tree_root);
 	return ret;
 }
 
@@ -1257,14 +1260,14 @@ int btrfs_clear_free_space_tree(struct btrfs_fs_info *fs_info)
 	if (ret)
 		goto abort;
 
-	ret = btrfs_del_root(trans, fs_info, &free_space_root->root_key);
+	ret = btrfs_del_root(trans, tree_root, &free_space_root->root_key);
 	if (ret)
 		goto abort;
 
 	list_del(&free_space_root->dirty_list);
 
 	btrfs_tree_lock(free_space_root->node);
-	clean_tree_block(fs_info, free_space_root->node);
+	clean_tree_block(trans, tree_root->fs_info, free_space_root->node);
 	btrfs_tree_unlock(free_space_root->node);
 	btrfs_free_tree_block(trans, free_space_root, free_space_root->node,
 			      0, 1);
@@ -1273,11 +1276,15 @@ int btrfs_clear_free_space_tree(struct btrfs_fs_info *fs_info)
 	free_extent_buffer(free_space_root->commit_root);
 	kfree(free_space_root);
 
-	return btrfs_commit_transaction(trans);
+	ret = btrfs_commit_transaction(trans, tree_root);
+	if (ret)
+		return ret;
+
+	return 0;
 
 abort:
 	btrfs_abort_transaction(trans, ret);
-	btrfs_end_transaction(trans);
+	btrfs_end_transaction(trans, tree_root);
 	return ret;
 }
 
@@ -1466,7 +1473,7 @@ static int load_free_space_bitmaps(struct btrfs_caching_control *caching_ctl,
 				extent_count++;
 			}
 			prev_bit = bit;
-			offset += fs_info->sectorsize;
+			offset += block_group->sectorsize;
 		}
 	}
 	if (prev_bit == 1) {

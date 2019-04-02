@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2014-2016 Christoph Hellwig.
  */
@@ -11,7 +10,6 @@
 #include <linux/nfsd/debug.h>
 #include <scsi/scsi_proto.h>
 #include <scsi/scsi_common.h>
-#include <scsi/scsi_request.h>
 
 #include "blocklayoutxdr.h"
 #include "pnfs.h"
@@ -215,41 +213,36 @@ static int nfsd4_scsi_identify_device(struct block_device *bdev,
 {
 	struct request_queue *q = bdev->bd_disk->queue;
 	struct request *rq;
-	struct scsi_request *req;
 	size_t bufflen = 252, len, id_len;
 	u8 *buf, *d, type, assoc;
 	int error;
-
-	if (WARN_ON_ONCE(!blk_queue_scsi_passthrough(q)))
-		return -EINVAL;
 
 	buf = kzalloc(bufflen, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
-	rq = blk_get_request(q, REQ_OP_SCSI_IN, GFP_KERNEL);
+	rq = blk_get_request(q, READ, GFP_KERNEL);
 	if (IS_ERR(rq)) {
 		error = -ENOMEM;
 		goto out_free_buf;
 	}
-	req = scsi_req(rq);
+	blk_rq_set_block_pc(rq);
 
 	error = blk_rq_map_kern(q, rq, buf, bufflen, GFP_KERNEL);
 	if (error)
 		goto out_put_request;
 
-	req->cmd[0] = INQUIRY;
-	req->cmd[1] = 1;
-	req->cmd[2] = 0x83;
-	req->cmd[3] = bufflen >> 8;
-	req->cmd[4] = bufflen & 0xff;
-	req->cmd_len = COMMAND_SIZE(INQUIRY);
+	rq->cmd[0] = INQUIRY;
+	rq->cmd[1] = 1;
+	rq->cmd[2] = 0x83;
+	rq->cmd[3] = bufflen >> 8;
+	rq->cmd[4] = bufflen & 0xff;
+	rq->cmd_len = COMMAND_SIZE(INQUIRY);
 
-	blk_execute_rq(rq->q, NULL, rq, 1);
-	if (req->result) {
+	error = blk_execute_rq(rq->q, NULL, rq, 1);
+	if (error) {
 		pr_err("pNFS: INQUIRY 0x83 failed with: %x\n",
-			req->result);
-		error = -EIO;
+			rq->errors);
 		goto out_put_request;
 	}
 

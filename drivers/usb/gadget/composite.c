@@ -196,7 +196,7 @@ int config_ep_by_speed(struct usb_gadget *g,
 
 ep_found:
 	/* commit results */
-	_ep->maxpacket = usb_endpoint_maxp(chosen_desc);
+	_ep->maxpacket = usb_endpoint_maxp(chosen_desc) & 0x7ff;
 	_ep->desc = chosen_desc;
 	_ep->comp_desc = NULL;
 	_ep->maxburst = 0;
@@ -204,7 +204,7 @@ ep_found:
 
 	if (g->speed == USB_SPEED_HIGH && (usb_endpoint_xfer_isoc(_ep->desc) ||
 				usb_endpoint_xfer_int(_ep->desc)))
-		_ep->mult = usb_endpoint_maxp_mult(_ep->desc);
+		_ep->mult = ((usb_endpoint_maxp(_ep->desc) & 0x1800) >> 11) + 1;
 
 	if (!want_comp_desc)
 		return 0;
@@ -318,9 +318,6 @@ void usb_remove_function(struct usb_configuration *c, struct usb_function *f)
 	list_del(&f->list);
 	if (f->unbind)
 		f->unbind(c, f);
-
-	if (f->bind_deactivated)
-		usb_function_activate(f);
 }
 EXPORT_SYMBOL_GPL(usb_remove_function);
 
@@ -613,6 +610,7 @@ static int count_configs(struct usb_composite_dev *cdev, unsigned type)
 static int bos_desc(struct usb_composite_dev *cdev)
 {
 	struct usb_ext_cap_descriptor	*usb_ext;
+	struct usb_ss_cap_descriptor	*ss_cap;
 	struct usb_dcd_config_params	dcd_config_params;
 	struct usb_bos_descriptor	*bos = cdev->req->buf;
 
@@ -638,35 +636,29 @@ static int bos_desc(struct usb_composite_dev *cdev)
 	 * The Superspeed USB Capability descriptor shall be implemented by all
 	 * SuperSpeed devices.
 	 */
-	if (gadget_is_superspeed(cdev->gadget)) {
-		struct usb_ss_cap_descriptor *ss_cap;
+	ss_cap = cdev->req->buf + le16_to_cpu(bos->wTotalLength);
+	bos->bNumDeviceCaps++;
+	le16_add_cpu(&bos->wTotalLength, USB_DT_USB_SS_CAP_SIZE);
+	ss_cap->bLength = USB_DT_USB_SS_CAP_SIZE;
+	ss_cap->bDescriptorType = USB_DT_DEVICE_CAPABILITY;
+	ss_cap->bDevCapabilityType = USB_SS_CAP_TYPE;
+	ss_cap->bmAttributes = 0; /* LTM is not supported yet */
+	ss_cap->wSpeedSupported = cpu_to_le16(USB_LOW_SPEED_OPERATION |
+				USB_FULL_SPEED_OPERATION |
+				USB_HIGH_SPEED_OPERATION |
+				USB_5GBPS_OPERATION);
+	ss_cap->bFunctionalitySupport = USB_LOW_SPEED_OPERATION;
 
-		ss_cap = cdev->req->buf + le16_to_cpu(bos->wTotalLength);
-		bos->bNumDeviceCaps++;
-		le16_add_cpu(&bos->wTotalLength, USB_DT_USB_SS_CAP_SIZE);
-		ss_cap->bLength = USB_DT_USB_SS_CAP_SIZE;
-		ss_cap->bDescriptorType = USB_DT_DEVICE_CAPABILITY;
-		ss_cap->bDevCapabilityType = USB_SS_CAP_TYPE;
-		ss_cap->bmAttributes = 0; /* LTM is not supported yet */
-		ss_cap->wSpeedSupported = cpu_to_le16(USB_LOW_SPEED_OPERATION |
-						      USB_FULL_SPEED_OPERATION |
-						      USB_HIGH_SPEED_OPERATION |
-						      USB_5GBPS_OPERATION);
-		ss_cap->bFunctionalitySupport = USB_LOW_SPEED_OPERATION;
-
-		/* Get Controller configuration */
-		if (cdev->gadget->ops->get_config_params) {
-			cdev->gadget->ops->get_config_params(
-				&dcd_config_params);
-		} else {
-			dcd_config_params.bU1devExitLat =
-				USB_DEFAULT_U1_DEV_EXIT_LAT;
-			dcd_config_params.bU2DevExitLat =
-				cpu_to_le16(USB_DEFAULT_U2_DEV_EXIT_LAT);
-		}
-		ss_cap->bU1devExitLat = dcd_config_params.bU1devExitLat;
-		ss_cap->bU2DevExitLat = dcd_config_params.bU2DevExitLat;
+	/* Get Controller configuration */
+	if (cdev->gadget->ops->get_config_params)
+		cdev->gadget->ops->get_config_params(&dcd_config_params);
+	else {
+		dcd_config_params.bU1devExitLat = USB_DEFAULT_U1_DEV_EXIT_LAT;
+		dcd_config_params.bU2DevExitLat =
+			cpu_to_le16(USB_DEFAULT_U2_DEV_EXIT_LAT);
 	}
+	ss_cap->bU1devExitLat = dcd_config_params.bU1devExitLat;
+	ss_cap->bU2DevExitLat = dcd_config_params.bU2DevExitLat;
 
 	/* The SuperSpeedPlus USB Device Capability descriptor */
 	if (gadget_is_superspeed_plus(cdev->gadget)) {
@@ -967,8 +959,12 @@ static void remove_config(struct usb_composite_dev *cdev,
 
 		f = list_first_entry(&config->functions,
 				struct usb_function, list);
-
-		usb_remove_function(config, f);
+		list_del(&f->list);
+		if (f->unbind) {
+			DBG(cdev, "unbind function '%s'/%p\n", f->name, f);
+			f->unbind(config, f);
+			/* may free memory for "f" */
+		}
 	}
 	list_del(&config->list);
 	if (config->unbind) {
@@ -1425,7 +1421,7 @@ static int count_ext_compat(struct usb_configuration *c)
 	return res;
 }
 
-static int fill_ext_compat(struct usb_configuration *c, u8 *buf)
+static void fill_ext_compat(struct usb_configuration *c, u8 *buf)
 {
 	int i, count;
 
@@ -1452,12 +1448,10 @@ static int fill_ext_compat(struct usb_configuration *c, u8 *buf)
 				buf += 23;
 			}
 			count += 24;
-			if (count + 24 >= USB_COMP_EP0_OS_DESC_BUFSIZ)
-				return count;
+			if (count >= 4096)
+				return;
 		}
 	}
-
-	return count;
 }
 
 static int count_ext_prop(struct usb_configuration *c, int interface)
@@ -1502,20 +1496,25 @@ static int fill_ext_prop(struct usb_configuration *c, int interface, u8 *buf)
 	struct usb_os_desc *d;
 	struct usb_os_desc_ext_prop *ext_prop;
 	int j, count, n, ret;
+	u8 *start = buf;
 
 	f = c->interface[interface];
-	count = 10; /* header length */
 	for (j = 0; j < f->os_desc_n; ++j) {
 		if (interface != f->os_desc_table[j].if_id)
 			continue;
 		d = f->os_desc_table[j].os_desc;
 		if (d)
 			list_for_each_entry(ext_prop, &d->ext_prop, entry) {
-				n = ext_prop->data_len +
+				/* 4kB minus header length */
+				n = buf - start;
+				if (n >= 4086)
+					return 0;
+
+				count = ext_prop->data_len +
 					ext_prop->name_len + 14;
-				if (count + n >= USB_COMP_EP0_OS_DESC_BUFSIZ)
-					return count;
-				usb_ext_prop_put_size(buf, n);
+				if (count > 4086 - n)
+					return -EINVAL;
+				usb_ext_prop_put_size(buf, count);
 				usb_ext_prop_put_type(buf, ext_prop->type);
 				ret = usb_ext_prop_put_name(buf, ext_prop->name,
 							    ext_prop->name_len);
@@ -1541,12 +1540,11 @@ static int fill_ext_prop(struct usb_configuration *c, int interface, u8 *buf)
 				default:
 					return -EINVAL;
 				}
-				buf += n;
-				count += n;
+				buf += count;
 			}
 	}
 
-	return count;
+	return 0;
 }
 
 /*
@@ -1608,10 +1606,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 					cdev->desc.bcdUSB = cpu_to_le16(0x0210);
 				}
 			} else {
-				if (gadget->lpm_capable)
-					cdev->desc.bcdUSB = cpu_to_le16(0x0201);
-				else
-					cdev->desc.bcdUSB = cpu_to_le16(0x0200);
+				cdev->desc.bcdUSB = cpu_to_le16(0x0200);
 			}
 
 			value = min(w_length, (u16) sizeof cdev->desc);
@@ -1642,8 +1637,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				value = min(w_length, (u16) value);
 			break;
 		case USB_DT_BOS:
-			if (gadget_is_superspeed(gadget) ||
-			    gadget->lpm_capable) {
+			if (gadget_is_superspeed(gadget)) {
 				value = bos_desc(cdev);
 				value = min(w_length, (u16) value);
 			}
@@ -1720,8 +1714,6 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		 */
 		if (w_value && !f->get_alt)
 			break;
-
-		spin_lock(&cdev->lock);
 		value = f->set_alt(f, w_index, w_value);
 		if (value == USB_GADGET_DELAYED_STATUS) {
 			DBG(cdev,
@@ -1731,7 +1723,6 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			DBG(cdev, "delayed_status count %d\n",
 					cdev->delayed_status);
 		}
-		spin_unlock(&cdev->lock);
 		break;
 	case USB_REQ_GET_INTERFACE:
 		if (ctrl->bRequestType != (USB_DIR_IN|USB_RECIP_INTERFACE))
@@ -1831,7 +1822,6 @@ unknown:
 			req->complete = composite_setup_complete;
 			buf = req->buf;
 			os_desc_cfg = cdev->os_desc_config;
-			w_length = min_t(u16, w_length, USB_COMP_EP0_OS_DESC_BUFSIZ);
 			memset(buf, 0, w_length);
 			buf[5] = 0x01;
 			switch (ctrl->bRequestType & USB_RECIP_MASK) {
@@ -1855,8 +1845,8 @@ unknown:
 					count += 16; /* header */
 					put_unaligned_le32(count, buf);
 					buf += 16;
-					value = fill_ext_compat(os_desc_cfg, buf);
-					value = min_t(u16, w_length, value);
+					fill_ext_compat(os_desc_cfg, buf);
+					value = w_length;
 				}
 				break;
 			case USB_RECIP_INTERFACE:
@@ -1885,7 +1875,8 @@ unknown:
 							      interface, buf);
 					if (value < 0)
 						return value;
-					value = min_t(u16, w_length, value);
+
+					value = w_length;
 				}
 				break;
 			}
@@ -2160,8 +2151,8 @@ int composite_os_desc_req_prepare(struct usb_composite_dev *cdev,
 		goto end;
 	}
 
-	cdev->os_desc_req->buf = kmalloc(USB_COMP_EP0_OS_DESC_BUFSIZ,
-					 GFP_KERNEL);
+	/* OS feature descriptor length <= 4kB */
+	cdev->os_desc_req->buf = kmalloc(4096, GFP_KERNEL);
 	if (!cdev->os_desc_req->buf) {
 		ret = -ENOMEM;
 		usb_ep_free_request(ep0, cdev->os_desc_req);
@@ -2408,8 +2399,18 @@ EXPORT_SYMBOL_GPL(usb_composite_setup_continue);
 
 static char *composite_default_mfr(struct usb_gadget *gadget)
 {
-	return kasprintf(GFP_KERNEL, "%s %s with %s", init_utsname()->sysname,
-			 init_utsname()->release, gadget->name);
+	char *mfr;
+	int len;
+
+	len = snprintf(NULL, 0, "%s %s with %s", init_utsname()->sysname,
+			init_utsname()->release, gadget->name);
+	len++;
+	mfr = kmalloc(len, GFP_KERNEL);
+	if (!mfr)
+		return NULL;
+	snprintf(mfr, len, "%s %s with %s", init_utsname()->sysname,
+			init_utsname()->release, gadget->name);
+	return mfr;
 }
 
 void usb_composite_overwrite_options(struct usb_composite_dev *cdev,

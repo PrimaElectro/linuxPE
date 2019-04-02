@@ -108,12 +108,12 @@ static char *err_text[] = {
 };
 
 struct opstack_op {
-	enum filter_op_ids op;
+	int op;
 	struct list_head list;
 };
 
 struct postfix_elt {
-	enum filter_op_ids op;
+	int op;
 	char *operand;
 	struct list_head list;
 };
@@ -145,50 +145,34 @@ struct pred_stack {
 
 /* If not of not match is equal to not of not, then it is a match */
 #define DEFINE_COMPARISON_PRED(type)					\
-static int filter_pred_LT_##type(struct filter_pred *pred, void *event)	\
+static int filter_pred_##type(struct filter_pred *pred, void *event)	\
 {									\
 	type *addr = (type *)(event + pred->offset);			\
 	type val = (type)pred->val;					\
-	int match = (*addr < val);					\
+	int match = 0;							\
+									\
+	switch (pred->op) {						\
+	case OP_LT:							\
+		match = (*addr < val);					\
+		break;							\
+	case OP_LE:							\
+		match = (*addr <= val);					\
+		break;							\
+	case OP_GT:							\
+		match = (*addr > val);					\
+		break;							\
+	case OP_GE:							\
+		match = (*addr >= val);					\
+		break;							\
+	case OP_BAND:							\
+		match = (*addr & val);					\
+		break;							\
+	default:							\
+		break;							\
+	}								\
+									\
 	return !!match == !pred->not;					\
-}									\
-static int filter_pred_LE_##type(struct filter_pred *pred, void *event)	\
-{									\
-	type *addr = (type *)(event + pred->offset);			\
-	type val = (type)pred->val;					\
-	int match = (*addr <= val);					\
-	return !!match == !pred->not;					\
-}									\
-static int filter_pred_GT_##type(struct filter_pred *pred, void *event)	\
-{									\
-	type *addr = (type *)(event + pred->offset);			\
-	type val = (type)pred->val;					\
-	int match = (*addr > val);					\
-	return !!match == !pred->not;					\
-}									\
-static int filter_pred_GE_##type(struct filter_pred *pred, void *event)	\
-{									\
-	type *addr = (type *)(event + pred->offset);			\
-	type val = (type)pred->val;					\
-	int match = (*addr >= val);					\
-	return !!match == !pred->not;					\
-}									\
-static int filter_pred_BAND_##type(struct filter_pred *pred, void *event) \
-{									\
-	type *addr = (type *)(event + pred->offset);			\
-	type val = (type)pred->val;					\
-	int match = !!(*addr & val);					\
-	return match == !pred->not;					\
-}									\
-static const filter_pred_fn_t pred_funcs_##type[] = {			\
-	filter_pred_LT_##type,						\
-	filter_pred_LE_##type,						\
-	filter_pred_GT_##type,						\
-	filter_pred_GE_##type,						\
-	filter_pred_BAND_##type,					\
-};
-
-#define PRED_FUNC_START			OP_LT
+}
 
 #define DEFINE_EQUALITY_PRED(size)					\
 static int filter_pred_##size(struct filter_pred *pred, void *event)	\
@@ -338,9 +322,6 @@ static int regex_match_full(char *str, struct regex *r, int len)
 
 static int regex_match_front(char *str, struct regex *r, int len)
 {
-	if (len < r->len)
-		return 0;
-
 	if (strncmp(str, r->pattern, r->len) == 0)
 		return 1;
 	return 0;
@@ -363,12 +344,6 @@ static int regex_match_end(char *str, struct regex *r, int len)
 	return 0;
 }
 
-static int regex_match_glob(char *str, struct regex *r, int len __maybe_unused)
-{
-	if (glob_match(r->pattern, str))
-		return 1;
-	return 0;
-}
 /**
  * filter_parse_regex - parse a basic regex
  * @buff:   the raw regex
@@ -403,23 +378,18 @@ enum regex_type filter_parse_regex(char *buff, int len, char **search, int *not)
 	for (i = 0; i < len; i++) {
 		if (buff[i] == '*') {
 			if (!i) {
+				*search = buff + 1;
 				type = MATCH_END_ONLY;
-			} else if (i == len - 1) {
+			} else {
 				if (type == MATCH_END_ONLY)
 					type = MATCH_MIDDLE_ONLY;
 				else
 					type = MATCH_FRONT_ONLY;
 				buff[i] = 0;
 				break;
-			} else {	/* pattern continues, use full glob */
-				return MATCH_GLOB;
 			}
-		} else if (strchr("[?\\", buff[i])) {
-			return MATCH_GLOB;
 		}
 	}
-	if (buff[0] == '*')
-		*search = buff + 1;
 
 	return type;
 }
@@ -449,9 +419,6 @@ static void filter_build_regex(struct filter_pred *pred)
 		break;
 	case MATCH_END_ONLY:
 		r->match = regex_match_end;
-		break;
-	case MATCH_GLOB:
-		r->match = regex_match_glob;
 		break;
 	}
 
@@ -704,7 +671,7 @@ static void append_filter_err(struct filter_parse_state *ps,
 	int pos = ps->lasterr_pos;
 	char *buf, *pbuf;
 
-	buf = (char *)__get_free_page(GFP_KERNEL);
+	buf = (char *)__get_free_page(GFP_TEMPORARY);
 	if (!buf)
 		return;
 
@@ -979,7 +946,7 @@ int filter_assign_type(const char *type)
 	return FILTER_OTHER;
 }
 
-static bool is_legal_op(struct ftrace_event_field *field, enum filter_op_ids op)
+static bool is_legal_op(struct ftrace_event_field *field, int op)
 {
 	if (is_string_field(field) &&
 	    (op != OP_EQ && op != OP_NE && op != OP_GLOB))
@@ -990,8 +957,8 @@ static bool is_legal_op(struct ftrace_event_field *field, enum filter_op_ids op)
 	return true;
 }
 
-static filter_pred_fn_t select_comparison_fn(enum filter_op_ids op,
-					    int field_size, int field_is_signed)
+static filter_pred_fn_t select_comparison_fn(int op, int field_size,
+					     int field_is_signed)
 {
 	filter_pred_fn_t fn = NULL;
 
@@ -1000,33 +967,33 @@ static filter_pred_fn_t select_comparison_fn(enum filter_op_ids op,
 		if (op == OP_EQ || op == OP_NE)
 			fn = filter_pred_64;
 		else if (field_is_signed)
-			fn = pred_funcs_s64[op - PRED_FUNC_START];
+			fn = filter_pred_s64;
 		else
-			fn = pred_funcs_u64[op - PRED_FUNC_START];
+			fn = filter_pred_u64;
 		break;
 	case 4:
 		if (op == OP_EQ || op == OP_NE)
 			fn = filter_pred_32;
 		else if (field_is_signed)
-			fn = pred_funcs_s32[op - PRED_FUNC_START];
+			fn = filter_pred_s32;
 		else
-			fn = pred_funcs_u32[op - PRED_FUNC_START];
+			fn = filter_pred_u32;
 		break;
 	case 2:
 		if (op == OP_EQ || op == OP_NE)
 			fn = filter_pred_16;
 		else if (field_is_signed)
-			fn = pred_funcs_s16[op - PRED_FUNC_START];
+			fn = filter_pred_s16;
 		else
-			fn = pred_funcs_u16[op - PRED_FUNC_START];
+			fn = filter_pred_u16;
 		break;
 	case 1:
 		if (op == OP_EQ || op == OP_NE)
 			fn = filter_pred_8;
 		else if (field_is_signed)
-			fn = pred_funcs_s8[op - PRED_FUNC_START];
+			fn = filter_pred_s8;
 		else
-			fn = pred_funcs_u8[op - PRED_FUNC_START];
+			fn = filter_pred_u8;
 		break;
 	}
 
@@ -1199,8 +1166,7 @@ static inline int append_operand_char(struct filter_parse_state *ps, char c)
 	return 0;
 }
 
-static int filter_opstack_push(struct filter_parse_state *ps,
-			       enum filter_op_ids op)
+static int filter_opstack_push(struct filter_parse_state *ps, int op)
 {
 	struct opstack_op *opstack_op;
 
@@ -1234,7 +1200,7 @@ static int filter_opstack_top(struct filter_parse_state *ps)
 static int filter_opstack_pop(struct filter_parse_state *ps)
 {
 	struct opstack_op *opstack_op;
-	enum filter_op_ids op;
+	int op;
 
 	if (filter_opstack_empty(ps))
 		return OP_NONE;
@@ -1279,7 +1245,7 @@ static int postfix_append_operand(struct filter_parse_state *ps, char *operand)
 	return 0;
 }
 
-static int postfix_append_op(struct filter_parse_state *ps, enum filter_op_ids op)
+static int postfix_append_op(struct filter_parse_state *ps, int op)
 {
 	struct postfix_elt *elt;
 
@@ -1309,8 +1275,8 @@ static void postfix_clear(struct filter_parse_state *ps)
 
 static int filter_parse(struct filter_parse_state *ps)
 {
-	enum filter_op_ids op, top_op;
 	int in_string = 0;
+	int op, top_op;
 	char ch;
 
 	while ((ch = infix_next(ps))) {
@@ -1401,8 +1367,7 @@ parse_operand:
 
 static struct filter_pred *create_pred(struct filter_parse_state *ps,
 				       struct trace_event_call *call,
-				       enum filter_op_ids op,
-				       char *operand1, char *operand2)
+				       int op, char *operand1, char *operand2)
 {
 	struct ftrace_event_field *field;
 	static struct filter_pred pred;

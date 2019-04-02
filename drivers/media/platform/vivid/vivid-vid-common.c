@@ -33,7 +33,7 @@ const struct v4l2_dv_timings_cap vivid_dv_timings_cap = {
 	.type = V4L2_DV_BT_656_1120,
 	/* keep this initialization for compatibility with GCC < 4.4.6 */
 	.reserved = { 0 },
-	V4L2_INIT_BT_TIMINGS(16, MAX_WIDTH, 16, MAX_HEIGHT, 14000000, 775000000,
+	V4L2_INIT_BT_TIMINGS(0, MAX_WIDTH, 0, MAX_HEIGHT, 14000000, 775000000,
 		V4L2_DV_BT_STD_CEA861 | V4L2_DV_BT_STD_DMT |
 		V4L2_DV_BT_STD_CVT | V4L2_DV_BT_STD_GTF,
 		V4L2_DV_BT_CAP_PROGRESSIVE | V4L2_DV_BT_CAP_INTERLACED)
@@ -48,7 +48,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUYV,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 		.data_offset = { PLANE0_DATA_OFFSET },
@@ -57,7 +57,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_UYVY,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -65,7 +65,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YVYU,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -73,7 +73,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_VYUY,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -81,7 +81,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUV422P,
 		.vdownsampling = { 1, 1, 1 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 1,
 	},
@@ -89,7 +89,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUV420,
 		.vdownsampling = { 1, 2, 2 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 1,
 	},
@@ -97,7 +97,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YVU420,
 		.vdownsampling = { 1, 2, 2 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 1,
 	},
@@ -105,7 +105,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV12,
 		.vdownsampling = { 1, 2 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -113,7 +113,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV21,
 		.vdownsampling = { 1, 2 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -121,7 +121,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV16,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -129,7 +129,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV61,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -137,7 +137,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV24,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -145,7 +145,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV42,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 16 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 1,
 	},
@@ -184,7 +184,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_GREY,
 		.vdownsampling = { 1 },
 		.bit_depth = { 8 },
-		.color_enc = TGP_COLOR_ENC_LUMA,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -192,7 +192,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_Y16,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_LUMA,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -200,7 +200,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_Y16_BE,
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
-		.color_enc = TGP_COLOR_ENC_LUMA,
+		.is_yuv   = true,
 		.planes   = 1,
 		.buffers = 1,
 	},
@@ -445,22 +445,6 @@ struct vivid_fmt vivid_formats[] = {
 		.planes   = 1,
 		.buffers = 1,
 	},
-	{
-		.fourcc   = V4L2_PIX_FMT_HSV24, /* HSV 24bits */
-		.color_enc = TGP_COLOR_ENC_HSV,
-		.vdownsampling = { 1 },
-		.bit_depth = { 24 },
-		.planes   = 1,
-		.buffers = 1,
-	},
-	{
-		.fourcc   = V4L2_PIX_FMT_HSV32, /* HSV 32bits */
-		.color_enc = TGP_COLOR_ENC_HSV,
-		.vdownsampling = { 1 },
-		.bit_depth = { 32 },
-		.planes   = 1,
-		.buffers = 1,
-	},
 
 	/* Multiplanar formats */
 
@@ -468,7 +452,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV16M,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 2,
 		.data_offset = { PLANE0_DATA_OFFSET, 0 },
@@ -477,7 +461,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV61M,
 		.vdownsampling = { 1, 1 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 2,
 		.data_offset = { 0, PLANE0_DATA_OFFSET },
@@ -486,7 +470,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUV420M,
 		.vdownsampling = { 1, 2, 2 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -494,7 +478,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YVU420M,
 		.vdownsampling = { 1, 2, 2 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -502,7 +486,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV12M,
 		.vdownsampling = { 1, 2 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 2,
 	},
@@ -510,7 +494,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_NV21M,
 		.vdownsampling = { 1, 2 },
 		.bit_depth = { 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 2,
 		.buffers = 2,
 	},
@@ -518,7 +502,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUV422M,
 		.vdownsampling = { 1, 1, 1 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -526,7 +510,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YVU422M,
 		.vdownsampling = { 1, 1, 1 },
 		.bit_depth = { 8, 4, 4 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -534,7 +518,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YUV444M,
 		.vdownsampling = { 1, 1, 1 },
 		.bit_depth = { 8, 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -542,7 +526,7 @@ struct vivid_fmt vivid_formats[] = {
 		.fourcc   = V4L2_PIX_FMT_YVU444M,
 		.vdownsampling = { 1, 1, 1 },
 		.bit_depth = { 8, 8, 8 },
-		.color_enc = TGP_COLOR_ENC_YCBCR,
+		.is_yuv   = true,
 		.planes   = 3,
 		.buffers = 3,
 	},
@@ -632,7 +616,6 @@ void fmt_sp2mp(const struct v4l2_format *sp_fmt, struct v4l2_format *mp_fmt)
 	mp->field = pix->field;
 	mp->colorspace = pix->colorspace;
 	mp->xfer_func = pix->xfer_func;
-	/* Also copies hsv_enc */
 	mp->ycbcr_enc = pix->ycbcr_enc;
 	mp->quantization = pix->quantization;
 	mp->num_planes = 1;
@@ -662,7 +645,6 @@ int fmt_sp2mp_func(struct file *file, void *priv,
 	pix->field = mp->field;
 	pix->colorspace = mp->colorspace;
 	pix->xfer_func = mp->xfer_func;
-	/* Also copies hsv_enc */
 	pix->ycbcr_enc = mp->ycbcr_enc;
 	pix->quantization = mp->quantization;
 	pix->sizeimage = ppix->sizeimage;
@@ -858,8 +840,7 @@ int vidioc_g_edid(struct file *file, void *_fh,
 		return -EINVAL;
 	if (edid->start_block + edid->blocks > dev->edid_blocks)
 		edid->blocks = dev->edid_blocks - edid->start_block;
-	if (adap)
-		cec_set_edid_phys_addr(dev->edid, dev->edid_blocks * 128, adap->phys_addr);
-	memcpy(edid->edid, dev->edid + edid->start_block * 128, edid->blocks * 128);
+	memcpy(edid->edid, dev->edid, edid->blocks * 128);
+	cec_set_edid_phys_addr(edid->edid, edid->blocks * 128, adap->phys_addr);
 	return 0;
 }

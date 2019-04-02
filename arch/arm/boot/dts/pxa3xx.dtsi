@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /* The pxa3xx skeleton simply augments the 2xx version */
 #include "pxa2xx.dtsi"
 
@@ -139,7 +138,6 @@
 			reg = <0x40e10000 0xffff>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			#pinctrl-cells = <1>;
 			pinctrl-single,register-width = <32>;
 			pinctrl-single,function-mask = <0x7>;
 		};

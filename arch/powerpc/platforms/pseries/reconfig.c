@@ -19,7 +19,7 @@
 
 #include <asm/prom.h>
 #include <asm/machdep.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/mmu.h>
 
 #include "of_helpers.h"
@@ -362,13 +362,20 @@ static int do_update_property(char *buf, size_t bufsize)
 static ssize_t ofdt_write(struct file *file, const char __user *buf, size_t count,
 			  loff_t *off)
 {
-	int rv;
+	int rv = 0;
 	char *kbuf;
 	char *tmp;
 
-	kbuf = memdup_user_nul(buf, count);
-	if (IS_ERR(kbuf))
-		return PTR_ERR(kbuf);
+	if (!(kbuf = kmalloc(count + 1, GFP_KERNEL))) {
+		rv = -ENOMEM;
+		goto out;
+	}
+	if (copy_from_user(kbuf, buf, count)) {
+		rv = -EFAULT;
+		goto out;
+	}
+
+	kbuf[count] = '\0';
 
 	tmp = strchr(kbuf, ' ');
 	if (!tmp) {

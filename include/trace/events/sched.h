@@ -1,11 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM sched
 
 #if !defined(_TRACE_SCHED_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_SCHED_H
 
-#include <linux/sched/numa_balancing.h>
+#include <linux/sched.h>
 #include <linux/tracepoint.h>
 #include <linux/binfmts.h>
 
@@ -107,8 +106,6 @@ DEFINE_EVENT(sched_wakeup_template, sched_wakeup_new,
 #ifdef CREATE_TRACE_POINTS
 static inline long __trace_sched_switch_state(bool preempt, struct task_struct *p)
 {
-	unsigned int state;
-
 #ifdef CONFIG_SCHED_DEBUG
 	BUG_ON(p != current);
 #endif /* CONFIG_SCHED_DEBUG */
@@ -117,18 +114,7 @@ static inline long __trace_sched_switch_state(bool preempt, struct task_struct *
 	 * Preemption ignores task state, therefore preempted tasks are always
 	 * RUNNING (we will not have dequeued if state != RUNNING).
 	 */
-	if (preempt)
-		return TASK_REPORT_MAX;
-
-	/*
-	 * task_state_index() uses fls() and returns a value from 0-8 range.
-	 * Decrement it by 1 (except TASK_RUNNING state i.e 0) before using
-	 * it for left shift operation to get the correct task->state
-	 * mapping.
-	 */
-	state = __get_task_state(p);
-
-	return state ? (1 << (state - 1)) : state;
+	return preempt ? TASK_RUNNING | TASK_STATE_MAX : p->state;
 }
 #endif /* CREATE_TRACE_POINTS */
 
@@ -166,15 +152,13 @@ TRACE_EVENT(sched_switch,
 
 	TP_printk("prev_comm=%s prev_pid=%d prev_prio=%d prev_state=%s%s ==> next_comm=%s next_pid=%d next_prio=%d",
 		__entry->prev_comm, __entry->prev_pid, __entry->prev_prio,
-
-		(__entry->prev_state & (TASK_REPORT_MAX - 1)) ?
-		  __print_flags(__entry->prev_state & (TASK_REPORT_MAX - 1), "|",
-				{ 0x01, "S" }, { 0x02, "D" }, { 0x04, "T" },
-				{ 0x08, "t" }, { 0x10, "X" }, { 0x20, "Z" },
-				{ 0x40, "P" }, { 0x80, "I" }) :
-		  "R",
-
-		__entry->prev_state & TASK_REPORT_MAX ? "+" : "",
+		__entry->prev_state & (TASK_STATE_MAX-1) ?
+		  __print_flags(__entry->prev_state & (TASK_STATE_MAX-1), "|",
+				{ 1, "S"} , { 2, "D" }, { 4, "T" }, { 8, "t" },
+				{ 16, "Z" }, { 32, "X" }, { 64, "x" },
+				{ 128, "K" }, { 256, "W" }, { 512, "P" },
+				{ 1024, "N" }) : "R",
+		__entry->prev_state & TASK_STATE_MAX ? "+" : "",
 		__entry->next_comm, __entry->next_pid, __entry->next_prio)
 );
 
@@ -445,9 +429,7 @@ TRACE_EVENT(sched_pi_setprio,
 		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
 		__entry->pid		= tsk->pid;
 		__entry->oldprio	= tsk->prio;
-		__entry->newprio	= pi_task ?
-				min(tsk->normal_prio, pi_task->prio) :
-				tsk->normal_prio;
+		__entry->newprio	= pi_task ? pi_task->prio : tsk->prio;
 		/* XXX SCHED_DEADLINE bits missing */
 	),
 

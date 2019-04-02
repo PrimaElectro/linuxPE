@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2014 Christoph Hellwig.
  */
@@ -33,7 +32,8 @@
 int
 xfs_break_layouts(
 	struct inode		*inode,
-	uint			*iolock)
+	uint			*iolock,
+	bool			with_imutex)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
 	int			error;
@@ -42,8 +42,12 @@ xfs_break_layouts(
 
 	while ((error = break_layout(inode, false) == -EWOULDBLOCK)) {
 		xfs_iunlock(ip, *iolock);
+		if (with_imutex && (*iolock & XFS_IOLOCK_EXCL))
+			inode_unlock(inode);
 		error = break_layout(inode, true);
 		*iolock = XFS_IOLOCK_EXCL;
+		if (with_imutex)
+			inode_lock(inode);
 		xfs_ilock(ip, *iolock);
 	}
 

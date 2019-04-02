@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * This is where we statically allocate and initialize the initial
  * task.
@@ -15,7 +14,7 @@
 #include <linux/init_task.h>
 #include <linux/mqueue.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/pgtable.h>
 
 static struct signal_struct init_signals = INIT_SIGNALS(init_signals);

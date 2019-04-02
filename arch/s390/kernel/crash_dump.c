@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * S390 kdump implementation
  *
@@ -9,8 +8,7 @@
 #include <linux/crash_dump.h>
 #include <asm/lowcore.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/gfp.h>
 #include <linux/slab.h>
 #include <linux/bootmem.h>
@@ -33,7 +31,6 @@ static struct memblock_type oldmem_type = {
 	.max = 1,
 	.total_size = 0,
 	.regions = &oldmem_region,
-	.name = "oldmem",
 };
 
 struct save_area {
@@ -404,13 +401,11 @@ static void *get_vmcoreinfo_old(unsigned long *size)
 	if (copy_oldmem_kernel(nt_name, addr + sizeof(note),
 			       sizeof(nt_name) - 1))
 		return NULL;
-	if (strcmp(nt_name, VMCOREINFO_NOTE_NAME) != 0)
+	if (strcmp(nt_name, "VMCOREINFO") != 0)
 		return NULL;
 	vmcoreinfo = kzalloc_panic(note.n_descsz);
-	if (copy_oldmem_kernel(vmcoreinfo, addr + 24, note.n_descsz)) {
-		kfree(vmcoreinfo);
+	if (copy_oldmem_kernel(vmcoreinfo, addr + 24, note.n_descsz))
 		return NULL;
-	}
 	*size = note.n_descsz;
 	return vmcoreinfo;
 }
@@ -420,20 +415,15 @@ static void *get_vmcoreinfo_old(unsigned long *size)
  */
 static void *nt_vmcoreinfo(void *ptr)
 {
-	const char *name = VMCOREINFO_NOTE_NAME;
 	unsigned long size;
 	void *vmcoreinfo;
 
 	vmcoreinfo = os_info_old_entry(OS_INFO_VMCOREINFO, &size);
-	if (vmcoreinfo)
-		return nt_init_name(ptr, 0, vmcoreinfo, size, name);
-
-	vmcoreinfo = get_vmcoreinfo_old(&size);
+	if (!vmcoreinfo)
+		vmcoreinfo = get_vmcoreinfo_old(&size);
 	if (!vmcoreinfo)
 		return ptr;
-	ptr = nt_init_name(ptr, 0, vmcoreinfo, size, name);
-	kfree(vmcoreinfo);
-	return ptr;
+	return nt_init_name(ptr, 0, vmcoreinfo, size, "VMCOREINFO");
 }
 
 /*

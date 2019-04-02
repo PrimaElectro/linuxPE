@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * (C) 2001 Clemson University and The University of Chicago
  *
@@ -10,6 +9,7 @@
 #include "orangefs-bufmap.h"
 
 const struct inode_operations orangefs_symlink_inode_operations = {
+	.readlink = generic_readlink,
 	.get_link = simple_get_link,
 	.setattr = orangefs_setattr,
 	.getattr = orangefs_getattr,

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/ext4/sysfs.c
  *
@@ -35,7 +34,7 @@ typedef enum {
 	ptr_ext4_super_block_offset,
 } attr_ptr_t;
 
-static const char proc_dirname[] = "fs/ext4";
+static const char *proc_dirname = "fs/ext4";
 static struct proc_dir_entry *ext4_proc_root;
 
 struct ext4_attr {
@@ -278,12 +277,8 @@ static ssize_t ext4_attr_show(struct kobject *kobj,
 	case attr_pointer_ui:
 		if (!ptr)
 			return 0;
-		if (a->attr_ptr == ptr_ext4_super_block_offset)
-			return snprintf(buf, PAGE_SIZE, "%u\n",
-					le32_to_cpup(ptr));
-		else
-			return snprintf(buf, PAGE_SIZE, "%u\n",
-					*((unsigned int *) ptr));
+		return snprintf(buf, PAGE_SIZE, "%u\n",
+				*((unsigned int *) ptr));
 	case attr_pointer_atomic:
 		if (!ptr)
 			return 0;
@@ -316,10 +311,7 @@ static ssize_t ext4_attr_store(struct kobject *kobj,
 		ret = kstrtoul(skip_spaces(buf), 0, &t);
 		if (ret)
 			return ret;
-		if (a->attr_ptr == ptr_ext4_super_block_offset)
-			*((__le32 *) ptr) = cpu_to_le32(t);
-		else
-			*((unsigned int *) ptr) = t;
+		*((unsigned int *) ptr) = t;
 		return len;
 	case attr_inode_readahead:
 		return inode_readahead_blks_store(a, sbi, buf, len);
@@ -383,7 +375,7 @@ static const struct file_operations ext4_seq_##name##_fops = { \
 PROC_FILE_SHOW_DEFN(es_shrinker_info);
 PROC_FILE_SHOW_DEFN(options);
 
-static const struct ext4_proc_files {
+static struct ext4_proc_files {
 	const char *name;
 	const struct file_operations *fops;
 } proc_files[] = {
@@ -396,7 +388,7 @@ static const struct ext4_proc_files {
 int ext4_register_sysfs(struct super_block *sb)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
-	const struct ext4_proc_files *p;
+	struct ext4_proc_files *p;
 	int err;
 
 	sbi->s_kobj.kset = &ext4_kset;
@@ -420,7 +412,7 @@ int ext4_register_sysfs(struct super_block *sb)
 void ext4_unregister_sysfs(struct super_block *sb)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
-	const struct ext4_proc_files *p;
+	struct ext4_proc_files *p;
 
 	if (sbi->s_proc) {
 		for (p = proc_files; p->name; p++)

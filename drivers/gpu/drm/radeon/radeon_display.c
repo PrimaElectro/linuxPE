@@ -42,7 +42,6 @@ static void avivo_crtc_load_lut(struct drm_crtc *crtc)
 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct radeon_device *rdev = dev->dev_private;
-	u16 *r, *g, *b;
 	int i;
 
 	DRM_DEBUG_KMS("%d\n", radeon_crtc->crtc_id);
@@ -61,14 +60,11 @@ static void avivo_crtc_load_lut(struct drm_crtc *crtc)
 	WREG32(AVIVO_DC_LUT_WRITE_EN_MASK, 0x0000003f);
 
 	WREG8(AVIVO_DC_LUT_RW_INDEX, 0);
-	r = crtc->gamma_store;
-	g = r + crtc->gamma_size;
-	b = g + crtc->gamma_size;
 	for (i = 0; i < 256; i++) {
 		WREG32(AVIVO_DC_LUT_30_COLOR,
-		       ((*r++ & 0xffc0) << 14) |
-		       ((*g++ & 0xffc0) << 4) |
-		       (*b++ >> 6));
+			     (radeon_crtc->lut_r[i] << 20) |
+			     (radeon_crtc->lut_g[i] << 10) |
+			     (radeon_crtc->lut_b[i] << 0));
 	}
 
 	/* Only change bit 0 of LUT_SEL, other bits are set elsewhere */
@@ -80,7 +76,6 @@ static void dce4_crtc_load_lut(struct drm_crtc *crtc)
 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct radeon_device *rdev = dev->dev_private;
-	u16 *r, *g, *b;
 	int i;
 
 	DRM_DEBUG_KMS("%d\n", radeon_crtc->crtc_id);
@@ -98,14 +93,11 @@ static void dce4_crtc_load_lut(struct drm_crtc *crtc)
 	WREG32(EVERGREEN_DC_LUT_WRITE_EN_MASK + radeon_crtc->crtc_offset, 0x00000007);
 
 	WREG32(EVERGREEN_DC_LUT_RW_INDEX + radeon_crtc->crtc_offset, 0);
-	r = crtc->gamma_store;
-	g = r + crtc->gamma_size;
-	b = g + crtc->gamma_size;
 	for (i = 0; i < 256; i++) {
 		WREG32(EVERGREEN_DC_LUT_30_COLOR + radeon_crtc->crtc_offset,
-		       ((*r++ & 0xffc0) << 14) |
-		       ((*g++ & 0xffc0) << 4) |
-		       (*b++ >> 6));
+		       (radeon_crtc->lut_r[i] << 20) |
+		       (radeon_crtc->lut_g[i] << 10) |
+		       (radeon_crtc->lut_b[i] << 0));
 	}
 }
 
@@ -114,7 +106,6 @@ static void dce5_crtc_load_lut(struct drm_crtc *crtc)
 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct radeon_device *rdev = dev->dev_private;
-	u16 *r, *g, *b;
 	int i;
 
 	DRM_DEBUG_KMS("%d\n", radeon_crtc->crtc_id);
@@ -144,14 +135,11 @@ static void dce5_crtc_load_lut(struct drm_crtc *crtc)
 	WREG32(EVERGREEN_DC_LUT_WRITE_EN_MASK + radeon_crtc->crtc_offset, 0x00000007);
 
 	WREG32(EVERGREEN_DC_LUT_RW_INDEX + radeon_crtc->crtc_offset, 0);
-	r = crtc->gamma_store;
-	g = r + crtc->gamma_size;
-	b = g + crtc->gamma_size;
 	for (i = 0; i < 256; i++) {
 		WREG32(EVERGREEN_DC_LUT_30_COLOR + radeon_crtc->crtc_offset,
-		       ((*r++ & 0xffc0) << 14) |
-		       ((*g++ & 0xffc0) << 4) |
-		       (*b++ >> 6));
+		       (radeon_crtc->lut_r[i] << 20) |
+		       (radeon_crtc->lut_g[i] << 10) |
+		       (radeon_crtc->lut_b[i] << 0));
 	}
 
 	WREG32(NI_DEGAMMA_CONTROL + radeon_crtc->crtc_offset,
@@ -184,7 +172,6 @@ static void legacy_crtc_load_lut(struct drm_crtc *crtc)
 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct radeon_device *rdev = dev->dev_private;
-	u16 *r, *g, *b;
 	int i;
 	uint32_t dac2_cntl;
 
@@ -196,14 +183,11 @@ static void legacy_crtc_load_lut(struct drm_crtc *crtc)
 	WREG32(RADEON_DAC_CNTL2, dac2_cntl);
 
 	WREG8(RADEON_PALETTE_INDEX, 0);
-	r = crtc->gamma_store;
-	g = r + crtc->gamma_size;
-	b = g + crtc->gamma_size;
 	for (i = 0; i < 256; i++) {
 		WREG32(RADEON_PALETTE_30_DATA,
-		       ((*r++ & 0xffc0) << 14) |
-		       ((*g++ & 0xffc0) << 4) |
-		       (*b++ >> 6));
+			     (radeon_crtc->lut_r[i] << 20) |
+			     (radeon_crtc->lut_g[i] << 10) |
+			     (radeon_crtc->lut_b[i] << 0));
 	}
 }
 
@@ -225,10 +209,40 @@ void radeon_crtc_load_lut(struct drm_crtc *crtc)
 		legacy_crtc_load_lut(crtc);
 }
 
-static int radeon_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
-				 u16 *blue, uint32_t size,
-				 struct drm_modeset_acquire_ctx *ctx)
+/** Sets the color ramps on behalf of fbcon */
+void radeon_crtc_fb_gamma_set(struct drm_crtc *crtc, u16 red, u16 green,
+			      u16 blue, int regno)
 {
+	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+
+	radeon_crtc->lut_r[regno] = red >> 6;
+	radeon_crtc->lut_g[regno] = green >> 6;
+	radeon_crtc->lut_b[regno] = blue >> 6;
+}
+
+/** Gets the color ramps on behalf of fbcon */
+void radeon_crtc_fb_gamma_get(struct drm_crtc *crtc, u16 *red, u16 *green,
+			      u16 *blue, int regno)
+{
+	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+
+	*red = radeon_crtc->lut_r[regno] << 6;
+	*green = radeon_crtc->lut_g[regno] << 6;
+	*blue = radeon_crtc->lut_b[regno] << 6;
+}
+
+static int radeon_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
+				 u16 *blue, uint32_t size)
+{
+	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+	int i;
+
+	/* userspace palettes are always correct as is */
+	for (i = 0; i < size; i++) {
+		radeon_crtc->lut_r[i] = red[i] >> 6;
+		radeon_crtc->lut_g[i] = green[i] >> 6;
+		radeon_crtc->lut_b[i] = blue[i] >> 6;
+	}
 	radeon_crtc_load_lut(crtc);
 
 	return 0;
@@ -267,7 +281,7 @@ static void radeon_unpin_work_func(struct work_struct *__work)
 	} else
 		DRM_ERROR("failed to reserve buffer after flip\n");
 
-	drm_gem_object_put_unlocked(&work->old_rbo->gem_base);
+	drm_gem_object_unreference_unlocked(&work->old_rbo->gem_base);
 	kfree(work);
 }
 
@@ -423,7 +437,7 @@ static void radeon_flip_work_func(struct work_struct *__work)
 				down_read(&rdev->exclusive_lock);
 			}
 		} else
-			r = dma_fence_wait(work->fence, false);
+			r = fence_wait(work->fence, false);
 
 		if (r)
 			DRM_ERROR("failed to wait on page flip fence (%d)!\n", r);
@@ -433,7 +447,7 @@ static void radeon_flip_work_func(struct work_struct *__work)
 		 * confused about which BO the CRTC is scanning out
 		 */
 
-		dma_fence_put(work->fence);
+		fence_put(work->fence);
 		work->fence = NULL;
 	}
 
@@ -471,8 +485,7 @@ static int radeon_crtc_page_flip_target(struct drm_crtc *crtc,
 					struct drm_framebuffer *fb,
 					struct drm_pending_vblank_event *event,
 					uint32_t page_flip_flags,
-					uint32_t target,
-					struct drm_modeset_acquire_ctx *ctx)
+					uint32_t target)
 {
 	struct drm_device *dev = crtc->dev;
 	struct radeon_device *rdev = dev->dev_private;
@@ -504,7 +517,7 @@ static int radeon_crtc_page_flip_target(struct drm_crtc *crtc,
 	obj = old_radeon_fb->obj;
 
 	/* take a reference to the old object */
-	drm_gem_object_get(obj);
+	drm_gem_object_reference(obj);
 	work->old_rbo = gem_to_radeon_bo(obj);
 
 	new_radeon_fb = to_radeon_framebuffer(fb);
@@ -529,26 +542,26 @@ static int radeon_crtc_page_flip_target(struct drm_crtc *crtc,
 		DRM_ERROR("failed to pin new rbo buffer before flip\n");
 		goto cleanup;
 	}
-	work->fence = dma_fence_get(reservation_object_get_excl(new_rbo->tbo.resv));
+	work->fence = fence_get(reservation_object_get_excl(new_rbo->tbo.resv));
 	radeon_bo_get_tiling_flags(new_rbo, &tiling_flags, NULL);
 	radeon_bo_unreserve(new_rbo);
 
 	if (!ASIC_IS_AVIVO(rdev)) {
 		/* crtc offset is from display base addr not FB location */
 		base -= radeon_crtc->legacy_display_base_addr;
-		pitch_pixels = fb->pitches[0] / fb->format->cpp[0];
+		pitch_pixels = fb->pitches[0] / (fb->bits_per_pixel / 8);
 
 		if (tiling_flags & RADEON_TILING_MACRO) {
 			if (ASIC_IS_R300(rdev)) {
 				base &= ~0x7ff;
 			} else {
-				int byteshift = fb->format->cpp[0] * 8 >> 4;
+				int byteshift = fb->bits_per_pixel >> 4;
 				int tile_addr = (((crtc->y >> 3) * pitch_pixels +  crtc->x) >> (8 - byteshift)) << 11;
 				base += tile_addr + ((crtc->x << byteshift) % 256) + ((crtc->y % 8) << 8);
 			}
 		} else {
 			int offset = crtc->y * pitch_pixels + crtc->x;
-			switch (fb->format->cpp[0] * 8) {
+			switch (fb->bits_per_pixel) {
 			case 8:
 			default:
 				offset *= 1;
@@ -603,15 +616,14 @@ pflip_cleanup:
 	radeon_bo_unreserve(new_rbo);
 
 cleanup:
-	drm_gem_object_put_unlocked(&work->old_rbo->gem_base);
-	dma_fence_put(work->fence);
+	drm_gem_object_unreference_unlocked(&work->old_rbo->gem_base);
+	fence_put(work->fence);
 	kfree(work);
 	return r;
 }
 
 static int
-radeon_crtc_set_config(struct drm_mode_set *set,
-		       struct drm_modeset_acquire_ctx *ctx)
+radeon_crtc_set_config(struct drm_mode_set *set)
 {
 	struct drm_device *dev;
 	struct radeon_device *rdev;
@@ -628,7 +640,7 @@ radeon_crtc_set_config(struct drm_mode_set *set,
 	if (ret < 0)
 		return ret;
 
-	ret = drm_crtc_helper_set_config(set, ctx);
+	ret = drm_crtc_helper_set_config(set);
 
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head)
 		if (crtc->enabled)
@@ -1288,7 +1300,7 @@ static void radeon_user_framebuffer_destroy(struct drm_framebuffer *fb)
 {
 	struct radeon_framebuffer *radeon_fb = to_radeon_framebuffer(fb);
 
-	drm_gem_object_put_unlocked(radeon_fb->obj);
+	drm_gem_object_unreference_unlocked(radeon_fb->obj);
 	drm_framebuffer_cleanup(fb);
 	kfree(radeon_fb);
 }
@@ -1315,7 +1327,7 @@ radeon_framebuffer_init(struct drm_device *dev,
 {
 	int ret;
 	rfb->obj = obj;
-	drm_helper_mode_fill_fb_struct(dev, &rfb->base, mode_cmd);
+	drm_helper_mode_fill_fb_struct(&rfb->base, mode_cmd);
 	ret = drm_framebuffer_init(dev, &rfb->base, &radeon_fb_funcs);
 	if (ret) {
 		rfb->obj = NULL;
@@ -1340,22 +1352,16 @@ radeon_user_framebuffer_create(struct drm_device *dev,
 		return ERR_PTR(-ENOENT);
 	}
 
-	/* Handle is imported dma-buf, so cannot be migrated to VRAM for scanout */
-	if (obj->import_attach) {
-		DRM_DEBUG_KMS("Cannot create framebuffer from imported dma_buf\n");
-		return ERR_PTR(-EINVAL);
-	}
-
 	radeon_fb = kzalloc(sizeof(*radeon_fb), GFP_KERNEL);
 	if (radeon_fb == NULL) {
-		drm_gem_object_put_unlocked(obj);
+		drm_gem_object_unreference_unlocked(obj);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	ret = radeon_framebuffer_init(dev, radeon_fb, mode_cmd, obj);
 	if (ret) {
 		kfree(radeon_fb);
-		drm_gem_object_put_unlocked(obj);
+		drm_gem_object_unreference_unlocked(obj);
 		return ERR_PTR(ret);
 	}
 
@@ -1373,12 +1379,12 @@ static const struct drm_mode_config_funcs radeon_mode_funcs = {
 	.output_poll_changed = radeon_output_poll_changed
 };
 
-static const struct drm_prop_enum_list radeon_tmds_pll_enum_list[] =
+static struct drm_prop_enum_list radeon_tmds_pll_enum_list[] =
 {	{ 0, "driver" },
 	{ 1, "bios" },
 };
 
-static const struct drm_prop_enum_list radeon_tv_std_enum_list[] =
+static struct drm_prop_enum_list radeon_tv_std_enum_list[] =
 {	{ TV_STD_NTSC, "ntsc" },
 	{ TV_STD_PAL, "pal" },
 	{ TV_STD_PAL_M, "pal-m" },
@@ -1389,25 +1395,25 @@ static const struct drm_prop_enum_list radeon_tv_std_enum_list[] =
 	{ TV_STD_SECAM, "secam" },
 };
 
-static const struct drm_prop_enum_list radeon_underscan_enum_list[] =
+static struct drm_prop_enum_list radeon_underscan_enum_list[] =
 {	{ UNDERSCAN_OFF, "off" },
 	{ UNDERSCAN_ON, "on" },
 	{ UNDERSCAN_AUTO, "auto" },
 };
 
-static const struct drm_prop_enum_list radeon_audio_enum_list[] =
+static struct drm_prop_enum_list radeon_audio_enum_list[] =
 {	{ RADEON_AUDIO_DISABLE, "off" },
 	{ RADEON_AUDIO_ENABLE, "on" },
 	{ RADEON_AUDIO_AUTO, "auto" },
 };
 
 /* XXX support different dither options? spatial, temporal, both, etc. */
-static const struct drm_prop_enum_list radeon_dither_enum_list[] =
+static struct drm_prop_enum_list radeon_dither_enum_list[] =
 {	{ RADEON_FMT_DITHER_DISABLE, "off" },
 	{ RADEON_FMT_DITHER_ENABLE, "on" },
 };
 
-static const struct drm_prop_enum_list radeon_output_csc_enum_list[] =
+static struct drm_prop_enum_list radeon_output_csc_enum_list[] =
 {	{ RADEON_OUTPUT_CSC_BYPASS, "bypass" },
 	{ RADEON_OUTPUT_CSC_TVRGB, "tvrgb" },
 	{ RADEON_OUTPUT_CSC_YCBCR601, "ycbcr601" },
@@ -1839,6 +1845,7 @@ int radeon_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
 	struct radeon_device *rdev = dev->dev_private;
 
 	/* preempt_disable_rt() should go right here in PREEMPT_RT patchset. */
+	preempt_disable_rt();
 
 	/* Get optional system timestamp before query. */
 	if (stime)
@@ -1931,6 +1938,7 @@ int radeon_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
 		*etime = ktime_get();
 
 	/* preempt_enable_rt() should go right here in PREEMPT_RT patchset. */
+	preempt_enable_rt();
 
 	/* Decode into vertical and horizontal scanout position. */
 	*vpos = position & 0x1fff;

@@ -15,6 +15,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
  * see Documentation/dvb/README.dvb-usb for more information
  */
 #include "af9005.h"
@@ -1426,7 +1430,7 @@ static void af9005_fe_release(struct dvb_frontend *fe)
 	kfree(state);
 }
 
-static const struct dvb_frontend_ops af9005_fe_ops;
+static struct dvb_frontend_ops af9005_fe_ops;
 
 struct dvb_frontend *af9005_fe_attach(struct dvb_usb_device *d)
 {
@@ -1451,7 +1455,7 @@ struct dvb_frontend *af9005_fe_attach(struct dvb_usb_device *d)
 	return NULL;
 }
 
-static const struct dvb_frontend_ops af9005_fe_ops = {
+static struct dvb_frontend_ops af9005_fe_ops = {
 	.delsys = { SYS_DVBT },
 	.info = {
 		 .name = "AF9005 USB DVB-T",

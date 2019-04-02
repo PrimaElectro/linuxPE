@@ -66,6 +66,7 @@
 
 #include <linux/seq_file.h>
 #include <linux/list.h>
+#include <linux/vmalloc.h>
 #include "debug.h"
 #include "ath5k.h"
 #include "reg.h"
@@ -938,10 +939,7 @@ static int open_file_eeprom(struct inode *inode, struct file *file)
 	}
 
 	for (i = 0; i < eesize; ++i) {
-		if (!ath5k_hw_nvram_read(ah, i, &val)) {
-			ret = -EIO;
-			goto freebuf;
-		}
+		AR5K_EEPROM_READ(i, val);
 		buf[i] = val;
 	}
 

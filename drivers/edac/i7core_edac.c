@@ -39,7 +39,7 @@
 #include <asm/processor.h>
 #include <asm/div64.h>
 
-#include "edac_module.h"
+#include "edac_core.h"
 
 /* Static vars */
 static LIST_HEAD(i7core_edac_list);
@@ -1079,7 +1079,7 @@ static struct attribute *i7core_addrmatch_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group addrmatch_grp = {
+static struct attribute_group addrmatch_grp = {
 	.attrs	= i7core_addrmatch_attrs,
 };
 
@@ -1094,7 +1094,7 @@ static void addrmatch_release(struct device *device)
 	kfree(device);
 }
 
-static const struct device_type addrmatch_type = {
+static struct device_type addrmatch_type = {
 	.groups		= addrmatch_groups,
 	.release	= addrmatch_release,
 };
@@ -1110,7 +1110,7 @@ static struct attribute *i7core_udimm_counters_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group all_channel_counts_grp = {
+static struct attribute_group all_channel_counts_grp = {
 	.attrs	= i7core_udimm_counters_attrs,
 };
 
@@ -1125,7 +1125,7 @@ static void all_channel_counts_release(struct device *device)
 	kfree(device);
 }
 
-static const struct device_type all_channel_counts_type = {
+static struct device_type all_channel_counts_type = {
 	.groups		= all_channel_counts_groups,
 	.release	= all_channel_counts_release,
 };
@@ -1177,14 +1177,15 @@ static int i7core_create_sysfs_devices(struct mem_ctl_info *mci)
 
 	rc = device_add(pvt->addrmatch_dev);
 	if (rc < 0)
-		goto err_put_addrmatch;
+		return rc;
 
 	if (!pvt->is_registered) {
 		pvt->chancounts_dev = kzalloc(sizeof(*pvt->chancounts_dev),
 					      GFP_KERNEL);
 		if (!pvt->chancounts_dev) {
-			rc = -ENOMEM;
-			goto err_del_addrmatch;
+			put_device(pvt->addrmatch_dev);
+			device_del(pvt->addrmatch_dev);
+			return -ENOMEM;
 		}
 
 		pvt->chancounts_dev->type = &all_channel_counts_type;
@@ -1198,18 +1199,9 @@ static int i7core_create_sysfs_devices(struct mem_ctl_info *mci)
 
 		rc = device_add(pvt->chancounts_dev);
 		if (rc < 0)
-			goto err_put_chancounts;
+			return rc;
 	}
 	return 0;
-
-err_put_chancounts:
-	put_device(pvt->chancounts_dev);
-err_del_addrmatch:
-	device_del(pvt->addrmatch_dev);
-err_put_addrmatch:
-	put_device(pvt->addrmatch_dev);
-
-	return rc;
 }
 
 static void i7core_delete_sysfs_devices(struct mem_ctl_info *mci)
@@ -1219,11 +1211,11 @@ static void i7core_delete_sysfs_devices(struct mem_ctl_info *mci)
 	edac_dbg(1, "\n");
 
 	if (!pvt->is_registered) {
-		device_del(pvt->chancounts_dev);
 		put_device(pvt->chancounts_dev);
+		device_del(pvt->chancounts_dev);
 	}
-	device_del(pvt->addrmatch_dev);
 	put_device(pvt->addrmatch_dev);
+	device_del(pvt->addrmatch_dev);
 }
 
 /****************************************************************************
@@ -1711,7 +1703,6 @@ static void i7core_mce_output_error(struct mem_ctl_info *mci,
 	u32 errnum = find_first_bit(&error, 32);
 
 	if (uncorrected_error) {
-		core_err_cnt = 1;
 		if (ripv)
 			tp_event = HW_EVENT_ERR_FATAL;
 		else
@@ -1844,7 +1835,6 @@ static int i7core_mce_check_error(struct notifier_block *nb, unsigned long val,
 
 static struct notifier_block i7_mce_dec = {
 	.notifier_call	= i7core_mce_check_error,
-	.priority	= MCE_PRIO_EDAC,
 };
 
 struct memdev_dmi_entry {
@@ -2168,6 +2158,7 @@ static int i7core_register_mci(struct i7core_dev *i7core_dev)
 	mci->edac_ctl_cap = EDAC_FLAG_NONE;
 	mci->edac_cap = EDAC_FLAG_NONE;
 	mci->mod_name = "i7core_edac.c";
+	mci->mod_ver = I7CORE_REVISION;
 	mci->ctl_name = kasprintf(GFP_KERNEL, "i7 core #%d",
 				  i7core_dev->socket);
 	mci->dev_name = pci_name(i7core_dev->pdev[0]);

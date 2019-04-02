@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2011 Bryan Schumaker <bjschuma@netapp.com>
  *
@@ -11,7 +10,7 @@
 #include <linux/module.h>
 #include <linux/nsproxy.h>
 #include <linux/sunrpc/addr.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 #include "state.h"
 #include "netns.h"

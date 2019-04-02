@@ -136,9 +136,9 @@ static const struct ethtool_ops ax88172_ethtool_ops = {
 	.get_eeprom_len		= asix_get_eeprom_len,
 	.get_eeprom		= asix_get_eeprom,
 	.set_eeprom		= asix_set_eeprom,
+	.get_settings		= usbnet_get_settings,
+	.set_settings		= usbnet_set_settings,
 	.nway_reset		= usbnet_nway_reset,
-	.get_link_ksettings	= usbnet_get_link_ksettings,
-	.set_link_ksettings	= usbnet_set_link_ksettings,
 };
 
 static void ax88172_set_multicast(struct net_device *net)
@@ -206,7 +206,6 @@ static const struct net_device_ops ax88172_netdev_ops = {
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
 	.ndo_change_mtu		= usbnet_change_mtu,
-	.ndo_get_stats64	= usbnet_get_stats64,
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_do_ioctl		= asix_ioctl,
@@ -302,9 +301,9 @@ static const struct ethtool_ops ax88772_ethtool_ops = {
 	.get_eeprom_len		= asix_get_eeprom_len,
 	.get_eeprom		= asix_get_eeprom,
 	.set_eeprom		= asix_set_eeprom,
+	.get_settings		= usbnet_get_settings,
+	.set_settings		= usbnet_set_settings,
 	.nway_reset		= usbnet_nway_reset,
-	.get_link_ksettings	= usbnet_get_link_ksettings,
-	.set_link_ksettings	= usbnet_set_link_ksettings,
 };
 
 static int ax88772_link_reset(struct usbnet *dev)
@@ -347,7 +346,7 @@ static int ax88772_reset(struct usbnet *dev)
 	if (ret < 0)
 		goto out;
 
-	ret = asix_write_medium_mode(dev, AX88772_MEDIUM_DEFAULT, 0);
+	asix_write_medium_mode(dev, AX88772_MEDIUM_DEFAULT, 0);
 	if (ret < 0)
 		goto out;
 
@@ -592,7 +591,6 @@ static const struct net_device_ops ax88772_netdev_ops = {
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
 	.ndo_change_mtu		= usbnet_change_mtu,
-	.ndo_get_stats64	= usbnet_get_stats64,
 	.ndo_set_mac_address 	= asix_set_mac_address,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_do_ioctl		= asix_ioctl,
@@ -642,12 +640,10 @@ static void ax88772_restore_phy(struct usbnet *dev)
 				     priv->presvd_phy_advertise);
 
 		/* Restore BMCR */
-		if (priv->presvd_phy_bmcr & BMCR_ANENABLE)
-			priv->presvd_phy_bmcr |= BMCR_ANRESTART;
-
 		asix_mdio_write_nopm(dev->net, dev->mii.phy_id, MII_BMCR,
 				     priv->presvd_phy_bmcr);
 
+		mii_nway_restart(&dev->mii);
 		priv->presvd_phy_advertise = 0;
 		priv->presvd_phy_bmcr = 0;
 	}
@@ -731,13 +727,8 @@ static int ax88772_bind(struct usbnet *dev, struct usb_interface *intf)
 	asix_read_cmd(dev, AX_CMD_STATMNGSTS_REG, 0, 0, 1, &chipcode, 0);
 	chipcode &= AX_CHIPCODE_MASK;
 
-	ret = (chipcode == AX_AX88772_CHIPCODE) ? ax88772_hw_reset(dev, 0) :
-						  ax88772a_hw_reset(dev, 0);
-
-	if (ret < 0) {
-		netdev_dbg(dev->net, "Failed to reset AX88772: %d\n", ret);
-		return ret;
-	}
+	(chipcode == AX_AX88772_CHIPCODE) ? ax88772_hw_reset(dev, 0) :
+					    ax88772a_hw_reset(dev, 0);
 
 	/* Read PHYID register *AFTER* the PHY was reset properly */
 	phyid = asix_get_phyid(dev);
@@ -771,7 +762,6 @@ static int ax88772_bind(struct usbnet *dev, struct usb_interface *intf)
 
 static void ax88772_unbind(struct usbnet *dev, struct usb_interface *intf)
 {
-	asix_rx_fixup_common_free(dev->driver_priv);
 	kfree(dev->driver_priv);
 }
 
@@ -785,9 +775,9 @@ static const struct ethtool_ops ax88178_ethtool_ops = {
 	.get_eeprom_len		= asix_get_eeprom_len,
 	.get_eeprom		= asix_get_eeprom,
 	.set_eeprom		= asix_set_eeprom,
+	.get_settings		= usbnet_get_settings,
+	.set_settings		= usbnet_set_settings,
 	.nway_reset		= usbnet_nway_reset,
-	.get_link_ksettings	= usbnet_get_link_ksettings,
-	.set_link_ksettings	= usbnet_set_link_ksettings,
 };
 
 static int marvell_phy_init(struct usbnet *dev)
@@ -1036,6 +1026,9 @@ static int ax88178_change_mtu(struct net_device *net, int new_mtu)
 
 	netdev_dbg(dev->net, "ax88178_change_mtu() new_mtu=%d\n", new_mtu);
 
+	if (new_mtu <= 0 || ll_mtu > 16384)
+		return -EINVAL;
+
 	if ((ll_mtu % dev->maxpacket) == 0)
 		return -EDOM;
 
@@ -1054,7 +1047,6 @@ static const struct net_device_ops ax88178_netdev_ops = {
 	.ndo_stop		= usbnet_stop,
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
-	.ndo_get_stats64	= usbnet_get_stats64,
 	.ndo_set_mac_address 	= asix_set_mac_address,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_rx_mode	= asix_set_multicast,
@@ -1089,7 +1081,6 @@ static int ax88178_bind(struct usbnet *dev, struct usb_interface *intf)
 
 	dev->net->netdev_ops = &ax88178_netdev_ops;
 	dev->net->ethtool_ops = &ax88178_ethtool_ops;
-	dev->net->max_mtu = 16384 - (dev->net->hard_header_len + 4);
 
 	/* Blink LEDS so users know driver saw dongle */
 	asix_sw_reset(dev, 0, 0);

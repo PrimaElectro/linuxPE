@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /* ld script to make ARM Linux kernel
  * taken from the i386 version by Russell King
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
@@ -98,7 +97,7 @@ SECTIONS
 		HEAD_TEXT
 	}
 
-#ifdef CONFIG_STRICT_KERNEL_RWX
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #endif
 
@@ -159,7 +158,7 @@ SECTIONS
 
 	NOTES
 
-#ifdef CONFIG_STRICT_KERNEL_RWX
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #else
 	. = ALIGN(PAGE_SIZE);
@@ -231,7 +230,7 @@ SECTIONS
 	PERCPU_SECTION(L1_CACHE_BYTES)
 #endif
 
-#ifdef CONFIG_STRICT_KERNEL_RWX
+#ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #else
 	. = ALIGN(THREAD_SIZE);
@@ -262,8 +261,6 @@ SECTIONS
 		_edata = .;
 	}
 	_edata_loc = __data_loc + SIZEOF(.data);
-
-	BUG_TABLE
 
 #ifdef CONFIG_HAVE_TCM
         /*
@@ -328,7 +325,7 @@ SECTIONS
 	STABS_DEBUG
 }
 
-#ifdef CONFIG_STRICT_KERNEL_RWX
+#ifdef CONFIG_DEBUG_RODATA
 /*
  * Without CONFIG_DEBUG_ALIGN_RODATA, __start_rodata_section_aligned will
  * be the first section-aligned location after __start_rodata. Otherwise,

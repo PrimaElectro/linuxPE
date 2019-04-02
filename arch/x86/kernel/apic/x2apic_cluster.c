@@ -1,11 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/threads.h>
 #include <linux/cpumask.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
 #include <linux/ctype.h>
 #include <linux/dmar.h>
-#include <linux/irq.h>
 #include <linux/cpu.h>
 
 #include <asm/smp.h>
@@ -106,30 +104,35 @@ static void x2apic_send_IPI_all(int vector)
 }
 
 static int
-x2apic_cpu_mask_to_apicid(const struct cpumask *mask, struct irq_data *irqdata,
-			  unsigned int *apicid)
+x2apic_cpu_mask_to_apicid_and(const struct cpumask *cpumask,
+			      const struct cpumask *andmask,
+			      unsigned int *apicid)
 {
-	struct cpumask *effmsk = irq_data_get_effective_affinity_mask(irqdata);
-	unsigned int cpu;
 	u32 dest = 0;
 	u16 cluster;
+	int i;
 
-	cpu = cpumask_first(mask);
-	if (cpu >= nr_cpu_ids)
+	for_each_cpu_and(i, cpumask, andmask) {
+		if (!cpumask_test_cpu(i, cpu_online_mask))
+			continue;
+		dest = per_cpu(x86_cpu_to_logical_apicid, i);
+		cluster = x2apic_cluster(i);
+		break;
+	}
+
+	if (!dest)
 		return -EINVAL;
 
-	dest = per_cpu(x86_cpu_to_logical_apicid, cpu);
-	cluster = x2apic_cluster(cpu);
-
-	cpumask_clear(effmsk);
-	for_each_cpu(cpu, mask) {
-		if (cluster != x2apic_cluster(cpu))
+	for_each_cpu_and(i, cpumask, andmask) {
+		if (!cpumask_test_cpu(i, cpu_online_mask))
 			continue;
-		dest |= per_cpu(x86_cpu_to_logical_apicid, cpu);
-		cpumask_set_cpu(cpu, effmsk);
+		if (cluster != x2apic_cluster(i))
+			continue;
+		dest |= per_cpu(x86_cpu_to_logical_apicid, i);
 	}
 
 	*apicid = dest;
+
 	return 0;
 }
 
@@ -188,7 +191,7 @@ static int x2apic_cluster_probe(void)
 	if (!x2apic_mode)
 		return 0;
 
-	ret = cpuhp_setup_state(CPUHP_X2APIC_PREPARE, "x86/x2apic:prepare",
+	ret = cpuhp_setup_state(CPUHP_X2APIC_PREPARE, "X2APIC_PREPARE",
 				x2apic_prepare_cpu, x2apic_dead_cpu);
 	if (ret < 0) {
 		pr_err("Failed to register X2APIC_PREPARE\n");
@@ -253,7 +256,7 @@ static struct apic apic_x2apic_cluster __ro_after_init = {
 	.get_apic_id			= x2apic_get_apic_id,
 	.set_apic_id			= x2apic_set_apic_id,
 
-	.cpu_mask_to_apicid		= x2apic_cpu_mask_to_apicid,
+	.cpu_mask_to_apicid_and		= x2apic_cpu_mask_to_apicid_and,
 
 	.send_IPI			= x2apic_send_IPI,
 	.send_IPI_mask			= x2apic_send_IPI_mask,

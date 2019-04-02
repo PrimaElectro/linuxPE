@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/module.h>
 #include <linux/user.h>
 #include <linux/elfcore.h>
@@ -11,7 +10,7 @@
 #include <linux/tty.h>
 
 #include <asm/processor.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/checksum.h>
 #include <asm/io.h>
 #include <asm/delay.h>

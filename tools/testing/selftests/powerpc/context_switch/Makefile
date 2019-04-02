@@ -1,5 +1,10 @@
-TEST_GEN_PROGS := cp_abort
+TEST_PROGS := cp_abort
+
+all: $(TEST_PROGS)
+
+$(TEST_PROGS): ../harness.c ../utils.c
 
 include ../../lib.mk
 
-$(TEST_GEN_PROGS): ../harness.c ../utils.c
+clean:
+	rm -f $(TEST_PROGS)

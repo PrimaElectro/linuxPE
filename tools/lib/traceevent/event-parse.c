@@ -33,7 +33,6 @@
 #include <stdint.h>
 #include <limits.h>
 #include <linux/string.h>
-#include <linux/time64.h>
 
 #include <netinet/in.h>
 #include "event-parse.h"
@@ -831,7 +830,6 @@ static void free_arg(struct print_arg *arg)
 		free_flag_sym(arg->symbol.symbols);
 		break;
 	case PRINT_HEX:
-	case PRINT_HEX_STR:
 		free_arg(arg->hex.field);
 		free_arg(arg->hex.size);
 		break;
@@ -2630,11 +2628,10 @@ out_free:
 }
 
 static enum event_type
-process_hex_common(struct event_format *event, struct print_arg *arg,
-		   char **tok, enum print_arg_type type)
+process_hex(struct event_format *event, struct print_arg *arg, char **tok)
 {
 	memset(arg, 0, sizeof(*arg));
-	arg->type = type;
+	arg->type = PRINT_HEX;
 
 	if (alloc_and_process_delim(event, ",", &arg->hex.field))
 		goto out;
@@ -2650,19 +2647,6 @@ free_field:
 out:
 	*tok = NULL;
 	return EVENT_ERROR;
-}
-
-static enum event_type
-process_hex(struct event_format *event, struct print_arg *arg, char **tok)
-{
-	return process_hex_common(event, arg, tok, PRINT_HEX);
-}
-
-static enum event_type
-process_hex_str(struct event_format *event, struct print_arg *arg,
-		char **tok)
-{
-	return process_hex_common(event, arg, tok, PRINT_HEX_STR);
 }
 
 static enum event_type
@@ -3023,10 +3007,6 @@ process_function(struct event_format *event, struct print_arg *arg,
 	if (strcmp(token, "__print_hex") == 0) {
 		free_token(token);
 		return process_hex(event, arg, tok);
-	}
-	if (strcmp(token, "__print_hex_str") == 0) {
-		free_token(token);
-		return process_hex_str(event, arg, tok);
 	}
 	if (strcmp(token, "__print_array") == 0) {
 		free_token(token);
@@ -3566,7 +3546,6 @@ eval_num_arg(void *data, int size, struct event_format *event, struct print_arg 
 	case PRINT_SYMBOL:
 	case PRINT_INT_ARRAY:
 	case PRINT_HEX:
-	case PRINT_HEX_STR:
 		break;
 	case PRINT_TYPE:
 		val = eval_num_arg(data, size, event, arg->typecast.item);
@@ -3982,7 +3961,6 @@ static void print_str_arg(struct trace_seq *s, void *data, int size,
 		}
 		break;
 	case PRINT_HEX:
-	case PRINT_HEX_STR:
 		if (arg->hex.field->type == PRINT_DYNAMIC_ARRAY) {
 			unsigned long offset;
 			offset = pevent_read_number(pevent,
@@ -4002,7 +3980,7 @@ static void print_str_arg(struct trace_seq *s, void *data, int size,
 		}
 		len = eval_num_arg(data, size, event, arg->hex.size);
 		for (i = 0; i < len; i++) {
-			if (i && arg->type == PRINT_HEX)
+			if (i)
 				trace_seq_putc(s, ' ');
 			trace_seq_printf(s, "%02x", hex[i]);
 		}
@@ -4949,22 +4927,21 @@ static void pretty_print(struct trace_seq *s, void *data, int size, struct event
 				else
 					ls = 2;
 
-				if (isalnum(ptr[1]))
+				if (*(ptr+1) == 'F' || *(ptr+1) == 'f' ||
+				    *(ptr+1) == 'S' || *(ptr+1) == 's') {
 					ptr++;
-
-				if (*ptr == 'F' || *ptr == 'f' ||
-				    *ptr == 'S' || *ptr == 's') {
 					show_func = *ptr;
-				} else if (*ptr == 'M' || *ptr == 'm') {
-					print_mac_arg(s, *ptr, data, size, event, arg);
+				} else if (*(ptr+1) == 'M' || *(ptr+1) == 'm') {
+					print_mac_arg(s, *(ptr+1), data, size, event, arg);
+					ptr++;
 					arg = arg->next;
 					break;
-				} else if (*ptr == 'I' || *ptr == 'i') {
+				} else if (*(ptr+1) == 'I' || *(ptr+1) == 'i') {
 					int n;
 
-					n = print_ip_arg(s, ptr, data, size, event, arg);
+					n = print_ip_arg(s, ptr+1, data, size, event, arg);
 					if (n > 0) {
-						ptr += n - 1;
+						ptr += n;
 						arg = arg->next;
 						break;
 					}
@@ -5214,41 +5191,15 @@ struct event_format *pevent_data_event_from_type(struct pevent *pevent, int type
 }
 
 /**
- * pevent_data_pid - parse the PID from record
+ * pevent_data_pid - parse the PID from raw data
  * @pevent: a handle to the pevent
  * @rec: the record to parse
  *
- * This returns the PID from a record.
+ * This returns the PID from a raw data.
  */
 int pevent_data_pid(struct pevent *pevent, struct pevent_record *rec)
 {
 	return parse_common_pid(pevent, rec->data);
-}
-
-/**
- * pevent_data_preempt_count - parse the preempt count from the record
- * @pevent: a handle to the pevent
- * @rec: the record to parse
- *
- * This returns the preempt count from a record.
- */
-int pevent_data_preempt_count(struct pevent *pevent, struct pevent_record *rec)
-{
-	return parse_common_pc(pevent, rec->data);
-}
-
-/**
- * pevent_data_flags - parse the latency flags from the record
- * @pevent: a handle to the pevent
- * @rec: the record to parse
- *
- * This returns the latency flags from a record.
- *
- *  Use trace_flag_type enum for the flags (see event-parse.h).
- */
-int pevent_data_flags(struct pevent *pevent, struct pevent_record *rec)
-{
-	return parse_common_flags(pevent, rec->data);
 }
 
 /**
@@ -5473,8 +5424,8 @@ void pevent_print_event_time(struct pevent *pevent, struct trace_seq *s,
 	use_usec_format = is_timestamp_in_us(pevent->trace_clock,
 							use_trace_clock);
 	if (use_usec_format) {
-		secs = record->ts / NSEC_PER_SEC;
-		nsecs = record->ts - secs * NSEC_PER_SEC;
+		secs = record->ts / NSECS_PER_SEC;
+		nsecs = record->ts - secs * NSECS_PER_SEC;
 	}
 
 	if (pevent->latency_format) {
@@ -5486,10 +5437,10 @@ void pevent_print_event_time(struct pevent *pevent, struct trace_seq *s,
 			usecs = nsecs;
 			p = 9;
 		} else {
-			usecs = (nsecs + 500) / NSEC_PER_USEC;
+			usecs = (nsecs + 500) / NSECS_PER_USEC;
 			/* To avoid usecs larger than 1 sec */
-			if (usecs >= USEC_PER_SEC) {
-				usecs -= USEC_PER_SEC;
+			if (usecs >= 1000000) {
+				usecs -= 1000000;
 				secs++;
 			}
 			p = 6;
@@ -5744,13 +5695,6 @@ static void print_args(struct print_arg *args)
 		break;
 	case PRINT_HEX:
 		printf("__print_hex(");
-		print_args(args->hex.field);
-		printf(", ");
-		print_args(args->hex.size);
-		printf(")");
-		break;
-	case PRINT_HEX_STR:
-		printf("__print_hex_str(");
 		print_args(args->hex.field);
 		printf(", ");
 		print_args(args->hex.size);

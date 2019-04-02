@@ -978,7 +978,7 @@ static int si2165_set_frontend(struct dvb_frontend *fe)
 	return 0;
 }
 
-static const struct dvb_frontend_ops si2165_ops = {
+static struct dvb_frontend_ops si2165_ops = {
 	.info = {
 		.name = "Silicon Labs ",
 		 /* For DVB-C */

@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_VIRTIO_RING_H
 #define _LINUX_VIRTIO_RING_H
 
@@ -72,7 +71,6 @@ struct virtqueue *vring_create_virtqueue(unsigned int index,
 					 struct virtio_device *vdev,
 					 bool weak_barriers,
 					 bool may_reduce_num,
-					 bool ctx,
 					 bool (*notify)(struct virtqueue *vq),
 					 void (*callback)(struct virtqueue *vq),
 					 const char *name);
@@ -82,7 +80,6 @@ struct virtqueue *__vring_new_virtqueue(unsigned int index,
 					struct vring vring,
 					struct virtio_device *vdev,
 					bool weak_barriers,
-					bool ctx,
 					bool (*notify)(struct virtqueue *),
 					void (*callback)(struct virtqueue *),
 					const char *name);
@@ -96,7 +93,6 @@ struct virtqueue *vring_new_virtqueue(unsigned int index,
 				      unsigned int vring_align,
 				      struct virtio_device *vdev,
 				      bool weak_barriers,
-				      bool ctx,
 				      void *pages,
 				      bool (*notify)(struct virtqueue *vq),
 				      void (*callback)(struct virtqueue *vq),

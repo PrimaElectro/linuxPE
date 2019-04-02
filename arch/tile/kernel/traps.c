@@ -13,7 +13,6 @@
  */
 
 #include <linux/sched.h>
-#include <linux/sched/debug.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/kdebug.h>
@@ -188,7 +187,7 @@ static int special_ill(tile_bundle_bits bundle, int *sigp, int *codep)
 
 	/* Make it the requested signal. */
 	*sigp = sig;
-	*codep = code;
+	*codep = code | __SI_FAULT;
 	return 1;
 }
 

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/err.h>
 #include <linux/pci.h>
 #include <linux/io.h>
@@ -18,7 +17,7 @@ static int devm_ioremap_match(struct device *dev, void *res, void *match_data)
 /**
  * devm_ioremap - Managed ioremap()
  * @dev: Generic device to remap IO address for
- * @offset: Resource address to map
+ * @offset: BUS offset to map
  * @size: Size of map
  *
  * Managed ioremap().  Map is automatically unmapped on driver detach.
@@ -46,7 +45,7 @@ EXPORT_SYMBOL(devm_ioremap);
 /**
  * devm_ioremap_nocache - Managed ioremap_nocache()
  * @dev: Generic device to remap IO address for
- * @offset: Resource address to map
+ * @offset: BUS offset to map
  * @size: Size of map
  *
  * Managed ioremap_nocache().  Map is automatically unmapped on driver
@@ -75,7 +74,7 @@ EXPORT_SYMBOL(devm_ioremap_nocache);
 /**
  * devm_ioremap_wc - Managed ioremap_wc()
  * @dev: Generic device to remap IO address for
- * @offset: Resource address to map
+ * @offset: BUS offset to map
  * @size: Size of map
  *
  * Managed ioremap_wc().  Map is automatically unmapped on driver detach.

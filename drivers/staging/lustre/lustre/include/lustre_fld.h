@@ -38,9 +38,8 @@
  * @{
  */
 
-#include <uapi/linux/lustre/lustre_idl.h>
-#include <linux/libcfs/libcfs.h>
-#include <seq_range.h>
+#include "lustre/lustre_idl.h"
+#include "../../include/linux/libcfs/libcfs.h"
 
 struct lu_client_fld;
 struct lu_server_fld;
@@ -104,6 +103,8 @@ struct lu_client_fld {
 
 	/** Client fld debugfs entry name. */
 	char			 lcf_name[LUSTRE_MDT_MAXNAMELEN];
+
+	int			 lcf_flags;
 };
 
 /* Client methods */

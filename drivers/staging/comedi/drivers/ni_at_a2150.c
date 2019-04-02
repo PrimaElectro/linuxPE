@@ -757,7 +757,7 @@ static int a2150_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 	for (i = 0; i < timeout; i++) {
 		if ((DCAL_BIT & inw(dev->iobase + STATUS_REG)) == 0)
 			break;
-		usleep_range(1000, 3000);
+		udelay(1000);
 	}
 	if (i == timeout) {
 		dev_err(dev->class_dev,

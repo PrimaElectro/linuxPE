@@ -215,7 +215,7 @@ static void xenvif_fatal_tx_err(struct xenvif *vif)
 	netdev_err(vif->dev, "fatal error; disabling device\n");
 	vif->disabled = true;
 	/* Disable the vif from queue 0's kthread */
-	if (vif->num_queues)
+	if (vif->queues)
 		xenvif_kick_thread(&vif->queues[0]);
 }
 

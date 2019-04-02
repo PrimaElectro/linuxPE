@@ -61,7 +61,6 @@ const struct inode_operations afs_dir_inode_operations = {
 	.permission	= afs_permission,
 	.getattr	= afs_getattr,
 	.setattr	= afs_setattr,
-	.listxattr	= afs_listxattr,
 };
 
 const struct dentry_operations afs_fs_dentry_operations = {
@@ -253,7 +252,7 @@ static int afs_dir_iterate_block(struct dir_context *ctx,
 		/* skip entries marked unused in the bitmap */
 		if (!(block->pagehdr.bitmap[offset / 8] &
 		      (1 << (offset % 8)))) {
-			_debug("ENT[%zu.%u]: unused",
+			_debug("ENT[%Zu.%u]: unused",
 			       blkoff / sizeof(union afs_dir_block), offset);
 			if (offset >= curr)
 				ctx->pos = blkoff +
@@ -267,7 +266,7 @@ static int afs_dir_iterate_block(struct dir_context *ctx,
 			       sizeof(*block) -
 			       offset * sizeof(union afs_dirent));
 
-		_debug("ENT[%zu.%u]: %s %zu \"%s\"",
+		_debug("ENT[%Zu.%u]: %s %Zu \"%s\"",
 		       blkoff / sizeof(union afs_dir_block), offset,
 		       (offset < curr ? "skip" : "fill"),
 		       nlen, dire->u.name);
@@ -275,23 +274,23 @@ static int afs_dir_iterate_block(struct dir_context *ctx,
 		/* work out where the next possible entry is */
 		for (tmp = nlen; tmp > 15; tmp -= sizeof(union afs_dirent)) {
 			if (next >= AFS_DIRENT_PER_BLOCK) {
-				_debug("ENT[%zu.%u]:"
+				_debug("ENT[%Zu.%u]:"
 				       " %u travelled beyond end dir block"
-				       " (len %u/%zu)",
+				       " (len %u/%Zu)",
 				       blkoff / sizeof(union afs_dir_block),
 				       offset, next, tmp, nlen);
 				return -EIO;
 			}
 			if (!(block->pagehdr.bitmap[next / 8] &
 			      (1 << (next % 8)))) {
-				_debug("ENT[%zu.%u]:"
-				       " %u unmarked extension (len %u/%zu)",
+				_debug("ENT[%Zu.%u]:"
+				       " %u unmarked extension (len %u/%Zu)",
 				       blkoff / sizeof(union afs_dir_block),
 				       offset, next, tmp, nlen);
 				return -EIO;
 			}
 
-			_debug("ENT[%zu.%u]: ext %u/%zu",
+			_debug("ENT[%Zu.%u]: ext %u/%Zu",
 			       blkoff / sizeof(union afs_dir_block),
 			       next, tmp, nlen);
 			next++;

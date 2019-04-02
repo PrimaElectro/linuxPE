@@ -28,7 +28,9 @@
 #include <net/netfilter/nf_conntrack_core.h>
 #include <net/netfilter/nf_conntrack_zones.h>
 
-static unsigned int connmark_net_id;
+#define CONNMARK_TAB_MASK     3
+
+static int connmark_net_id;
 static struct tc_action_ops act_connmark_ops;
 
 static int tcf_connmark(struct sk_buff *skb, const struct tc_action *a,
@@ -107,8 +109,7 @@ static int tcf_connmark_init(struct net *net, struct nlattr *nla,
 	if (!nla)
 		return -EINVAL;
 
-	ret = nla_parse_nested(tb, TCA_CONNMARK_MAX, nla, connmark_policy,
-			       NULL);
+	ret = nla_parse_nested(tb, TCA_CONNMARK_MAX, nla, connmark_policy);
 	if (ret < 0)
 		return ret;
 
@@ -117,9 +118,9 @@ static int tcf_connmark_init(struct net *net, struct nlattr *nla,
 
 	parm = nla_data(tb[TCA_CONNMARK_PARMS]);
 
-	if (!tcf_idr_check(tn, parm->index, a, bind)) {
-		ret = tcf_idr_create(tn, parm->index, est, a,
-				     &act_connmark_ops, bind, false);
+	if (!tcf_hash_check(tn, parm->index, a, bind)) {
+		ret = tcf_hash_create(tn, parm->index, est, a,
+				      &act_connmark_ops, bind, false);
 		if (ret)
 			return ret;
 
@@ -128,13 +129,13 @@ static int tcf_connmark_init(struct net *net, struct nlattr *nla,
 		ci->net = net;
 		ci->zone = parm->zone;
 
-		tcf_idr_insert(tn, *a);
+		tcf_hash_insert(tn, *a);
 		ret = ACT_P_CREATED;
 	} else {
 		ci = to_connmark(*a);
 		if (bind)
 			return 0;
-		tcf_idr_release(*a, bind);
+		tcf_hash_release(*a, bind);
 		if (!ovr)
 			return -EEXIST;
 		/* replacing action and zone */
@@ -187,7 +188,7 @@ static int tcf_connmark_search(struct net *net, struct tc_action **a, u32 index)
 {
 	struct tc_action_net *tn = net_generic(net, connmark_net_id);
 
-	return tcf_idr_search(tn, a, index);
+	return tcf_hash_search(tn, a, index);
 }
 
 static struct tc_action_ops act_connmark_ops = {
@@ -206,7 +207,7 @@ static __net_init int connmark_init_net(struct net *net)
 {
 	struct tc_action_net *tn = net_generic(net, connmark_net_id);
 
-	return tc_action_net_init(tn, &act_connmark_ops);
+	return tc_action_net_init(tn, &act_connmark_ops, CONNMARK_TAB_MASK);
 }
 
 static void __net_exit connmark_exit_net(struct net *net)

@@ -57,6 +57,11 @@ enum i40e_client_instance_state {
 	__I40E_CLIENT_INSTANCE_OPENED,
 };
 
+enum i40e_client_type {
+	I40E_CLIENT_IWARP,
+	I40E_CLIENT_VMDQ2
+};
+
 struct i40e_ops;
 struct i40e_client;
 
@@ -198,6 +203,8 @@ struct i40e_client_instance {
 	struct i40e_info lan_info;
 	struct i40e_client *client;
 	unsigned long  state;
+	/* A count of all the in-progress calls to the client */
+	atomic_t ref_cnt;
 };
 
 struct i40e_client {
@@ -209,8 +216,7 @@ struct i40e_client {
 	u32 flags;
 #define I40E_CLIENT_FLAGS_LAUNCH_ON_PROBE	BIT(0)
 #define I40E_TX_FLAGS_NOTIFY_OTHER_EVENTS	BIT(2)
-	u8 type;
-#define I40E_CLIENT_IWARP 0
+	enum i40e_client_type type;
 	const struct i40e_client_ops *ops; /* client ops provided by the client */
 };
 

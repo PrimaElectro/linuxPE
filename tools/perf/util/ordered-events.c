@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
-#include <errno.h>
-#include <inttypes.h>
 #include <linux/list.h>
 #include <linux/compiler.h>
 #include <linux/string.h>
@@ -82,7 +79,7 @@ static union perf_event *dup_event(struct ordered_events *oe,
 
 static void free_dup_event(struct ordered_events *oe, union perf_event *event)
 {
-	if (event && oe->copy_on_queue) {
+	if (oe->copy_on_queue) {
 		oe->cur_alloc_size -= event->header.size;
 		free(event);
 	}
@@ -153,7 +150,6 @@ void ordered_events__delete(struct ordered_events *oe, struct ordered_event *eve
 	list_move(&event->list, &oe->cache);
 	oe->nr_events--;
 	free_dup_event(oe, event->event);
-	event->event = NULL;
 }
 
 int ordered_events__queue(struct ordered_events *oe, union perf_event *event,

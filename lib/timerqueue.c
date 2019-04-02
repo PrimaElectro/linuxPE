@@ -48,7 +48,7 @@ bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 	while (*p) {
 		parent = *p;
 		ptr = rb_entry(parent, struct timerqueue_node, node);
-		if (node->expires < ptr->expires)
+		if (node->expires.tv64 < ptr->expires.tv64)
 			p = &(*p)->rb_left;
 		else
 			p = &(*p)->rb_right;
@@ -56,7 +56,7 @@ bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 	rb_link_node(&node->node, parent, p);
 	rb_insert_color(&node->node, &head->head);
 
-	if (!head->next || node->expires < head->next->expires) {
+	if (!head->next || node->expires.tv64 < head->next->expires.tv64) {
 		head->next = node;
 		return true;
 	}
@@ -80,7 +80,8 @@ bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
 	if (head->next == node) {
 		struct rb_node *rbn = rb_next(&node->node);
 
-		head->next = rb_entry_safe(rbn, struct timerqueue_node, node);
+		head->next = rbn ?
+			rb_entry(rbn, struct timerqueue_node, node) : NULL;
 	}
 	rb_erase(&node->node, &head->head);
 	RB_CLEAR_NODE(&node->node);

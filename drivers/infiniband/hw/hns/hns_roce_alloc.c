@@ -32,7 +32,6 @@
  */
 
 #include <linux/platform_device.h>
-#include <linux/vmalloc.h>
 #include "hns_roce_device.h"
 
 int hns_roce_bitmap_alloc(struct hns_roce_bitmap *bitmap, unsigned long *obj)
@@ -62,10 +61,9 @@ int hns_roce_bitmap_alloc(struct hns_roce_bitmap *bitmap, unsigned long *obj)
 	return ret;
 }
 
-void hns_roce_bitmap_free(struct hns_roce_bitmap *bitmap, unsigned long obj,
-			  int rr)
+void hns_roce_bitmap_free(struct hns_roce_bitmap *bitmap, unsigned long obj)
 {
-	hns_roce_bitmap_free_range(bitmap, obj, 1, rr);
+	hns_roce_bitmap_free_range(bitmap, obj, 1);
 }
 
 int hns_roce_bitmap_alloc_range(struct hns_roce_bitmap *bitmap, int cnt,
@@ -108,8 +106,7 @@ int hns_roce_bitmap_alloc_range(struct hns_roce_bitmap *bitmap, int cnt,
 }
 
 void hns_roce_bitmap_free_range(struct hns_roce_bitmap *bitmap,
-				unsigned long obj, int cnt,
-				int rr)
+				unsigned long obj, int cnt)
 {
 	int i;
 
@@ -119,8 +116,7 @@ void hns_roce_bitmap_free_range(struct hns_roce_bitmap *bitmap,
 	for (i = 0; i < cnt; i++)
 		clear_bit(obj + i, bitmap->table);
 
-	if (!rr)
-		bitmap->last = min(bitmap->last, obj);
+	bitmap->last = min(bitmap->last, obj);
 	bitmap->top = (bitmap->top + bitmap->max + bitmap->reserved_top)
 		       & bitmap->mask;
 	spin_unlock(&bitmap->lock);

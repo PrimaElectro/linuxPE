@@ -1,10 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_EVLIST_H
 #define __PERF_EVLIST_H 1
 
-#include <linux/compiler.h>
-#include <linux/kernel.h>
-#include <linux/refcount.h>
+#include <linux/atomic.h>
 #include <linux/list.h>
 #include <api/fd/array.h>
 #include <stdio.h>
@@ -13,7 +10,6 @@
 #include "evsel.h"
 #include "util.h"
 #include "auxtrace.h"
-#include <signal.h>
 #include <unistd.h>
 
 struct pollfd;
@@ -33,10 +29,10 @@ struct perf_mmap {
 	void		 *base;
 	int		 mask;
 	int		 fd;
-	refcount_t	 refcnt;
+	atomic_t	 refcnt;
 	u64		 prev;
 	struct auxtrace_mmap auxtrace_mmap;
-	char		 event_copy[PERF_SAMPLE_MAX_SIZE] __aligned(8);
+	char		 event_copy[PERF_SAMPLE_MAX_SIZE] __attribute__((aligned(8)));
 };
 
 static inline size_t
@@ -116,14 +112,7 @@ void perf_evlist__delete(struct perf_evlist *evlist);
 
 void perf_evlist__add(struct perf_evlist *evlist, struct perf_evsel *entry);
 void perf_evlist__remove(struct perf_evlist *evlist, struct perf_evsel *evsel);
-
-int __perf_evlist__add_default(struct perf_evlist *evlist, bool precise);
-
-static inline int perf_evlist__add_default(struct perf_evlist *evlist)
-{
-	return __perf_evlist__add_default(evlist, true);
-}
-
+int perf_evlist__add_default(struct perf_evlist *evlist);
 int __perf_evlist__add_default_attrs(struct perf_evlist *evlist,
 				     struct perf_event_attr *attrs, size_t nr_attrs);
 
@@ -229,8 +218,6 @@ int perf_evlist__mmap(struct perf_evlist *evlist, unsigned int pages,
 		      bool overwrite);
 void perf_evlist__munmap(struct perf_evlist *evlist);
 
-size_t perf_evlist__mmap_size(unsigned long pages);
-
 void perf_evlist__disable(struct perf_evlist *evlist);
 void perf_evlist__enable(struct perf_evlist *evlist);
 void perf_evlist__toggle_enable(struct perf_evlist *evlist);
@@ -265,11 +252,6 @@ bool perf_evlist__valid_read_format(struct perf_evlist *evlist);
 
 void perf_evlist__splice_list_tail(struct perf_evlist *evlist,
 				   struct list_head *list);
-
-static inline bool perf_evlist__empty(struct perf_evlist *evlist)
-{
-	return list_empty(&evlist->entries);
-}
 
 static inline struct perf_evsel *perf_evlist__first(struct perf_evlist *evlist)
 {

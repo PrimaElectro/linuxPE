@@ -25,7 +25,6 @@
 #include <linux/of.h>
 
 #include "core.h"
-#include "card.h"
 #include "sdio_cis.h"
 #include "sdio_bus.h"
 

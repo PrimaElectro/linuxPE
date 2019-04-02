@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #define USE_DVICHIP
 #ifdef USE_DVICHIP
 
@@ -113,16 +112,18 @@ unsigned short sii164GetDeviceID(void)
  *      0   - Success
  *     -1   - Fail.
  */
-long sii164InitChip(unsigned char edgeSelect,
-		    unsigned char busSelect,
-		    unsigned char dualEdgeClkSelect,
-		    unsigned char hsyncEnable,
-		    unsigned char vsyncEnable,
-		    unsigned char deskewEnable,
-		    unsigned char deskewSetting,
-		    unsigned char continuousSyncEnable,
-		    unsigned char pllFilterEnable,
-		    unsigned char pllFilterValue)
+long sii164InitChip(
+	unsigned char edgeSelect,
+	unsigned char busSelect,
+	unsigned char dualEdgeClkSelect,
+	unsigned char hsyncEnable,
+	unsigned char vsyncEnable,
+	unsigned char deskewEnable,
+	unsigned char deskewSetting,
+	unsigned char continuousSyncEnable,
+	unsigned char pllFilterEnable,
+	unsigned char pllFilterValue
+)
 {
 	unsigned char config;
 
@@ -172,8 +173,7 @@ long sii164InitChip(unsigned char edgeSelect,
 
 		i2cWriteReg(SII164_I2C_ADDRESS, SII164_CONFIGURATION, config);
 
-		/*
-		 * De-skew enabled with default 111b value.
+		/* De-skew enabled with default 111b value.
 		 * This fixes some artifacts problem in some mode on board 2.2.
 		 * Somehow this fix does not affect board 2.1.
 		 */
@@ -258,6 +258,7 @@ void sii164ResetChip(void)
 	sii164SetPower(1);
 }
 
+
 /*
  * sii164GetChipString
  *      This function returns a char string name of the current DVI Controller chip.
@@ -268,6 +269,7 @@ char *sii164GetChipString(void)
 	return gDviCtrlChipName;
 }
 
+
 /*
  *  sii164SetPower
  *      This function sets the power configuration of the DVI Controller Chip.
@@ -275,7 +277,9 @@ char *sii164GetChipString(void)
  *  Input:
  *      powerUp - Flag to set the power down or up
  */
-void sii164SetPower(unsigned char powerUp)
+void sii164SetPower(
+	unsigned char powerUp
+)
 {
 	unsigned char config;
 
@@ -293,16 +297,18 @@ void sii164SetPower(unsigned char powerUp)
 	}
 }
 
+
 /*
  *  sii164SelectHotPlugDetectionMode
  *      This function selects the mode of the hot plug detection.
  */
-static void sii164SelectHotPlugDetectionMode(sii164_hot_plug_mode_t hotPlugMode)
+static void sii164SelectHotPlugDetectionMode(
+	sii164_hot_plug_mode_t hotPlugMode
+)
 {
 	unsigned char detectReg;
 
-	detectReg = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) &
-		    ~SII164_DETECT_MONITOR_SENSE_OUTPUT_FLAG;
+	detectReg = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) & ~SII164_DETECT_MONITOR_SENSE_OUTPUT_FLAG;
 	switch (hotPlugMode) {
 	case SII164_HOTPLUG_DISABLE:
 		detectReg |= SII164_DETECT_MONITOR_SENSE_OUTPUT_HIGH;
@@ -329,7 +335,9 @@ static void sii164SelectHotPlugDetectionMode(sii164_hot_plug_mode_t hotPlugMode)
  *
  *  enableHotPlug   - Enable (=1) / disable (=0) Hot Plug detection
  */
-void sii164EnableHotPlugDetection(unsigned char enableHotPlug)
+void sii164EnableHotPlugDetection(
+	unsigned char enableHotPlug
+)
 {
 	unsigned char detectReg;
 
@@ -356,8 +364,7 @@ unsigned char sii164IsConnected(void)
 {
 	unsigned char hotPlugValue;
 
-	hotPlugValue = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) &
-		       SII164_DETECT_HOT_PLUG_STATUS_MASK;
+	hotPlugValue = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) & SII164_DETECT_HOT_PLUG_STATUS_MASK;
 	if (hotPlugValue == SII164_DETECT_HOT_PLUG_STATUS_ON)
 		return 1;
 	else
@@ -376,8 +383,7 @@ unsigned char sii164CheckInterrupt(void)
 {
 	unsigned char detectReg;
 
-	detectReg = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) &
-		    SII164_DETECT_MONITOR_STATE_MASK;
+	detectReg = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT) & SII164_DETECT_MONITOR_STATE_MASK;
 	if (detectReg == SII164_DETECT_MONITOR_STATE_CHANGE)
 		return 1;
 	else
@@ -394,8 +400,7 @@ void sii164ClearInterrupt(void)
 
 	/* Clear the MDI interrupt */
 	detectReg = i2cReadReg(SII164_I2C_ADDRESS, SII164_DETECT);
-	i2cWriteReg(SII164_I2C_ADDRESS, SII164_DETECT,
-		    detectReg | SII164_DETECT_MONITOR_STATE_CLEAR);
+	i2cWriteReg(SII164_I2C_ADDRESS, SII164_DETECT, detectReg | SII164_DETECT_MONITOR_STATE_CLEAR);
 }
 
 #endif

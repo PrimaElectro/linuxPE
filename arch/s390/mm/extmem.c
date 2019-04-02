@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Author(s)......: Carsten Otte <cotte@de.ibm.com>
  * 		    Rob M van der Heij <rvdheij@nl.ibm.com>
@@ -15,7 +14,7 @@
 #include <linux/spinlock.h>
 #include <linux/list.h>
 #include <linux/slab.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/bootmem.h>
 #include <linux/ctype.h>
 #include <linux/ioport.h>
@@ -80,7 +79,7 @@ struct qin64 {
 struct dcss_segment {
 	struct list_head list;
 	char dcss_name[8];
-	char res_name[16];
+	char res_name[15];
 	unsigned long start_addr;
 	unsigned long end;
 	atomic_t ref_count;
@@ -123,7 +122,7 @@ dcss_set_subcodes(void)
 		"1:	la	%2,3\n"
 		"2:\n"
 		EX_TABLE(0b, 1b)
-		: "+d" (rx), "+d" (ry), "=d" (rc) : : "cc", "memory");
+		: "+d" (rx), "+d" (ry), "=d" (rc) : : "cc");
 
 	kfree(name);
 	/* Diag x'64' new subcodes are supported, set to new subcodes */
@@ -155,7 +154,7 @@ dcss_mkname(char *name, char *dcss_name)
 		if (name[i] == '\0')
 			break;
 		dcss_name[i] = toupper(name[i]);
-	}
+	};
 	for (; i < 8; i++)
 		dcss_name[i] = ' ';
 	ASCEBC(dcss_name, 8);
@@ -433,7 +432,7 @@ __segment_load (char *name, int do_nonshared, unsigned long *addr, unsigned long
 	memcpy(&seg->res_name, seg->dcss_name, 8);
 	EBCASC(seg->res_name, 8);
 	seg->res_name[8] = '\0';
-	strlcat(seg->res_name, " (DCSS)", sizeof(seg->res_name));
+	strncat(seg->res_name, " (DCSS)", 7);
 	seg->res->name = seg->res_name;
 	rc = seg->vm_segtype;
 	if (rc == SEG_TYPE_SC ||

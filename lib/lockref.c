@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/export.h>
 #include <linux/lockref.h>
 
@@ -21,7 +20,7 @@
 		if (likely(old.lock_count == prev.lock_count)) {		\
 			SUCCESS;						\
 		}								\
-		cpu_relax();							\
+		cpu_relax_lowlatency();						\
 	}									\
 } while (0)
 

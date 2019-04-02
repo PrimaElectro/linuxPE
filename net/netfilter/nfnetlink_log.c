@@ -40,8 +40,6 @@
 #include <net/netfilter/nfnetlink_log.h>
 
 #include <linux/atomic.h>
-#include <linux/refcount.h>
-
 
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 #include "../bridge/br_private.h"
@@ -59,7 +57,7 @@
 struct nfulnl_instance {
 	struct hlist_node hlist;	/* global list of instances */
 	spinlock_t lock;
-	refcount_t use;			/* use count */
+	atomic_t use;			/* use count */
 
 	unsigned int qlen;		/* number of nlmsgs in skb */
 	struct sk_buff *skb;		/* pre-allocatd skb */
@@ -82,7 +80,7 @@ struct nfulnl_instance {
 
 #define INSTANCE_BUCKETS	16
 
-static unsigned int nfnl_log_net_id __read_mostly;
+static int nfnl_log_net_id __read_mostly;
 
 struct nfnl_log_net {
 	spinlock_t instances_lock;
@@ -117,7 +115,7 @@ __instance_lookup(struct nfnl_log_net *log, u_int16_t group_num)
 static inline void
 instance_get(struct nfulnl_instance *inst)
 {
-	refcount_inc(&inst->use);
+	atomic_inc(&inst->use);
 }
 
 static struct nfulnl_instance *
@@ -127,7 +125,7 @@ instance_lookup_get(struct nfnl_log_net *log, u_int16_t group_num)
 
 	rcu_read_lock_bh();
 	inst = __instance_lookup(log, group_num);
-	if (inst && !refcount_inc_not_zero(&inst->use))
+	if (inst && !atomic_inc_not_zero(&inst->use))
 		inst = NULL;
 	rcu_read_unlock_bh();
 
@@ -147,7 +145,7 @@ static void nfulnl_instance_free_rcu(struct rcu_head *head)
 static void
 instance_put(struct nfulnl_instance *inst)
 {
-	if (inst && refcount_dec_and_test(&inst->use))
+	if (inst && atomic_dec_and_test(&inst->use))
 		call_rcu_bh(&inst->rcu, nfulnl_instance_free_rcu);
 }
 
@@ -182,7 +180,7 @@ instance_create(struct net *net, u_int16_t group_num,
 	INIT_HLIST_NODE(&inst->hlist);
 	spin_lock_init(&inst->lock);
 	/* needs to be two, since we _put() after creation */
-	refcount_set(&inst->use, 2);
+	atomic_set(&inst->use, 2);
 
 	setup_timer(&inst->timer, nfulnl_timer, (unsigned long)inst);
 
@@ -332,7 +330,7 @@ nfulnl_alloc_skb(struct net *net, u32 peer_portid, unsigned int inst_size,
 	 * message.  WARNING: has to be <= 128k due to slab restrictions */
 
 	n = max(inst_size, pkt_size);
-	skb = alloc_skb(n, GFP_ATOMIC | __GFP_NOWARN);
+	skb = alloc_skb(n, GFP_ATOMIC);
 	if (!skb) {
 		if (n > pkt_size) {
 			/* try to allocate only as much as we need for current
@@ -411,7 +409,7 @@ __build_packet_message(struct nfnl_log_net *log,
 	const unsigned char *hwhdrp;
 
 	nlh = nlmsg_put(inst->skb, 0, 0,
-			nfnl_msg_type(NFNL_SUBSYS_ULOG, NFULNL_MSG_PACKET),
+			NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_PACKET,
 			sizeof(struct nfgenmsg), 0);
 	if (!nlh)
 		return -1;
@@ -540,7 +538,7 @@ __build_packet_message(struct nfnl_log_net *log,
 			goto nla_put_failure;
 	}
 
-	if (skb->tstamp) {
+	if (skb->tstamp.tv64) {
 		struct nfulnl_msg_packet_timestamp ts;
 		struct timespec64 kts = ktime_to_timespec64(skb->tstamp);
 		ts.sec = cpu_to_be64(kts.tv_sec);
@@ -590,7 +588,7 @@ __build_packet_message(struct nfnl_log_net *log,
 		if (skb_tailroom(inst->skb) < nla_total_size(data_len))
 			goto nla_put_failure;
 
-		nla = skb_put(inst->skb, nla_total_size(data_len));
+		nla = (struct nlattr *)skb_put(inst->skb, nla_total_size(data_len));
 		nla->nla_type = NFULA_PAYLOAD;
 		nla->nla_len = size;
 
@@ -606,7 +604,7 @@ nla_put_failure:
 	return -1;
 }
 
-static const struct nf_loginfo default_loginfo = {
+static struct nf_loginfo default_loginfo = {
 	.type =		NF_LOG_TYPE_ULOG,
 	.u = {
 		.ulog = {
@@ -795,8 +793,7 @@ static struct notifier_block nfulnl_rtnl_notifier = {
 
 static int nfulnl_recv_unsupp(struct net *net, struct sock *ctnl,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
-			      const struct nlattr * const nfqa[],
-			      struct netlink_ext_ack *extack)
+			      const struct nlattr * const nfqa[])
 {
 	return -ENOTSUPP;
 }
@@ -804,7 +801,7 @@ static int nfulnl_recv_unsupp(struct net *net, struct sock *ctnl,
 static struct nf_logger nfulnl_logger __read_mostly = {
 	.name	= "nfnetlink_log",
 	.type	= NF_LOG_TYPE_ULOG,
-	.logfn	= nfulnl_log_packet,
+	.logfn	= &nfulnl_log_packet,
 	.me	= THIS_MODULE,
 };
 
@@ -819,8 +816,7 @@ static const struct nla_policy nfula_cfg_policy[NFULA_CFG_MAX+1] = {
 
 static int nfulnl_recv_config(struct net *net, struct sock *ctnl,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
-			      const struct nlattr * const nfula[],
-			      struct netlink_ext_ack *extack)
+			      const struct nlattr * const nfula[])
 {
 	struct nfgenmsg *nfmsg = nlmsg_data(nlh);
 	u_int16_t group_num = ntohs(nfmsg->res_id);
@@ -1035,7 +1031,7 @@ static int seq_show(struct seq_file *s, void *v)
 		   inst->group_num,
 		   inst->peer_portid, inst->qlen,
 		   inst->copy_mode, inst->copy_range,
-		   inst->flushtimeout, refcount_read(&inst->use));
+		   inst->flushtimeout, atomic_read(&inst->use));
 
 	return 0;
 }
@@ -1142,10 +1138,10 @@ out:
 
 static void __exit nfnetlink_log_fini(void)
 {
+	nf_log_unregister(&nfulnl_logger);
 	nfnetlink_subsys_unregister(&nfulnl_subsys);
 	netlink_unregister_notifier(&nfulnl_rtnl_notifier);
 	unregister_pernet_subsys(&nfnl_log_net_ops);
-	nf_log_unregister(&nfulnl_logger);
 }
 
 MODULE_DESCRIPTION("netfilter userspace logging");
@@ -1156,7 +1152,6 @@ MODULE_ALIAS_NF_LOGGER(AF_INET, 1);
 MODULE_ALIAS_NF_LOGGER(AF_INET6, 1);
 MODULE_ALIAS_NF_LOGGER(AF_BRIDGE, 1);
 MODULE_ALIAS_NF_LOGGER(3, 1); /* NFPROTO_ARP */
-MODULE_ALIAS_NF_LOGGER(5, 1); /* NFPROTO_NETDEV */
 
 module_init(nfnetlink_log_init);
 module_exit(nfnetlink_log_fini);

@@ -13,18 +13,20 @@
  * PURPOSE.  See the GNU General Public License for more details.
  */
 
-/*
+/************************************************************************
+ *
  * This file implements the mgmt functionality for the
  * Neo and ClassicBoard based product lines.
+ *
+ ************************************************************************
  */
-
 #include <linux/kernel.h>
 #include <linux/ctype.h>
-#include <linux/sched.h>
-#include <linux/interrupt.h>
+#include <linux/sched.h>	/* For jiffies, task states */
+#include <linux/interrupt.h>	/* For tasklet and interrupt structs/defines */
 #include <linux/serial_reg.h>
 #include <linux/termios.h>
-#include <linux/uaccess.h>
+#include <linux/uaccess.h>	/* For copy_from_user/copy_to_user */
 
 #include "dgnc_driver.h"
 #include "dgnc_pci.h"
@@ -33,60 +35,64 @@
 /* Our "in use" variables, to enforce 1 open only */
 static int dgnc_mgmt_in_use[MAXMGMTDEVICES];
 
-/**
- * dgnc_mgmt_open() - Open the mgmt/downld/dpa device.
+/*
+ * dgnc_mgmt_open()
+ *
+ * Open the mgmt/downld/dpa device
  */
 int dgnc_mgmt_open(struct inode *inode, struct file *file)
 {
 	unsigned long flags;
 	unsigned int minor = iminor(inode);
-	int rc = 0;
 
 	spin_lock_irqsave(&dgnc_global_lock, flags);
 
-	if (minor >= MAXMGMTDEVICES) {
-		rc = -ENXIO;
-		goto out;
+	/* mgmt device */
+	if (minor < MAXMGMTDEVICES) {
+		/* Only allow 1 open at a time on mgmt device */
+		if (dgnc_mgmt_in_use[minor]) {
+			spin_unlock_irqrestore(&dgnc_global_lock, flags);
+			return -EBUSY;
+		}
+		dgnc_mgmt_in_use[minor]++;
+	} else {
+		spin_unlock_irqrestore(&dgnc_global_lock, flags);
+		return -ENXIO;
 	}
-	/* Only allow 1 open at a time on mgmt device */
-	if (dgnc_mgmt_in_use[minor]) {
-		rc = -EBUSY;
-		goto out;
-	}
-	dgnc_mgmt_in_use[minor]++;
 
-out:
 	spin_unlock_irqrestore(&dgnc_global_lock, flags);
 
-	return rc;
+	return 0;
 }
 
-/**
- * dgnc_mgmt_close() - Close the mgmt/dpa device
+/*
+ * dgnc_mgmt_close()
+ *
+ * Open the mgmt/dpa device
  */
 int dgnc_mgmt_close(struct inode *inode, struct file *file)
 {
 	unsigned long flags;
 	unsigned int minor = iminor(inode);
-	int rc = 0;
 
 	spin_lock_irqsave(&dgnc_global_lock, flags);
 
-	if (minor >= MAXMGMTDEVICES) {
-		rc = -ENXIO;
-		goto out;
+	/* mgmt device */
+	if (minor < MAXMGMTDEVICES) {
+		if (dgnc_mgmt_in_use[minor])
+			dgnc_mgmt_in_use[minor] = 0;
 	}
-	dgnc_mgmt_in_use[minor] = 0;
-
-out:
 	spin_unlock_irqrestore(&dgnc_global_lock, flags);
 
-	return rc;
+	return 0;
 }
 
-/**
- * dgnc_mgmt_ioctl() - Ioctl the mgmt/dpa device.
+/*
+ * dgnc_mgmt_ioctl()
+ *
+ * ioctl the mgmt/dpa device
  */
+
 long dgnc_mgmt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	unsigned long flags;
@@ -167,15 +173,17 @@ long dgnc_mgmt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		board = ni.board;
 		channel = ni.channel;
 
+		/* Verify boundaries on board */
 		if (board >= dgnc_num_boards)
 			return -ENODEV;
 
+		/* Verify boundaries on channel */
 		if (channel >= dgnc_board[board]->nasync)
 			return -ENODEV;
 
 		ch = dgnc_board[board]->channels[channel];
 
-		if (!ch)
+		if (!ch || ch->magic != DGNC_CHANNEL_MAGIC)
 			return -ENODEV;
 
 		memset(&ni, 0, sizeof(ni));
@@ -244,5 +252,6 @@ long dgnc_mgmt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	}
 	}
+
 	return 0;
 }

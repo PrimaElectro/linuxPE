@@ -4,13 +4,7 @@ Driver Basics
 Driver Entry and Exit points
 ----------------------------
 
-.. kernel-doc:: include/linux/module.h
-   :internal:
-
-Driver device table
--------------------
-
-.. kernel-doc:: include/linux/mod_devicetable.h
+.. kernel-doc:: include/linux/init.h
    :internal:
 
 Atomic and pointer manipulation
@@ -101,6 +95,12 @@ Kernel utility functions
    :export:
 
 .. kernel-doc:: kernel/panic.c
+   :export:
+
+.. kernel-doc:: kernel/sys.c
+   :export:
+
+.. kernel-doc:: kernel/rcu/srcu.c
    :export:
 
 .. kernel-doc:: kernel/rcu/tree.c

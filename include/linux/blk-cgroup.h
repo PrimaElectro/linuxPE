@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _BLK_CGROUP_H
 #define _BLK_CGROUP_H
 /*
@@ -519,7 +518,7 @@ static inline void blkg_stat_exit(struct blkg_stat *stat)
  */
 static inline void blkg_stat_add(struct blkg_stat *stat, uint64_t val)
 {
-	percpu_counter_add_batch(&stat->cpu_cnt, val, BLKG_STAT_CPU_BATCH);
+	__percpu_counter_add(&stat->cpu_cnt, val, BLKG_STAT_CPU_BATCH);
 }
 
 /**
@@ -582,14 +581,15 @@ static inline void blkg_rwstat_exit(struct blkg_rwstat *rwstat)
 /**
  * blkg_rwstat_add - add a value to a blkg_rwstat
  * @rwstat: target blkg_rwstat
- * @op: REQ_OP and flags
+ * @op: REQ_OP
+ * @op_flags: rq_flag_bits
  * @val: value to add
  *
  * Add @val to @rwstat.  The counters are chosen according to @rw.  The
  * caller is responsible for synchronizing calls to this function.
  */
 static inline void blkg_rwstat_add(struct blkg_rwstat *rwstat,
-				   unsigned int op, uint64_t val)
+				   int op, int op_flags, uint64_t val)
 {
 	struct percpu_counter *cnt;
 
@@ -598,14 +598,14 @@ static inline void blkg_rwstat_add(struct blkg_rwstat *rwstat,
 	else
 		cnt = &rwstat->cpu_cnt[BLKG_RWSTAT_READ];
 
-	percpu_counter_add_batch(cnt, val, BLKG_STAT_CPU_BATCH);
+	__percpu_counter_add(cnt, val, BLKG_STAT_CPU_BATCH);
 
-	if (op_is_sync(op))
+	if (op_flags & REQ_SYNC)
 		cnt = &rwstat->cpu_cnt[BLKG_RWSTAT_SYNC];
 	else
 		cnt = &rwstat->cpu_cnt[BLKG_RWSTAT_ASYNC];
 
-	percpu_counter_add_batch(cnt, val, BLKG_STAT_CPU_BATCH);
+	__percpu_counter_add(cnt, val, BLKG_STAT_CPU_BATCH);
 }
 
 /**
@@ -692,9 +692,6 @@ static inline bool blkcg_bio_issue_check(struct request_queue *q,
 	rcu_read_lock();
 	blkcg = bio_blkcg(bio);
 
-	/* associate blkcg if bio hasn't attached one */
-	bio_associate_blkcg(bio, &blkcg->css);
-
 	blkg = blkg_lookup(blkcg, q);
 	if (unlikely(!blkg)) {
 		spin_lock_irq(q->queue_lock);
@@ -708,9 +705,9 @@ static inline bool blkcg_bio_issue_check(struct request_queue *q,
 
 	if (!throtl) {
 		blkg = blkg ?: q->root_blkg;
-		blkg_rwstat_add(&blkg->stat_bytes, bio->bi_opf,
+		blkg_rwstat_add(&blkg->stat_bytes, bio_op(bio), bio->bi_opf,
 				bio->bi_iter.bi_size);
-		blkg_rwstat_add(&blkg->stat_ios, bio->bi_opf, 1);
+		blkg_rwstat_add(&blkg->stat_ios, bio_op(bio), bio->bi_opf, 1);
 	}
 
 	rcu_read_unlock();

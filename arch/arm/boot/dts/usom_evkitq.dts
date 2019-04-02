@@ -16,8 +16,8 @@
 /dts-v1/;
 
 #include "imx6q.dtsi"
-#include "include/dt-bindings/input/input.h"
-#include "include/dt-bindings/gpio/gpio.h"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 
@@ -101,6 +101,16 @@
             startup-delay-us = <500>;
             enable-active-high;
         };
+	
+	vdd_reg: regulator@2 {
+	  compatible = "regulator-fixed";
+	  reg = <2>;
+	  regulator-name = "vdd-supply";
+	  gpio = <&gpio7 1 0>;
+	  enable-active-high;
+	  regulator-boot-on;
+	  regulator-always-on;
+	};
     };
 
     mxcfb1: fb@0 {
@@ -121,7 +131,6 @@
         default_ifmt = "RGB565";
         pinctrl-names = "default";
         pinctrl-0 = <&pinctrl_ipu1>;
-        enable-gpios = <&gpio7 1 0>;
         status = "okay";
     };
 
@@ -141,9 +150,9 @@
 
     working_hours {
       compatible = "working_hours";
-      eeprom = <&seeprom0>;
+      nvmem-names = "eeprom", "rtcnvram";
+      nvmem = <&seeprom0>, <&m41t83>;
       backlight = <&pwm_bl00>;
-      rtcnvram = <&m41t83>;
       status = "okay";
     };
 };
@@ -597,14 +606,6 @@
     fsl,ldo-bypass = <0>;
     fsl,wdog-reset = <1>;
 };
-
-
-&hdmi_core {
-    ipu_id = <0>;
-    disp_id = <0>;
-    status = "disabled";
-};
-
 
 &can1 {
     pinctrl-names = "default";

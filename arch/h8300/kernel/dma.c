@@ -60,7 +60,7 @@ static int map_sg(struct device *dev, struct scatterlist *sgl,
 	return nents;
 }
 
-const struct dma_map_ops h8300_dma_map_ops = {
+struct dma_map_ops h8300_dma_map_ops = {
 	.alloc = dma_alloc,
 	.free = dma_free,
 	.map_page = map_page,

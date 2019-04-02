@@ -50,11 +50,7 @@ static int mm_show(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
 	struct drm_device *dev = node->minor->dev;
-	struct drm_printer p = drm_seq_file_printer(m);
-
-	drm_mm_print(&dev->vma_offset_manager->vm_addr_space_mm, &p);
-
-	return 0;
+	return drm_mm_dump_table(m, &dev->vma_offset_manager->vm_addr_space_mm);
 }
 
 #ifdef CONFIG_DRM_FBDEV_EMULATION
@@ -121,6 +117,15 @@ int omap_debugfs_init(struct drm_minor *minor)
 	}
 
 	return ret;
+}
+
+void omap_debugfs_cleanup(struct drm_minor *minor)
+{
+	drm_debugfs_remove_files(omap_debugfs_list,
+			ARRAY_SIZE(omap_debugfs_list), minor);
+	if (dmm_is_available())
+		drm_debugfs_remove_files(omap_dmm_debugfs_list,
+				ARRAY_SIZE(omap_dmm_debugfs_list), minor);
 }
 
 #endif

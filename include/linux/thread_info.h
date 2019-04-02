@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /* thread_info.h: common low-level thread information accessors
  *
  * Copyright (C) 2002  David Howells (dhowells@redhat.com)
@@ -10,40 +9,62 @@
 
 #include <linux/types.h>
 #include <linux/bug.h>
-#include <linux/restart_block.h>
+
+struct timespec;
+struct compat_timespec;
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
-/*
- * For CONFIG_THREAD_INFO_IN_TASK kernels we need <asm/current.h> for the
- * definition of current, but for !CONFIG_THREAD_INFO_IN_TASK kernels,
- * including <asm/current.h> can cause a circular dependency on some platforms.
- */
-#include <asm/current.h>
 #define current_thread_info() ((struct thread_info *)current)
 #endif
 
-#include <linux/bitops.h>
-
 /*
- * For per-arch arch_within_stack_frames() implementations, defined in
- * asm/thread_info.h.
+ * System call restart block.
  */
-enum {
-	BAD_STACK = -1,
-	NOT_STACK = 0,
-	GOOD_FRAME,
-	GOOD_STACK,
+struct restart_block {
+	long (*fn)(struct restart_block *);
+	union {
+		/* For futex_wait and futex_wait_requeue_pi */
+		struct {
+			u32 __user *uaddr;
+			u32 val;
+			u32 flags;
+			u32 bitset;
+			u64 time;
+			u32 __user *uaddr2;
+		} futex;
+		/* For nanosleep */
+		struct {
+			clockid_t clockid;
+			struct timespec __user *rmtp;
+#ifdef CONFIG_COMPAT
+			struct compat_timespec __user *compat_rmtp;
+#endif
+			u64 expires;
+		} nanosleep;
+		/* For poll */
+		struct {
+			struct pollfd __user *ufds;
+			int nfds;
+			int has_timeout;
+			unsigned long tv_sec;
+			unsigned long tv_nsec;
+		} poll;
+	};
 };
 
+extern long do_no_restart_syscall(struct restart_block *parm);
+
+#include <linux/bitops.h>
 #include <asm/thread_info.h>
 
 #ifdef __KERNEL__
 
-#ifndef THREAD_ALIGN
-#define THREAD_ALIGN	THREAD_SIZE
+#ifdef CONFIG_DEBUG_STACK_USAGE
+# define THREADINFO_GFP		(GFP_KERNEL_ACCOUNT | __GFP_NOTRACK | \
+				 __GFP_ZERO)
+#else
+# define THREADINFO_GFP		(GFP_KERNEL_ACCOUNT | __GFP_NOTRACK)
 #endif
-
-#define THREADINFO_GFP		(GFP_KERNEL_ACCOUNT | __GFP_ZERO)
 
 /*
  * flag set/clear/test wrappers
@@ -86,7 +107,17 @@ static inline int test_ti_thread_flag(struct thread_info *ti, int flag)
 #define test_thread_flag(flag) \
 	test_ti_thread_flag(current_thread_info(), flag)
 
-#define tif_need_resched() test_thread_flag(TIF_NEED_RESCHED)
+#ifdef CONFIG_PREEMPT_LAZY
+#define tif_need_resched()	(test_thread_flag(TIF_NEED_RESCHED) || \
+				 test_thread_flag(TIF_NEED_RESCHED_LAZY))
+#define tif_need_resched_now()	(test_thread_flag(TIF_NEED_RESCHED))
+#define tif_need_resched_lazy()	test_thread_flag(TIF_NEED_RESCHED_LAZY))
+
+#else
+#define tif_need_resched()	test_thread_flag(TIF_NEED_RESCHED)
+#define tif_need_resched_now()	test_thread_flag(TIF_NEED_RESCHED)
+#define tif_need_resched_lazy()	0
+#endif
 
 #ifndef CONFIG_HAVE_ARCH_WITHIN_STACK_FRAMES
 static inline int arch_within_stack_frames(const void * const stack,
@@ -112,37 +143,6 @@ static inline void check_object_size(const void *ptr, unsigned long n,
 				     bool to_user)
 { }
 #endif /* CONFIG_HARDENED_USERCOPY */
-
-extern void __compiletime_error("copy source size is too small")
-__bad_copy_from(void);
-extern void __compiletime_error("copy destination size is too small")
-__bad_copy_to(void);
-
-static inline void copy_overflow(int size, unsigned long count)
-{
-	WARN(1, "Buffer overflow detected (%d < %lu)!\n", size, count);
-}
-
-static __always_inline bool
-check_copy_size(const void *addr, size_t bytes, bool is_source)
-{
-	int sz = __compiletime_object_size(addr);
-	if (unlikely(sz >= 0 && sz < bytes)) {
-		if (!__builtin_constant_p(bytes))
-			copy_overflow(sz, bytes);
-		else if (is_source)
-			__bad_copy_from();
-		else
-			__bad_copy_to();
-		return false;
-	}
-	check_object_size(addr, bytes, is_source);
-	return true;
-}
-
-#ifndef arch_setup_new_exec
-static inline void arch_setup_new_exec(void) { }
-#endif
 
 #endif	/* __KERNEL__ */
 

@@ -218,7 +218,8 @@ static int sctp_eps_seq_show(struct seq_file *seq, void *v)
 		return -ENOMEM;
 
 	head = &sctp_ep_hashtable[hash];
-	read_lock_bh(&head->lock);
+	local_bh_disable();
+	read_lock(&head->lock);
 	sctp_for_each_hentry(epb, &head->chain) {
 		ep = sctp_ep(epb);
 		sk = epb->sk;
@@ -233,7 +234,8 @@ static int sctp_eps_seq_show(struct seq_file *seq, void *v)
 		sctp_seq_dump_local_addrs(seq, epb);
 		seq_printf(seq, "\n");
 	}
-	read_unlock_bh(&head->lock);
+	read_unlock(&head->lock);
+	local_bh_enable();
 
 	return 0;
 }
@@ -335,6 +337,8 @@ static int sctp_assocs_seq_show(struct seq_file *seq, void *v)
 	}
 
 	transport = (struct sctp_transport *)v;
+	if (!sctp_transport_hold(transport))
+		return 0;
 	assoc = transport->asoc;
 	epb = &assoc->base;
 	sk = epb->sk;
@@ -357,11 +361,11 @@ static int sctp_assocs_seq_show(struct seq_file *seq, void *v)
 	sctp_seq_dump_remote_addrs(seq, assoc);
 	seq_printf(seq, "\t%8lu %5d %5d %4d %4d %4d %8d "
 		   "%8d %8d %8d %8d",
-		assoc->hbinterval, assoc->stream.incnt,
-		assoc->stream.outcnt, assoc->max_retrans,
+		assoc->hbinterval, assoc->c.sinit_max_instreams,
+		assoc->c.sinit_num_ostreams, assoc->max_retrans,
 		assoc->init_retries, assoc->shutdown_retries,
 		assoc->rtx_data_chunks,
-		refcount_read(&sk->sk_wmem_alloc),
+		atomic_read(&sk->sk_wmem_alloc),
 		sk->sk_wmem_queued,
 		sk->sk_sndbuf,
 		sk->sk_rcvbuf);
@@ -424,6 +428,8 @@ static int sctp_remaddr_seq_show(struct seq_file *seq, void *v)
 	}
 
 	transport = (struct sctp_transport *)v;
+	if (!sctp_transport_hold(transport))
+		return 0;
 	assoc = transport->asoc;
 
 	list_for_each_entry_rcu(tsp, &assoc->peer.transport_addr_list,

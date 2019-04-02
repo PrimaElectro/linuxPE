@@ -10,6 +10,7 @@
     |         arc: |  ok  |
     |         arm: |  ok  |
     |       arm64: |  ok  |
+    |       avr32: | TODO |
     |    blackfin: |  ok  |
     |         c6x: |  ok  |
     |        cris: | TODO |
@@ -25,7 +26,7 @@
     |     mn10300: |  ok  |
     |       nios2: |  ok  |
     |    openrisc: |  ok  |
-    |      parisc: |  ok  |
+    |      parisc: | TODO |
     |     powerpc: |  ok  |
     |        s390: |  ok  |
     |       score: | TODO |

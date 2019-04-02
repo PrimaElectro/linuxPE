@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/fs/nfs/nfs4sysctl.c
  *
@@ -32,7 +31,7 @@ static struct ctl_table nfs4_cb_sysctls[] = {
 		.data = &nfs_idmap_cache_timeout,
 		.maxlen = sizeof(int),
 		.mode = 0644,
-		.proc_handler = proc_dointvec,
+		.proc_handler = proc_dointvec_jiffies,
 	},
 	{ }
 };

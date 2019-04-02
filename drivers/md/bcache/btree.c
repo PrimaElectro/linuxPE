@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2010 Kent Overstreet <kent.overstreet@gmail.com>
  *
@@ -33,9 +32,6 @@
 #include <linux/prefetch.h>
 #include <linux/random.h>
 #include <linux/rcupdate.h>
-#include <linux/sched/clock.h>
-#include <linux/rculist.h>
-
 #include <trace/events/bcache.h>
 
 /*
@@ -301,14 +297,14 @@ static void bch_btree_node_read(struct btree *b)
 	bio->bi_iter.bi_size = KEY_SIZE(&b->key) << 9;
 	bio->bi_end_io	= btree_node_read_endio;
 	bio->bi_private	= &cl;
-	bio->bi_opf = REQ_OP_READ | REQ_META;
+	bio_set_op_attrs(bio, REQ_OP_READ, REQ_META|READ_SYNC);
 
 	bch_bio_map(bio, b->keys.set[0].data);
 
 	bch_submit_bbio(bio, b->c, &b->key, 0);
 	closure_sync(&cl);
 
-	if (bio->bi_status)
+	if (bio->bi_error)
 		set_btree_node_io_error(b);
 
 	bch_bbio_free(bio, b->c);
@@ -375,10 +371,10 @@ static void btree_node_write_endio(struct bio *bio)
 	struct closure *cl = bio->bi_private;
 	struct btree *b = container_of(cl, struct btree, io);
 
-	if (bio->bi_status)
+	if (bio->bi_error)
 		set_btree_node_io_error(b);
 
-	bch_bbio_count_io_errors(b->c, bio, bio->bi_status, "writing btree");
+	bch_bbio_count_io_errors(b->c, bio, bio->bi_error, "writing btree");
 	closure_put(cl);
 }
 
@@ -397,7 +393,7 @@ static void do_btree_node_write(struct btree *b)
 	b->bio->bi_end_io	= btree_node_write_endio;
 	b->bio->bi_private	= cl;
 	b->bio->bi_iter.bi_size	= roundup(set_bytes(i), block_bytes(b->c));
-	b->bio->bi_opf		= REQ_OP_WRITE | REQ_META | REQ_FUA;
+	bio_set_op_attrs(b->bio, REQ_OP_WRITE, REQ_META|WRITE_SYNC|REQ_FUA);
 	bch_bio_map(b->bio, i);
 
 	/*
@@ -1868,17 +1864,14 @@ void bch_initial_gc_finish(struct cache_set *c)
 	 */
 	for_each_cache(ca, c, i) {
 		for_each_bucket(b, ca) {
-			if (fifo_full(&ca->free[RESERVE_PRIO]) &&
-			    fifo_full(&ca->free[RESERVE_BTREE]))
+			if (fifo_full(&ca->free[RESERVE_PRIO]))
 				break;
 
 			if (bch_can_invalidate_bucket(ca, b) &&
 			    !GC_MARK(b)) {
 				__bch_invalidate_one_bucket(ca, b);
-				if (!fifo_push(&ca->free[RESERVE_PRIO],
-				   b - ca->buckets))
-					fifo_push(&ca->free[RESERVE_BTREE],
-						  b - ca->buckets);
+				fifo_push(&ca->free[RESERVE_PRIO],
+					  b - ca->buckets);
 			}
 		}
 	}
@@ -2371,7 +2364,7 @@ static int refill_keybuf_fn(struct btree_op *op, struct btree *b,
 	struct keybuf *buf = refill->buf;
 	int ret = MAP_CONTINUE;
 
-	if (bkey_cmp(k, refill->end) > 0) {
+	if (bkey_cmp(k, refill->end) >= 0) {
 		ret = MAP_DONE;
 		goto out;
 	}

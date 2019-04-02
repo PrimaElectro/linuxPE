@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Generate definitions needed by assembly language modules.
  * This code generates raw asm output which is post-processed to extract
@@ -17,7 +16,6 @@
 #include <asm/sigframe.h>
 #include <asm/bootparam.h>
 #include <asm/suspend.h>
-#include <asm/tlbflush.h>
 
 #ifdef CONFIG_XEN
 #include <xen/interface/xen.h>
@@ -38,6 +36,7 @@ void common(void) {
 
 	BLANK();
 	OFFSET(TASK_TI_flags, task_struct, thread_info.flags);
+	OFFSET(TASK_TI_preempt_lazy_count, task_struct, thread_info.preempt_lazy_count);
 	OFFSET(TASK_addr_limit, task_struct, thread.addr_limit);
 
 	BLANK();
@@ -83,7 +82,6 @@ void common(void) {
 
 	BLANK();
 	OFFSET(BP_scratch, boot_params, scratch);
-	OFFSET(BP_secure_boot, boot_params, secure_boot);
 	OFFSET(BP_loadflags, boot_params, hdr.loadflags);
 	OFFSET(BP_hardware_subarch, boot_params, hdr.hardware_subarch);
 	OFFSET(BP_version, boot_params, hdr.version);
@@ -94,13 +92,5 @@ void common(void) {
 
 	BLANK();
 	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));
-
-	/* TLB state for the entry code */
-	OFFSET(TLB_STATE_user_pcid_flush_mask, tlb_state, user_pcid_flush_mask);
-
-	/* Layout info for cpu_entry_area */
-	OFFSET(CPU_ENTRY_AREA_tss, cpu_entry_area, tss);
-	OFFSET(CPU_ENTRY_AREA_entry_trampoline, cpu_entry_area, entry_trampoline);
-	OFFSET(CPU_ENTRY_AREA_entry_stack, cpu_entry_area, entry_stack_page);
-	DEFINE(SIZEOF_entry_stack, sizeof(struct entry_stack));
+	DEFINE(_PREEMPT_ENABLED, PREEMPT_ENABLED);
 }

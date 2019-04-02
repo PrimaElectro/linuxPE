@@ -158,11 +158,11 @@ int big_key_preparse(struct key_preparsed_payload *prep)
 		 * File content is stored encrypted with randomly generated key.
 		 */
 		size_t enclen = datalen + ENC_AUTHTAG_SIZE;
-		loff_t pos = 0;
 
 		data = kmalloc(enclen, GFP_KERNEL);
 		if (!data)
 			return -ENOMEM;
+
 		memcpy(data, prep->data, datalen);
 
 		/* generate random key */
@@ -171,9 +171,7 @@ int big_key_preparse(struct key_preparsed_payload *prep)
 			ret = -ENOMEM;
 			goto error;
 		}
-		ret = get_random_bytes_wait(enckey, ENC_KEY_SIZE);
-		if (unlikely(ret))
-			goto err_enckey;
+		get_random_bytes(enckey, ENC_KEY_SIZE);
 
 		/* encrypt aligned data */
 		ret = big_key_crypt(BIG_KEY_ENC, data, datalen, enckey);
@@ -187,7 +185,7 @@ int big_key_preparse(struct key_preparsed_payload *prep)
 			goto err_enckey;
 		}
 
-		written = kernel_write(file, data, enclen, &pos);
+		written = kernel_write(file, data, enclen, 0);
 		if (written != enclen) {
 			ret = written;
 			if (written >= 0)
@@ -303,7 +301,6 @@ long big_key_read(const struct key *key, char __user *buffer, size_t buflen)
 		u8 *data;
 		u8 *enckey = (u8 *)key->payload.data[big_key_data];
 		size_t enclen = datalen + ENC_AUTHTAG_SIZE;
-		loff_t pos = 0;
 
 		data = kmalloc(enclen, GFP_KERNEL);
 		if (!data)
@@ -316,7 +313,7 @@ long big_key_read(const struct key *key, char __user *buffer, size_t buflen)
 		}
 
 		/* read file to kernel and decrypt */
-		ret = kernel_read(file, data, enclen, &pos);
+		ret = kernel_read(file, 0, data, enclen);
 		if (ret >= 0 && ret != enclen) {
 			ret = -EIO;
 			goto err_fput;

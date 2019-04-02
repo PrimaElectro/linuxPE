@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  Copyright (C) 2005,2006,2007,2008,2009 Imagination Technologies
  *
@@ -153,5 +152,6 @@ void __init mmu_init(unsigned long mem_end)
 
 		p_swapper_pg_dir++;
 		addr += PGDIR_SIZE;
+		entry++;
 	}
 }

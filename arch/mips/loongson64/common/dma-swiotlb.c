@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/mm.h>
 #include <linux/init.h>
 #include <linux/dma-mapping.h>
@@ -18,14 +17,22 @@ static void *loongson_dma_alloc_coherent(struct device *dev, size_t size,
 	/* ignore region specifiers */
 	gfp &= ~(__GFP_DMA | __GFP_DMA32 | __GFP_HIGHMEM);
 
-	if ((IS_ENABLED(CONFIG_ISA) && dev == NULL) ||
-	    (IS_ENABLED(CONFIG_ZONE_DMA) &&
-	     dev->coherent_dma_mask < DMA_BIT_MASK(32)))
+#ifdef CONFIG_ISA
+	if (dev == NULL)
 		gfp |= __GFP_DMA;
-	else if (IS_ENABLED(CONFIG_ZONE_DMA32) &&
-		 dev->coherent_dma_mask < DMA_BIT_MASK(40))
+	else
+#endif
+#ifdef CONFIG_ZONE_DMA
+	if (dev->coherent_dma_mask < DMA_BIT_MASK(32))
+		gfp |= __GFP_DMA;
+	else
+#endif
+#ifdef CONFIG_ZONE_DMA32
+	if (dev->coherent_dma_mask < DMA_BIT_MASK(40))
 		gfp |= __GFP_DMA32;
-
+	else
+#endif
+	;
 	gfp |= __GFP_NORETRY;
 
 	ret = swiotlb_alloc_coherent(dev, size, dma_handle, gfp);
@@ -54,7 +61,7 @@ static int loongson_dma_map_sg(struct device *dev, struct scatterlist *sg,
 				int nents, enum dma_data_direction dir,
 				unsigned long attrs)
 {
-	int r = swiotlb_map_sg_attrs(dev, sg, nents, dir, attrs);
+	int r = swiotlb_map_sg_attrs(dev, sg, nents, dir, 0);
 	mb();
 
 	return r;
@@ -76,11 +83,19 @@ static void loongson_dma_sync_sg_for_device(struct device *dev,
 	mb();
 }
 
-static int loongson_dma_supported(struct device *dev, u64 mask)
+static int loongson_dma_set_mask(struct device *dev, u64 mask)
 {
-	if (mask > DMA_BIT_MASK(loongson_sysconf.dma_mask_bits))
-		return 0;
-	return swiotlb_dma_supported(dev, mask);
+	if (!dev->dma_mask || !dma_supported(dev, mask))
+		return -EIO;
+
+	if (mask > DMA_BIT_MASK(loongson_sysconf.dma_mask_bits)) {
+		*dev->dma_mask = DMA_BIT_MASK(loongson_sysconf.dma_mask_bits);
+		return -EIO;
+	}
+
+	*dev->dma_mask = mask;
+
+	return 0;
 }
 
 dma_addr_t phys_to_dma(struct device *dev, phys_addr_t paddr)
@@ -107,7 +122,7 @@ phys_addr_t dma_to_phys(struct device *dev, dma_addr_t daddr)
 	return daddr;
 }
 
-static const struct dma_map_ops loongson_dma_map_ops = {
+static struct dma_map_ops loongson_dma_map_ops = {
 	.alloc = loongson_dma_alloc_coherent,
 	.free = loongson_dma_free_coherent,
 	.map_page = loongson_dma_map_page,
@@ -119,7 +134,8 @@ static const struct dma_map_ops loongson_dma_map_ops = {
 	.sync_sg_for_cpu = swiotlb_sync_sg_for_cpu,
 	.sync_sg_for_device = loongson_dma_sync_sg_for_device,
 	.mapping_error = swiotlb_dma_mapping_error,
-	.dma_supported = loongson_dma_supported,
+	.dma_supported = swiotlb_dma_supported,
+	.set_dma_mask = loongson_dma_set_mask
 };
 
 void __init plat_swiotlb_setup(void)

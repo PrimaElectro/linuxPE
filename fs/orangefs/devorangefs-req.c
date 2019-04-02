@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * (C) 2001 Clemson University and The University of Chicago
  *
@@ -181,10 +180,6 @@ static ssize_t orangefs_devreq_read(struct file *file,
 		return -EINVAL;
 	}
 
-	/* Check for an empty list before locking. */
-	if (list_empty(&orangefs_request_list))
-		return -EAGAIN;
-
 restart:
 	cur_op = NULL;
 	/* Get next op (if any) from top of list. */
@@ -366,6 +361,7 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 		__u64 tag;
 	} head;
 	int total = ret = iov_iter_count(iter);
+	int n;
 	int downcall_size = sizeof(struct orangefs_downcall_s);
 	int head_size = sizeof(head);
 
@@ -382,7 +378,8 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 		return -EFAULT;
 	}
      
-	if (!copy_from_iter_full(&head, head_size, iter)) {
+	n = copy_from_iter(&head, head_size, iter);
+	if (n < head_size) {
 		gossip_err("%s: failed to copy head.\n", __func__);
 		return -EFAULT;
 	}
@@ -417,7 +414,8 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 		return ret;
 	}
 
-	if (!copy_from_iter_full(&op->downcall, downcall_size, iter)) {
+	n = copy_from_iter(&op->downcall, downcall_size, iter);
+	if (n != downcall_size) {
 		gossip_err("%s: failed to copy downcall.\n", __func__);
 		goto Efault;
 	}
@@ -463,13 +461,18 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 	if (op->downcall.type != ORANGEFS_VFS_OP_READDIR)
 		goto wakeup;
 
-	op->downcall.trailer_buf = vmalloc(op->downcall.trailer_size);
-	if (!op->downcall.trailer_buf)
+	op->downcall.trailer_buf =
+		vmalloc(op->downcall.trailer_size);
+	if (op->downcall.trailer_buf == NULL) {
+		gossip_err("%s: failed trailer vmalloc.\n",
+			   __func__);
 		goto Enomem;
-
+	}
 	memset(op->downcall.trailer_buf, 0, op->downcall.trailer_size);
-	if (!copy_from_iter_full(op->downcall.trailer_buf,
-			         op->downcall.trailer_size, iter)) {
+	n = copy_from_iter(op->downcall.trailer_buf,
+			   op->downcall.trailer_size,
+			   iter);
+	if (n != op->downcall.trailer_size) {
 		gossip_err("%s: failed to copy trailer.\n", __func__);
 		vfree(op->downcall.trailer_buf);
 		goto Efault;

@@ -10,6 +10,7 @@
     |         arc: | TODO |
     |         arm: |  ok  |
     |       arm64: |  ok  |
+    |       avr32: | TODO |
     |    blackfin: | TODO |
     |         c6x: | TODO |
     |        cris: | TODO |
@@ -35,5 +36,5 @@
     |          um: | TODO |
     |   unicore32: | TODO |
     |         x86: |  ok  |
-    |      xtensa: |  ok  |
+    |      xtensa: | TODO |
     -----------------------

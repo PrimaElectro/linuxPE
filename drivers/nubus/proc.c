@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /* drivers/nubus/proc.c: Proc FS interface for NuBus.
 
    By David Huggins-Daines <dhd@debian.org>
@@ -26,7 +25,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/byteorder.h>
 
 static int

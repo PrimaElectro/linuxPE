@@ -20,7 +20,7 @@
 #include <linux/gpio/driver.h>
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
-#include <linux/platform_data/max732x.h>
+#include <linux/i2c/max732x.h>
 #include <linux/of.h>
 
 
@@ -520,19 +520,20 @@ static int max732x_irq_setup(struct max732x_chip *chip,
 				client->irq);
 			return ret;
 		}
-		ret =  gpiochip_irqchip_add_nested(&chip->gpio_chip,
-						   &max732x_irq_chip,
-						   irq_base,
-						   handle_simple_irq,
-						   IRQ_TYPE_NONE);
+		ret =  gpiochip_irqchip_add(&chip->gpio_chip,
+					    &max732x_irq_chip,
+					    irq_base,
+					    handle_simple_irq,
+					    IRQ_TYPE_NONE);
 		if (ret) {
 			dev_err(&client->dev,
 				"could not connect irqchip to gpiochip\n");
 			return ret;
 		}
-		gpiochip_set_nested_irqchip(&chip->gpio_chip,
-					    &max732x_irq_chip,
-					    client->irq);
+		gpiochip_set_chained_irqchip(&chip->gpio_chip,
+					     &max732x_irq_chip,
+					     client->irq,
+					     NULL);
 	}
 
 	return 0;

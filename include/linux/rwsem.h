@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /* rwsem.h: R/W semaphores, public interface
  *
  * Written by David Howells (dhowells@redhat.com).
@@ -19,6 +18,10 @@
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
 #include <linux/osq_lock.h>
 #endif
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+#include <linux/rwsem_rt.h>
+#else /* PREEMPT_RT_FULL */
 
 struct rw_semaphore;
 
@@ -44,14 +47,7 @@ struct rw_semaphore {
 #endif
 };
 
-/*
- * Setting bit 0 of the owner field with other non-zero bits will indicate
- * that the rwsem is writer-owned with an unknown owner.
- */
-#define RWSEM_OWNER_UNKNOWN	((struct task_struct *)-1L)
-
 extern struct rw_semaphore *rwsem_down_read_failed(struct rw_semaphore *sem);
-extern struct rw_semaphore *rwsem_down_read_failed_killable(struct rw_semaphore *sem);
 extern struct rw_semaphore *rwsem_down_write_failed(struct rw_semaphore *sem);
 extern struct rw_semaphore *rwsem_down_write_failed_killable(struct rw_semaphore *sem);
 extern struct rw_semaphore *rwsem_wake(struct rw_semaphore *);
@@ -113,6 +109,13 @@ static inline int rwsem_is_contended(struct rw_semaphore *sem)
 {
 	return !list_empty(&sem->wait_list);
 }
+
+#endif /* !PREEMPT_RT_FULL */
+
+/*
+ * The functions below are the same for all rwsem implementations including
+ * the RT specific variant.
+ */
 
 /*
  * lock for reading

@@ -103,7 +103,8 @@ config CRC32
 	  functions require M here.
 
 config CRC32_SELFTEST
-	tristate "CRC32 perform self test on init"
+	bool "CRC32 perform self test on init"
+	default n
 	depends on CRC32
 	help
 	  This option enables the CRC32 library functions to perform a
@@ -158,14 +159,6 @@ config CRC32_BIT
 
 endchoice
 
-config CRC4
-	tristate "CRC4 functions"
-	help
-	  This option is provided for the case where no in-kernel-tree
-	  modules require CRC4 functions, but a module built outside
-	  the kernel tree does. Such modules that use library CRC4
-	  functions require M here.
-
 config CRC7
 	tristate "CRC7 functions"
 	help
@@ -191,9 +184,6 @@ config CRC8
 	  This option provides CRC8 function. Drivers may select this
 	  when they need to do cyclic redundancy check according CRC8
 	  algorithm. Module will be called crc8.
-
-config XXHASH
-	tristate
 
 config AUDIT_GENERIC
 	bool
@@ -247,14 +237,6 @@ config LZ4HC_COMPRESS
 	tristate
 
 config LZ4_DECOMPRESS
-	tristate
-
-config ZSTD_COMPRESS
-	select XXHASH
-	tristate
-
-config ZSTD_DECOMPRESS
-	select XXHASH
 	tristate
 
 source "lib/xz/Kconfig"
@@ -413,21 +395,12 @@ config HAS_DMA
 	depends on !NO_DMA
 	default y
 
-config DMA_NOOP_OPS
-	bool
-	depends on HAS_DMA && (!64BIT || ARCH_DMA_ADDR_T_64BIT)
-	default n
-
-config DMA_VIRT_OPS
-	bool
-	depends on HAS_DMA && (!64BIT || ARCH_DMA_ADDR_T_64BIT)
-	default n
-
 config CHECK_SIGNATURE
 	bool
 
 config CPUMASK_OFFSTACK
 	bool "Force CPU masks off stack" if DEBUG_PER_CPU_MAPS
+	depends on !PREEMPT_RT_FULL
 	help
 	  Use dynamic allocation for cpumask_var_t, instead of putting
 	  them on the stack.  This is a bit more expensive, but avoids
@@ -460,7 +433,8 @@ config GLOB
 	  depends on this.
 
 config GLOB_SELFTEST
-	tristate "glob self-test on init"
+	bool "glob self-test on init"
+	default n
 	depends on GLOB
 	help
 	  This option enables a simple self-test of the glob_match
@@ -567,7 +541,7 @@ config ARCH_HAS_SG_CHAIN
 config ARCH_HAS_PMEM_API
 	bool
 
-config ARCH_HAS_UACCESS_FLUSHCACHE
+config ARCH_HAS_MMIO_FLUSH
 	bool
 
 config STACKDEPOT
@@ -576,14 +550,5 @@ config STACKDEPOT
 
 config SBITMAP
 	bool
-
-config PARMAN
-	tristate "parman" if COMPILE_TEST
-
-config PRIME_NUMBERS
-	tristate
-
-config STRING_SELFTEST
-	bool "Test string functions"
 
 endmenu

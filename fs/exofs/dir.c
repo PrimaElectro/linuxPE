@@ -72,7 +72,7 @@ static int exofs_commit_chunk(struct page *page, loff_t pos, unsigned len)
 	set_page_dirty(page);
 
 	if (IS_DIRSYNC(dir))
-		err = write_one_page(page);
+		err = write_one_page(page, 1);
 	else
 		unlock_page(page);
 
@@ -405,7 +405,8 @@ int exofs_set_link(struct inode *dir, struct exofs_dir_entry *de,
 	int err;
 
 	lock_page(page);
-	err = exofs_write_begin(NULL, page->mapping, pos, len, 0, &page, NULL);
+	err = exofs_write_begin(NULL, page->mapping, pos, len,
+				AOP_FLAG_UNINTERRUPTIBLE, &page, NULL);
 	if (err)
 		EXOFS_ERR("exofs_set_link: exofs_write_begin FAILED => %d\n",
 			  err);

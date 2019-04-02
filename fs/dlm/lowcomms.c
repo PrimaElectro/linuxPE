@@ -519,25 +519,29 @@ out:
 /* Note: sk_callback_lock must be locked before calling this function. */
 static void save_callbacks(struct connection *con, struct sock *sk)
 {
+	lock_sock(sk);
 	con->orig_data_ready = sk->sk_data_ready;
 	con->orig_state_change = sk->sk_state_change;
 	con->orig_write_space = sk->sk_write_space;
 	con->orig_error_report = sk->sk_error_report;
+	release_sock(sk);
 }
 
 static void restore_callbacks(struct connection *con, struct sock *sk)
 {
 	write_lock_bh(&sk->sk_callback_lock);
+	lock_sock(sk);
 	sk->sk_user_data = NULL;
 	sk->sk_data_ready = con->orig_data_ready;
 	sk->sk_state_change = con->orig_state_change;
 	sk->sk_write_space = con->orig_write_space;
 	sk->sk_error_report = con->orig_error_report;
+	release_sock(sk);
 	write_unlock_bh(&sk->sk_callback_lock);
 }
 
 /* Make a socket active */
-static void add_sock(struct socket *sock, struct connection *con, bool save_cb)
+static void add_sock(struct socket *sock, struct connection *con)
 {
 	struct sock *sk = sock->sk;
 
@@ -545,7 +549,7 @@ static void add_sock(struct socket *sock, struct connection *con, bool save_cb)
 	con->sock = sock;
 
 	sk->sk_user_data = con;
-	if (save_cb)
+	if (!test_bit(CF_IS_OTHERCON, &con->flags))
 		save_callbacks(con, sk);
 	/* Install a data_ready callback */
 	sk->sk_data_ready = lowcomms_data_ready;
@@ -729,7 +733,7 @@ static int tcp_accept_from_sock(struct connection *con)
 	mutex_unlock(&connections_lock);
 
 	memset(&peeraddr, 0, sizeof(peeraddr));
-	result = sock_create_lite(dlm_local_addr[0]->ss_family,
+	result = sock_create_kern(&init_net, dlm_local_addr[0]->ss_family,
 				  SOCK_STREAM, IPPROTO_TCP, &newsock);
 	if (result < 0)
 		return -ENOMEM;
@@ -743,7 +747,7 @@ static int tcp_accept_from_sock(struct connection *con)
 	newsock->type = con->sock->type;
 	newsock->ops = con->sock->ops;
 
-	result = con->sock->ops->accept(con->sock, newsock, O_NONBLOCK, true);
+	result = con->sock->ops->accept(con->sock, newsock, O_NONBLOCK);
 	if (result < 0)
 		goto accept_err;
 
@@ -802,7 +806,7 @@ static int tcp_accept_from_sock(struct connection *con)
 			newcon->othercon = othercon;
 			othercon->sock = newsock;
 			newsock->sk->sk_user_data = othercon;
-			add_sock(newsock, othercon, false);
+			add_sock(newsock, othercon);
 			addcon = othercon;
 		}
 		else {
@@ -815,10 +819,7 @@ static int tcp_accept_from_sock(struct connection *con)
 	else {
 		newsock->sk->sk_user_data = newcon;
 		newcon->rx_action = receive_from_sock;
-		/* accept copies the sk after we've saved the callbacks, so we
-		   don't want to save them a second time or comm errors will
-		   result in calling sk_error_report recursively. */
-		add_sock(newsock, newcon, false);
+		add_sock(newsock, newcon);
 		addcon = newcon;
 	}
 
@@ -879,8 +880,7 @@ static int sctp_accept_from_sock(struct connection *con)
 	}
 
 	make_sockaddr(&prim.ssp_addr, 0, &addr_len);
-	ret = addr_to_nodeid(&prim.ssp_addr, &nodeid);
-	if (ret) {
+	if (addr_to_nodeid(&prim.ssp_addr, &nodeid)) {
 		unsigned char *b = (unsigned char *)&prim.ssp_addr;
 
 		log_print("reject connect from unknown addr");
@@ -919,7 +919,7 @@ static int sctp_accept_from_sock(struct connection *con)
 			newcon->othercon = othercon;
 			othercon->sock = newsock;
 			newsock->sk->sk_user_data = othercon;
-			add_sock(newsock, othercon, false);
+			add_sock(newsock, othercon);
 			addcon = othercon;
 		} else {
 			printk("Extra connection from node %d attempted\n", nodeid);
@@ -930,7 +930,7 @@ static int sctp_accept_from_sock(struct connection *con)
 	} else {
 		newsock->sk->sk_user_data = newcon;
 		newcon->rx_action = receive_from_sock;
-		add_sock(newsock, newcon, false);
+		add_sock(newsock, newcon);
 		addcon = newcon;
 	}
 
@@ -1058,7 +1058,7 @@ static void sctp_connect_to_sock(struct connection *con)
 	sock->sk->sk_user_data = con;
 	con->rx_action = receive_from_sock;
 	con->connect_action = sctp_connect_to_sock;
-	add_sock(sock, con, true);
+	add_sock(sock, con);
 
 	/* Bind to all addresses. */
 	if (sctp_bind_addrs(con, 0))
@@ -1146,7 +1146,7 @@ static void tcp_connect_to_sock(struct connection *con)
 	sock->sk->sk_user_data = con;
 	con->rx_action = receive_from_sock;
 	con->connect_action = tcp_connect_to_sock;
-	add_sock(sock, con, true);
+	add_sock(sock, con);
 
 	/* Bind to our cluster-known address connecting to avoid
 	   routing problems */
@@ -1366,7 +1366,7 @@ static int tcp_listen_for_all(void)
 
 	sock = tcp_create_listen_sock(con, dlm_local_addr[0]);
 	if (sock) {
-		add_sock(sock, con, true);
+		add_sock(sock, con);
 		result = 0;
 	}
 	else {

@@ -78,12 +78,8 @@ static unsigned long __init tangier_calibrate_tsc(void)
 	pr_debug("Setting lapic_timer_frequency = %d\n",
 			lapic_timer_frequency);
 
-	/*
-	 * TSC on Intel Atom SoCs is reliable and of known frequency.
-	 * See tsc_msr.c for details.
-	 */
-	setup_force_cpu_cap(X86_FEATURE_TSC_KNOWN_FREQ);
-	setup_force_cpu_cap(X86_FEATURE_TSC_RELIABLE);
+	/* mark tsc clocksource as reliable */
+	set_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC_RELIABLE);
 
 	return fast_calibrate;
 }
@@ -91,7 +87,6 @@ static unsigned long __init tangier_calibrate_tsc(void)
 static void __init tangier_arch_setup(void)
 {
 	x86_platform.calibrate_tsc = tangier_calibrate_tsc;
-	x86_platform.legacy.rtc = 1;
 }
 
 /* tangier arch ops */

@@ -33,7 +33,6 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/debugfs.h>
-#include <linux/sched/signal.h>
 
 #include "cluster/heartbeat.h"
 #include "cluster/nodemanager.h"
@@ -674,6 +673,20 @@ static void dlm_leave_domain(struct dlm_ctxt *dlm)
 			clear_bit(node, dlm->domain_map);
 	}
 	spin_unlock(&dlm->spinlock);
+}
+
+int dlm_shutting_down(struct dlm_ctxt *dlm)
+{
+	int ret = 0;
+
+	spin_lock(&dlm_domain_lock);
+
+	if (dlm->dlm_state == DLM_CTXT_IN_SHUTDOWN)
+		ret = 1;
+
+	spin_unlock(&dlm_domain_lock);
+
+	return ret;
 }
 
 void dlm_unregister_domain(struct dlm_ctxt *dlm)
@@ -2059,7 +2072,7 @@ static struct dlm_ctxt *dlm_alloc_ctxt(const char *domain,
 	INIT_LIST_HEAD(&dlm->dlm_eviction_callbacks);
 
 	mlog(0, "context init: refcount %u\n",
-		  kref_read(&dlm->dlm_refs));
+		  atomic_read(&dlm->dlm_refs.refcount));
 
 leave:
 	if (ret < 0 && dlm) {

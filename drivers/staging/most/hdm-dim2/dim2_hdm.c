@@ -26,6 +26,7 @@
 #include <linux/kthread.h>
 
 #include <mostcore.h>
+#include <networking.h>
 #include "dim2_hal.h"
 #include "dim2_hdm.h"
 #include "dim2_errors.h"
@@ -40,7 +41,7 @@
 
 /* command line parameter to select clock speed */
 static char *clock_speed;
-module_param(clock_speed, charp, 0000);
+module_param(clock_speed, charp, 0);
 MODULE_PARM_DESC(clock_speed, "MediaLB Clock Speed");
 
 /*
@@ -51,7 +52,7 @@ MODULE_PARM_DESC(clock_speed, "MediaLB Clock Speed");
  * sub-buffer 1, 2, 4, 8, 16, 32, 64.
  */
 static u8 fcnt = 4;  /* (1 << fcnt) frames per subbuffer */
-module_param(fcnt, byte, 0000);
+module_param(fcnt, byte, 0);
 MODULE_PARM_DESC(fcnt, "Num of frames per sub-buffer for sync channels as a power of 2");
 
 static DEFINE_SPINLOCK(dim_lock);
@@ -106,8 +107,6 @@ struct dim2_hdm {
 	unsigned char link_state;
 	int atx_idx;
 	struct medialb_bus bus;
-	void (*on_netinfo)(struct most_interface *,
-			   unsigned char, unsigned char *);
 };
 
 #define iface_to_hdm(iface) container_of(iface, struct dim2_hdm, most_iface)
@@ -288,11 +287,8 @@ static int deliver_netinfo_thread(void *data)
 
 		if (dev->deliver_netinfo) {
 			dev->deliver_netinfo--;
-			if (dev->on_netinfo) {
-				dev->on_netinfo(&dev->most_iface,
-						dev->link_state,
-						dev->mac_addrs);
-			}
+			most_deliver_netinfo(&dev->most_iface, dev->link_state,
+					     dev->mac_addrs);
 		}
 	}
 
@@ -310,11 +306,14 @@ static int deliver_netinfo_thread(void *data)
 static void retrieve_netinfo(struct dim2_hdm *dev, struct mbo *mbo)
 {
 	u8 *data = mbo->virt_address;
+	u8 *mac = dev->mac_addrs;
 
 	pr_info("Node Address: 0x%03x\n", (u16)data[16] << 8 | data[17]);
 	dev->link_state = data[18];
 	pr_info("NIState: %d\n", dev->link_state);
-	memcpy(dev->mac_addrs, data + 19, 6);
+	memcpy(mac, data + 19, 6);
+	pr_info("MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	dev->deliver_netinfo++;
 	wake_up_interruptible(&dev->netinfo_waitq);
 }
@@ -658,17 +657,11 @@ static int enqueue(struct most_interface *most_iface, int ch_idx,
  * Send a command to INIC which triggers retrieving of network info by means of
  * "Message exchange over MDP/MEP". Return 0 on success, negative on failure.
  */
-static void request_netinfo(struct most_interface *most_iface, int ch_idx,
-			    void (*on_netinfo)(struct most_interface *,
-					       unsigned char, unsigned char *))
+static void request_netinfo(struct most_interface *most_iface, int ch_idx)
 {
 	struct dim2_hdm *dev = iface_to_hdm(most_iface);
 	struct mbo *mbo;
 	u8 *data;
-
-	dev->on_netinfo = on_netinfo;
-	if (!on_netinfo)
-		return;
 
 	if (dev->atx_idx < 0) {
 		pr_err("Async Tx Not initialized\n");
@@ -761,8 +754,8 @@ static int dim2_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "failed to get ahb0_int irq: %d\n", irq);
-		return irq;
+		dev_err(&pdev->dev, "failed to get ahb0_int irq\n");
+		return -ENODEV;
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, dim2_ahb_isr, 0,
@@ -774,8 +767,8 @@ static int dim2_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 1);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "failed to get mlb_int irq: %d\n", irq);
-		return irq;
+		dev_err(&pdev->dev, "failed to get mlb_int irq\n");
+		return -ENODEV;
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, dim2_mlb_isr, 0,
@@ -894,7 +887,7 @@ static int dim2_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct platform_device_id dim2_id[] = {
+static struct platform_device_id dim2_id[] = {
 	{ "medialb_dim2" },
 	{ }, /* Terminating entry */
 };

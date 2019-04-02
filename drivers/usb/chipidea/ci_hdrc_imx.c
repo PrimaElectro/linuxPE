@@ -18,7 +18,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/dma-mapping.h>
 #include <linux/usb/chipidea.h>
-#include <linux/usb/of.h>
 #include <linux/clk.h>
 
 #include "ci.h"
@@ -146,9 +145,6 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 
 	if (of_find_property(np, "external-vbus-divider", NULL))
 		data->evdo = 1;
-
-	if (of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI)
-		data->ulpi = 1;
 
 	return data;
 }

@@ -42,7 +42,3 @@
 		};
 	};
 };
-
-&watchdog0 {
-	status = "okay";
-};

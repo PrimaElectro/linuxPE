@@ -108,6 +108,9 @@ MKDIR = mkdir
 # Now we set up the build system
 #
 
+# set up PWD so that older versions of make will work with our build.
+PWD = $(shell pwd)
+
 GMO_FILES = ${shell for HLANG in ${LANGUAGES}; do echo $(OUTPUT)po/$$HLANG.gmo; done;}
 
 export CROSS CC AR STRIP RANLIB CFLAGS LDFLAGS LIB_OBJS

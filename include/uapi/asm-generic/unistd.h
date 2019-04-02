@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #include <asm/bitsperlong.h>
 
 /*
@@ -195,7 +194,8 @@ __SYSCALL(__NR_quotactl, sys_quotactl)
 
 /* fs/readdir.c */
 #define __NR_getdents64 61
-__SYSCALL(__NR_getdents64, sys_getdents64)
+#define __ARCH_WANT_COMPAT_SYS_GETDENTS64
+__SC_COMP(__NR_getdents64, sys_getdents64, compat_sys_getdents64)
 
 /* fs/read_write.c */
 #define __NR3264_lseek 62
@@ -730,11 +730,9 @@ __SYSCALL(__NR_pkey_mprotect, sys_pkey_mprotect)
 __SYSCALL(__NR_pkey_alloc,    sys_pkey_alloc)
 #define __NR_pkey_free 290
 __SYSCALL(__NR_pkey_free,     sys_pkey_free)
-#define __NR_statx 291
-__SYSCALL(__NR_statx,     sys_statx)
 
 #undef __NR_syscalls
-#define __NR_syscalls 292
+#define __NR_syscalls 291
 
 /*
  * All syscalls below here should go away really,

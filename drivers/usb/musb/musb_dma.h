@@ -173,7 +173,6 @@ dma_channel_status(struct dma_channel *c)
 
 /**
  * struct dma_controller - A DMA Controller.
- * @musb: the usb controller
  * @start: call this to start a DMA controller;
  *	return 0 on success, else negative errno
  * @stop: call this to stop a DMA controller
@@ -182,13 +181,10 @@ dma_channel_status(struct dma_channel *c)
  * @channel_release: call this to release a DMA channel
  * @channel_abort: call this to abort a pending DMA transaction,
  *	returning it to FREE (but allocated) state
- * @dma_callback: invoked on DMA completion, useful to run platform
- *	code such IRQ acknowledgment.
  *
  * Controllers manage dma channels.
  */
 struct dma_controller {
-	struct musb *musb;
 	struct dma_channel	*(*channel_alloc)(struct dma_controller *,
 					struct musb_hw_ep *, u8 is_tx);
 	void			(*channel_release)(struct dma_channel *);
@@ -200,7 +196,6 @@ struct dma_controller {
 	int			(*is_compatible)(struct dma_channel *channel,
 							u16 maxpacket,
 							void *buf, u32 length);
-	void			(*dma_callback)(struct dma_controller *);
 };
 
 /* called after channel_program(), may indicate a fault */

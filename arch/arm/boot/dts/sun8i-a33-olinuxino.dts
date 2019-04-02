@@ -92,18 +92,24 @@
 
 &pio {
 	led_pin_olinuxino: led_pins@0 {
-		pins = "PB7";
-		function = "gpio_out";
+		allwinner,pins = "PB7";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
 	mmc0_cd_pin_olinuxino: mmc0_cd_pin@0 {
-		pins = "PB4";
-		function = "gpio_in";
+		allwinner,pins = "PB4";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
 	usb0_id_detect_pin: usb0_id_detect_pin@0 {
-		pins = "PB3";
-		function = "gpio_in";
+		allwinner,pins = "PB3";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 };
 
@@ -120,7 +126,7 @@
 	};
 };
 
-#include "axp223.dtsi"
+#include "axp22x.dtsi"
 
 &reg_aldo1 {
 	regulator-always-on;

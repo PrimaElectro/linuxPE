@@ -12,6 +12,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
  * File: power.h
  *
  * Purpose: Handles 802.11 power management  functions
@@ -31,10 +35,21 @@
 #define PS_FAST_INTERVAL         1       /* Fast power saving listen interval */
 #define PS_MAX_INTERVAL          4       /* MAX power saving listen interval */
 
-void PSvDisablePowerSaving(struct vnt_private *priv);
+void
+PSvDisablePowerSaving(
+	struct vnt_private *
+);
 
-void PSvEnablePowerSaving(struct vnt_private *priv, unsigned short wListenInterval);
+void
+PSvEnablePowerSaving(
+	struct vnt_private *,
+	unsigned short wListenInterval
+);
 
-bool PSbIsNextTBTTWakeUp(struct vnt_private *priv);
+
+bool
+PSbIsNextTBTTWakeUp(
+	struct vnt_private *
+);
 
 #endif /* __POWER_H__ */

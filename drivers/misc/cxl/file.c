@@ -12,13 +12,12 @@
 #include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/bitmap.h>
-#include <linux/sched/signal.h>
+#include <linux/sched.h>
 #include <linux/poll.h>
 #include <linux/pid.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
-#include <linux/sched/mm.h>
 #include <asm/cputable.h>
 #include <asm/current.h>
 #include <asm/copro.h>
@@ -87,11 +86,8 @@ static int __afu_open(struct inode *inode, struct file *file, bool master)
 		goto err_put_afu;
 	}
 
-	rc = cxl_context_init(ctx, afu, master);
-	if (rc)
+	if ((rc = cxl_context_init(ctx, afu, master, inode->i_mapping)))
 		goto err_put_afu;
-
-	cxl_context_set_mapping(ctx, inode->i_mapping);
 
 	pr_devel("afu_open pe: %i\n", ctx->pe);
 	file->private_data = ctx;
@@ -213,16 +209,8 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 	 * process is still accessible.
 	 */
 	ctx->pid = get_task_pid(current, PIDTYPE_PID);
+	ctx->glpid = get_task_pid(current->group_leader, PIDTYPE_PID);
 
-	/* acquire a reference to the task's mm */
-	ctx->mm = get_task_mm(current);
-
-	/* ensure this mm_struct can't be freed */
-	cxl_context_mm_count_get(ctx);
-
-	/* decrement the use count */
-	if (ctx->mm)
-		mmput(ctx->mm);
 
 	/*
 	 * Increment driver use count. Enables global TLBIs for hash
@@ -236,10 +224,10 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 							amr))) {
 		afu_release_irqs(ctx, ctx);
 		cxl_adapter_context_put(ctx->afu->adapter);
+		put_pid(ctx->glpid);
 		put_pid(ctx->pid);
-		ctx->pid = NULL;
+		ctx->glpid = ctx->pid = NULL;
 		cxl_ctx_put();
-		cxl_context_mm_count_put(ctx);
 		goto out;
 	}
 

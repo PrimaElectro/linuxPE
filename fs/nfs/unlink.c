@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/nfs/unlink.c
  *
@@ -13,7 +12,7 @@
 #include <linux/sunrpc/clnt.h>
 #include <linux/nfs_fs.h>
 #include <linux/sched.h>
-#include <linux/wait.h>
+#include <linux/swait.h>
 #include <linux/namei.h>
 #include <linux/fsnotify.h>
 
@@ -52,6 +51,29 @@ static void nfs_async_unlink_done(struct rpc_task *task, void *calldata)
 		rpc_restart_call_prepare(task);
 }
 
+#ifdef CONFIG_PREEMPT_RT_BASE
+static void nfs_down_anon(struct semaphore *sema)
+{
+	down(sema);
+}
+
+static void nfs_up_anon(struct semaphore *sema)
+{
+	up(sema);
+}
+
+#else
+static void nfs_down_anon(struct rw_semaphore *rwsem)
+{
+	down_read_non_owner(rwsem);
+}
+
+static void nfs_up_anon(struct rw_semaphore *rwsem)
+{
+	up_read_non_owner(rwsem);
+}
+#endif
+
 /**
  * nfs_async_unlink_release - Release the sillydelete data.
  * @task: rpc_task of the sillydelete
@@ -65,7 +87,7 @@ static void nfs_async_unlink_release(void *calldata)
 	struct dentry *dentry = data->dentry;
 	struct super_block *sb = dentry->d_sb;
 
-	up_read_non_owner(&NFS_I(d_inode(dentry->d_parent))->rmdir_sem);
+	nfs_up_anon(&NFS_I(d_inode(dentry->d_parent))->rmdir_sem);
 	d_lookup_done(dentry);
 	nfs_free_unlinkdata(data);
 	dput(dentry);
@@ -118,10 +140,10 @@ static int nfs_call_unlink(struct dentry *dentry, struct nfs_unlinkdata *data)
 	struct inode *dir = d_inode(dentry->d_parent);
 	struct dentry *alias;
 
-	down_read_non_owner(&NFS_I(dir)->rmdir_sem);
+	nfs_down_anon(&NFS_I(dir)->rmdir_sem);
 	alias = d_alloc_parallel(dentry->d_parent, &data->args.name, &data->wq);
 	if (IS_ERR(alias)) {
-		up_read_non_owner(&NFS_I(dir)->rmdir_sem);
+		nfs_up_anon(&NFS_I(dir)->rmdir_sem);
 		return 0;
 	}
 	if (!d_in_lookup(alias)) {
@@ -143,7 +165,7 @@ static int nfs_call_unlink(struct dentry *dentry, struct nfs_unlinkdata *data)
 			ret = 0;
 		spin_unlock(&alias->d_lock);
 		dput(alias);
-		up_read_non_owner(&NFS_I(dir)->rmdir_sem);
+		nfs_up_anon(&NFS_I(dir)->rmdir_sem);
 		/*
 		 * If we'd displaced old cached devname, free it.  At that
 		 * point dentry is definitely not a root, so we won't need
@@ -183,7 +205,7 @@ nfs_async_unlink(struct dentry *dentry, const struct qstr *name)
 		goto out_free_name;
 	}
 	data->res.dir_attr = &data->dir_attr;
-	init_waitqueue_head(&data->wq);
+	init_swait_queue_head(&data->wq);
 
 	status = -EBUSY;
 	spin_lock(&dentry->d_lock);
@@ -288,19 +310,6 @@ static void nfs_async_rename_release(void *calldata)
 
 	if (d_really_is_positive(data->old_dentry))
 		nfs_mark_for_revalidate(d_inode(data->old_dentry));
-
-	/* The result of the rename is unknown. Play it safe by
-	 * forcing a new lookup */
-	if (data->cancelled) {
-		spin_lock(&data->old_dir->i_lock);
-		nfs_force_lookup_revalidate(data->old_dir);
-		spin_unlock(&data->old_dir->i_lock);
-		if (data->new_dir != data->old_dir) {
-			spin_lock(&data->new_dir->i_lock);
-			nfs_force_lookup_revalidate(data->new_dir);
-			spin_unlock(&data->new_dir->i_lock);
-		}
-	}
 
 	dput(data->old_dentry);
 	dput(data->new_dentry);

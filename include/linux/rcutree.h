@@ -30,7 +30,7 @@
 #ifndef __LINUX_RCUTREE_H
 #define __LINUX_RCUTREE_H
 
-void rcu_note_context_switch(bool preempt);
+void rcu_note_context_switch(void);
 int rcu_needs_cpu(u64 basem, u64 *nextevt);
 void rcu_cpu_stall_reset(void);
 
@@ -41,10 +41,14 @@ void rcu_cpu_stall_reset(void);
  */
 static inline void rcu_virt_note_context_switch(int cpu)
 {
-	rcu_note_context_switch(false);
+	rcu_note_context_switch();
 }
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+# define synchronize_rcu_bh	synchronize_rcu
+#else
 void synchronize_rcu_bh(void);
+#endif
 void synchronize_sched_expedited(void);
 void synchronize_rcu_expedited(void);
 
@@ -72,12 +76,29 @@ static inline void synchronize_rcu_bh_expedited(void)
 }
 
 void rcu_barrier(void);
+#ifdef CONFIG_PREEMPT_RT_FULL
+# define rcu_barrier_bh                rcu_barrier
+#else
 void rcu_barrier_bh(void);
+#endif
 void rcu_barrier_sched(void);
 unsigned long get_state_synchronize_rcu(void);
 void cond_synchronize_rcu(unsigned long oldstate);
 unsigned long get_state_synchronize_sched(void);
 void cond_synchronize_sched(unsigned long oldstate);
+
+extern unsigned long rcutorture_testseq;
+extern unsigned long rcutorture_vernum;
+unsigned long rcu_batches_started(void);
+unsigned long rcu_batches_started_sched(void);
+unsigned long rcu_batches_completed(void);
+unsigned long rcu_batches_completed_sched(void);
+unsigned long rcu_exp_batches_completed(void);
+unsigned long rcu_exp_batches_completed_sched(void);
+void show_rcu_gp_kthreads(void);
+
+void rcu_force_quiescent_state(void);
+void rcu_sched_force_quiescent_state(void);
 
 void rcu_idle_enter(void);
 void rcu_idle_exit(void);
@@ -85,14 +106,24 @@ void rcu_irq_enter(void);
 void rcu_irq_exit(void);
 void rcu_irq_enter_irqson(void);
 void rcu_irq_exit_irqson(void);
-bool rcu_irq_enter_disabled(void);
 
 void exit_rcu(void);
 
 void rcu_scheduler_starting(void);
 extern int rcu_scheduler_active __read_mostly;
-void rcu_end_inkernel_boot(void);
+
 bool rcu_is_watching(void);
+
+#ifndef CONFIG_PREEMPT_RT_FULL
+void rcu_bh_force_quiescent_state(void);
+unsigned long rcu_batches_started_bh(void);
+unsigned long rcu_batches_completed_bh(void);
+#else
+# define rcu_bh_force_quiescent_state	rcu_force_quiescent_state
+# define rcu_batches_completed_bh	rcu_batches_completed
+# define rcu_batches_started_bh		rcu_batches_completed
+#endif
+
 void rcu_all_qs(void);
 
 /* RCUtree hotplug events */

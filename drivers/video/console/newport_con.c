@@ -21,7 +21,7 @@
 #include <linux/slab.h>
 
 #include <asm/io.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/gio_device.h>
@@ -574,8 +574,8 @@ static int newport_font_set(struct vc_data *vc, struct console_font *font, unsig
 	return newport_set_font(vc->vc_num, font);
 }
 
-static bool newport_scroll(struct vc_data *vc, unsigned int t, unsigned int b,
-		enum con_scroll dir, unsigned int lines)
+static int newport_scroll(struct vc_data *vc, int t, int b, int dir,
+			  int lines)
 {
 	int count, x, y;
 	unsigned short *s, *d;
@@ -595,7 +595,7 @@ static bool newport_scroll(struct vc_data *vc, unsigned int t, unsigned int b,
 					    (vc->vc_color & 0xf0) >> 4);
 		}
 		npregs->cset.topscan = (topscan - 1) & 0x3ff;
-		return false;
+		return 0;
 	}
 
 	count = (b - t - lines) * vc->vc_cols;
@@ -670,7 +670,7 @@ static bool newport_scroll(struct vc_data *vc, unsigned int t, unsigned int b,
 			}
 		}
 	}
-	return true;
+	return 1;
 }
 
 static int newport_dummy(struct vc_data *c)

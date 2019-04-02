@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * builtin-buildid-list.c
  *
@@ -17,7 +16,6 @@
 #include "util/session.h"
 #include "util/symbol.h"
 #include "util/data.h"
-#include <errno.h>
 
 static int sysfs__fprintf_build_id(FILE *fp)
 {
@@ -89,7 +87,8 @@ out:
 	return 0;
 }
 
-int cmd_buildid_list(int argc, const char **argv)
+int cmd_buildid_list(int argc, const char **argv,
+		     const char *prefix __maybe_unused)
 {
 	bool show_kernel = false;
 	bool with_hits = false;

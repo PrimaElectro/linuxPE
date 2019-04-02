@@ -37,7 +37,7 @@
 #include <linux/quotaops.h>
 #include <linux/string.h>
 #include <linux/slab.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/fiemap.h>
 #include <linux/backing-dev.h>
 #include "ext4_jbd2.h"
@@ -881,12 +881,6 @@ ext4_find_extent(struct inode *inode, ext4_lblk_t block,
 
 	eh = ext_inode_hdr(inode);
 	depth = ext_depth(inode);
-	if (depth < 0 || depth > EXT4_MAX_EXTENT_DEPTH) {
-		EXT4_ERROR_INODE(inode, "inode has invalid extent depth: %d",
-				 depth);
-		ret = -EFSCORRUPTED;
-		goto err;
-	}
 
 	if (path) {
 		ext4_ext_drop_refs(path);
@@ -2494,8 +2488,7 @@ int ext4_ext_index_trans_blocks(struct inode *inode, int extents)
 
 static inline int get_default_free_blocks_flags(struct inode *inode)
 {
-	if (S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode) ||
-	    ext4_test_inode_flag(inode, EXT4_INODE_EA_INODE))
+	if (S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode))
 		return EXT4_FREE_BLOCKS_METADATA | EXT4_FREE_BLOCKS_FORGET;
 	else if (ext4_should_journal_data(inode))
 		return EXT4_FREE_BLOCKS_FORGET;
@@ -3778,6 +3771,14 @@ out:
 	return err;
 }
 
+static void unmap_underlying_metadata_blocks(struct block_device *bdev,
+			sector_t block, int count)
+{
+	int i;
+	for (i = 0; i < count; i++)
+                unmap_underlying_metadata(bdev, block + i);
+}
+
 /*
  * Handle EOFBLOCKS_FL flag, clearing it if necessary
  */
@@ -4114,8 +4115,9 @@ out:
 	 * new.
 	 */
 	if (allocated > map->m_len) {
-		clean_bdev_aliases(inode->i_sb->s_bdev, newblock + map->m_len,
-				   allocated - map->m_len);
+		unmap_underlying_metadata_blocks(inode->i_sb->s_bdev,
+					newblock + map->m_len,
+					allocated - map->m_len);
 		allocated = map->m_len;
 	}
 	map->m_len = allocated;
@@ -4623,7 +4625,7 @@ out2:
 	return err ? err : allocated;
 }
 
-int ext4_ext_truncate(handle_t *handle, struct inode *inode)
+void ext4_ext_truncate(handle_t *handle, struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
 	ext4_lblk_t last_block;
@@ -4637,9 +4639,7 @@ int ext4_ext_truncate(handle_t *handle, struct inode *inode)
 
 	/* we have to know where to truncate from in crash case */
 	EXT4_I(inode)->i_disksize = inode->i_size;
-	err = ext4_mark_inode_dirty(handle, inode);
-	if (err)
-		return err;
+	ext4_mark_inode_dirty(handle, inode);
 
 	last_block = (inode->i_size + sb->s_blocksize - 1)
 			>> EXT4_BLOCK_SIZE_BITS(sb);
@@ -4651,14 +4651,17 @@ retry:
 		congestion_wait(BLK_RW_ASYNC, HZ/50);
 		goto retry;
 	}
-	if (err)
-		return err;
-	return ext4_ext_remove_space(inode, last_block, EXT_MAX_BLOCKS - 1);
+	if (err) {
+		ext4_std_error(inode->i_sb, err);
+		return;
+	}
+	err = ext4_ext_remove_space(inode, last_block, EXT_MAX_BLOCKS - 1);
+	ext4_std_error(inode->i_sb, err);
 }
 
 static int ext4_alloc_file_blocks(struct file *file, ext4_lblk_t offset,
 				  ext4_lblk_t len, loff_t new_size,
-				  int flags)
+				  int flags, int mode)
 {
 	struct inode *inode = file_inode(file);
 	handle_t *handle;
@@ -4692,7 +4695,7 @@ retry:
 		/*
 		 * Recalculate credits when extent tree depth changes.
 		 */
-		if (depth != ext_depth(inode)) {
+		if (depth >= 0 && depth != ext_depth(inode)) {
 			credits = ext4_chunk_trans_blocks(inode, len);
 			depth = ext_depth(inode);
 		}
@@ -4716,7 +4719,7 @@ retry:
 		map.m_lblk += ret;
 		map.m_len = len = len - ret;
 		epos = (loff_t)map.m_lblk << inode->i_blkbits;
-		inode->i_ctime = current_time(inode);
+		inode->i_ctime = ext4_current_time(inode);
 		if (new_size) {
 			if (epos > new_size)
 				epos = new_size;
@@ -4823,7 +4826,7 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 				round_down(offset, 1 << blkbits) >> blkbits,
 				(round_up((offset + len), 1 << blkbits) -
 				 round_down(offset, 1 << blkbits)) >> blkbits,
-				new_size, flags);
+				new_size, flags, mode);
 		if (ret)
 			goto out_dio;
 
@@ -4846,10 +4849,10 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 		}
 		/* Now release the pages and zero block aligned part of pages */
 		truncate_pagecache_range(inode, start, end - 1);
-		inode->i_mtime = inode->i_ctime = current_time(inode);
+		inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
 
 		ret = ext4_alloc_file_blocks(file, lblk, max_blocks, new_size,
-					     flags);
+					     flags, mode);
 		up_write(&EXT4_I(inode)->i_mmap_sem);
 		if (ret)
 			goto out_dio;
@@ -4871,7 +4874,7 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 		goto out_dio;
 	}
 
-	inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
 	if (new_size) {
 		ext4_update_inode_size(inode, new_size);
 	} else {
@@ -4985,7 +4988,8 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	ext4_inode_block_unlocked_dio(inode);
 	inode_dio_wait(inode);
 
-	ret = ext4_alloc_file_blocks(file, lblk, max_blocks, new_size, flags);
+	ret = ext4_alloc_file_blocks(file, lblk, max_blocks, new_size,
+				     flags, mode);
 	ext4_inode_resume_unlocked_dio(inode);
 	if (ret)
 		goto out;
@@ -5352,9 +5356,8 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 	stop = le32_to_cpu(extent->ee_block);
 
        /*
-	* For left shifts, make sure the hole on the left is big enough to
-	* accommodate the shift.  For right shifts, make sure the last extent
-	* won't be shifted beyond EXT_MAX_BLOCKS.
+	 * In case of left shift, Don't start shifting extents until we make
+	 * sure the hole is big enough to accommodate the shift.
 	*/
 	if (SHIFT == SHIFT_LEFT) {
 		path = ext4_find_extent(inode, start - 1, &path,
@@ -5374,14 +5377,9 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 
 		if ((start == ex_start && shift > ex_start) ||
 		    (shift > start - ex_end)) {
-			ret = -EINVAL;
-			goto out;
-		}
-	} else {
-		if (shift > EXT_MAX_BLOCKS -
-		    (stop + ext4_ext_get_actual_len(extent))) {
-			ret = -EINVAL;
-			goto out;
+			ext4_ext_drop_refs(path);
+			kfree(path);
+			return -EINVAL;
 		}
 	}
 
@@ -5578,7 +5576,7 @@ int ext4_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	up_write(&EXT4_I(inode)->i_data_sem);
 	if (IS_SYNC(inode))
 		ext4_handle_sync(handle);
-	inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
 	ext4_mark_inode_dirty(handle, inode);
 	ext4_update_inode_fsync_trans(handle, inode, 1);
 
@@ -5689,7 +5687,7 @@ int ext4_insert_range(struct inode *inode, loff_t offset, loff_t len)
 	/* Expand file to avoid data loss if there is error while shifting */
 	inode->i_size += len;
 	EXT4_I(inode)->i_disksize += len;
-	inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
 	ret = ext4_mark_inode_dirty(handle, inode);
 	if (ret)
 		goto out_stop;
@@ -5851,7 +5849,7 @@ ext4_swap_extents(handle_t *handle, struct inode *inode1,
 			if (e1_blk > lblk1)
 				next1 = e1_blk;
 			if (e2_blk > lblk2)
-				next2 = e2_blk;
+				next2 = e1_blk;
 			/* Do we have something to swap */
 			if (next1 == EXT_MAX_BLOCKS || next2 == EXT_MAX_BLOCKS)
 				goto finish;

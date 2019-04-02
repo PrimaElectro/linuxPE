@@ -397,10 +397,11 @@ struct mesh_path *mesh_path_new(struct ieee80211_sub_if_data *sdata,
 	new_mpath->sdata = sdata;
 	new_mpath->flags = 0;
 	skb_queue_head_init(&new_mpath->frame_queue);
+	new_mpath->timer.data = (unsigned long) new_mpath;
+	new_mpath->timer.function = mesh_path_timer;
 	new_mpath->exp_time = jiffies;
 	spin_lock_init(&new_mpath->state_lock);
-	setup_timer(&new_mpath->timer, mesh_path_timer,
-		    (unsigned long) new_mpath);
+	init_timer(&new_mpath->timer);
 
 	return new_mpath;
 }
@@ -448,15 +449,17 @@ struct mesh_path *mesh_path_add(struct ieee80211_sub_if_data *sdata,
 
 	} while (unlikely(ret == -EEXIST && !mpath));
 
-	if (ret) {
+	if (ret && ret != -EEXIST)
+		return ERR_PTR(ret);
+
+	/* At this point either new_mpath was added, or we found a
+	 * matching entry already in the table; in the latter case
+	 * free the unnecessary new entry.
+	 */
+	if (ret == -EEXIST) {
 		kfree(new_mpath);
-
-		if (ret != -EEXIST)
-			return ERR_PTR(ret);
-
 		new_mpath = mpath;
 	}
-
 	sdata->u.mesh.mesh_paths_generation++;
 	return new_mpath;
 }
@@ -485,9 +488,6 @@ int mpp_path_add(struct ieee80211_sub_if_data *sdata,
 	ret = rhashtable_lookup_insert_fast(&tbl->rhead,
 					    &new_mpath->rhash,
 					    mesh_rht_params);
-
-	if (ret)
-		kfree(new_mpath);
 
 	sdata->u.mesh.mpp_paths_generation++;
 	return ret;
@@ -829,9 +829,6 @@ void mesh_path_fix_nexthop(struct mesh_path *mpath, struct sta_info *next_hop)
 	mpath->flags = MESH_PATH_FIXED | MESH_PATH_SN_VALID;
 	mesh_path_activate(mpath);
 	spin_unlock_bh(&mpath->state_lock);
-	ewma_mesh_fail_avg_init(&next_hop->mesh->fail_avg);
-	/* init it at a low value - 0 start is tricky */
-	ewma_mesh_fail_avg_add(&next_hop->mesh->fail_avg, 1);
 	mesh_path_tx_pending(mpath);
 }
 

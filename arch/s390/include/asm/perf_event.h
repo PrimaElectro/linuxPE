@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Performance event support - s390 specific definitions.
  *
- * Copyright IBM Corp. 2009, 2017
+ * Copyright IBM Corp. 2009, 2013
  * Author(s): Martin Schwidefsky <schwidefsky@de.ibm.com>
  *	      Hendrik Brueckner <brueckner@linux.vnet.ibm.com>
  */
@@ -48,7 +47,7 @@ struct perf_sf_sde_regs {
 };
 
 /* Perf PMU definitions for the counter facility */
-#define PERF_CPUM_CF_MAX_CTR		0xffffUL  /* Max ctr for ECCTR */
+#define PERF_CPUM_CF_MAX_CTR		256
 
 /* Perf PMU definitions for the sampling facility */
 #define PERF_CPUM_SF_MAX_CTR		2

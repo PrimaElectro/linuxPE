@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * PCI Backend Xenbus Setup - handles setup with frontend and xend
  *
@@ -363,7 +362,7 @@ static int xen_pcibk_reconfigure(struct xen_pcibk_device *pdev)
 	int err = 0;
 	int num_devs;
 	int domain, bus, slot, func;
-	unsigned int substate;
+	int substate;
 	int i, len;
 	char state_str[64];
 	char dev_str[64];
@@ -396,8 +395,10 @@ static int xen_pcibk_reconfigure(struct xen_pcibk_device *pdev)
 					 "configuration");
 			goto out;
 		}
-		substate = xenbus_read_unsigned(pdev->xdev->nodename, state_str,
-						XenbusStateUnknown);
+		err = xenbus_scanf(XBT_NIL, pdev->xdev->nodename, state_str,
+				   "%d", &substate);
+		if (err != 1)
+			substate = XenbusStateUnknown;
 
 		switch (substate) {
 		case XenbusStateInitialising:
@@ -653,7 +654,7 @@ out:
 }
 
 static void xen_pcibk_be_watch(struct xenbus_watch *watch,
-			       const char *path, const char *token)
+			     const char **vec, unsigned int len)
 {
 	struct xen_pcibk_device *pdev =
 	    container_of(watch, struct xen_pcibk_device, be_watch);

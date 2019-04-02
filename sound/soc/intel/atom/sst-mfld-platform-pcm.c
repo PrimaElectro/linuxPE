@@ -76,7 +76,7 @@ int sst_unregister_dsp(struct sst_device *dev)
 }
 EXPORT_SYMBOL_GPL(sst_unregister_dsp);
 
-static const struct snd_pcm_hardware sst_platform_pcm_hw = {
+static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.info =	(SNDRV_PCM_INFO_INTERLEAVED |
 			SNDRV_PCM_INFO_DOUBLE |
 			SNDRV_PCM_INFO_PAUSE |
@@ -357,14 +357,14 @@ static void sst_media_close(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct sst_runtime_stream *stream;
-	int str_id;
+	int ret_val = 0, str_id;
 
 	stream = substream->runtime->private_data;
 	power_down_sst(stream);
 
 	str_id = stream->stream_info.str_id;
 	if (str_id)
-		stream->ops->close(sst->dev, str_id);
+		ret_val = stream->ops->close(sst->dev, str_id);
 	module_put(sst->dev->driver->owner);
 	kfree(stream);
 }
@@ -399,13 +399,7 @@ static int sst_media_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
 {
-	int ret;
-
-	ret =
-		snd_pcm_lib_malloc_pages(substream,
-				params_buffer_bytes(params));
-	if (ret)
-		return ret;
+	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 	return 0;
 }
@@ -477,7 +471,7 @@ static void sst_disable_ssp(struct snd_pcm_substream *substream,
 	}
 }
 
-static const struct snd_soc_dai_ops sst_media_dai_ops = {
+static struct snd_soc_dai_ops sst_media_dai_ops = {
 	.startup = sst_media_open,
 	.shutdown = sst_media_close,
 	.prepare = sst_media_prepare,
@@ -486,11 +480,11 @@ static const struct snd_soc_dai_ops sst_media_dai_ops = {
 	.mute_stream = sst_media_digital_mute,
 };
 
-static const struct snd_soc_dai_ops sst_compr_dai_ops = {
+static struct snd_soc_dai_ops sst_compr_dai_ops = {
 	.mute_stream = sst_media_digital_mute,
 };
 
-static const struct snd_soc_dai_ops sst_be_dai_ops = {
+static struct snd_soc_dai_ops sst_be_dai_ops = {
 	.startup = sst_enable_ssp,
 	.hw_params = sst_be_hw_params,
 	.set_fmt = sst_set_format,
@@ -696,7 +690,7 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 			snd_dma_continuous_data(GFP_DMA),
 			SST_MIN_BUFFER, SST_MAX_BUFFER);
 		if (retval) {
-			dev_err(rtd->dev, "dma buffer allocation failure\n");
+			dev_err(rtd->dev, "dma buffer allocationf fail\n");
 			return retval;
 		}
 	}
@@ -711,7 +705,7 @@ static int sst_soc_probe(struct snd_soc_platform *platform)
 	return sst_dsp_init_v2_dpcm(platform);
 }
 
-static const struct snd_soc_platform_driver sst_soc_platform_drv  = {
+static struct snd_soc_platform_driver sst_soc_platform_drv  = {
 	.probe		= sst_soc_probe,
 	.ops		= &sst_platform_ops,
 	.compr_ops	= &sst_platform_compr_ops,
@@ -845,5 +839,4 @@ MODULE_DESCRIPTION("ASoC Intel(R) MID Platform driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:sst-atom-hifi2-platform");
 MODULE_ALIAS("platform:sst-mfld-platform");

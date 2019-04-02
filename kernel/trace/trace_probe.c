@@ -21,7 +21,6 @@
  * Copyright (C) IBM Corporation, 2010-2011
  * Author:     Srikar Dronamraju
  */
-#define pr_fmt(fmt)	"trace_probe: " fmt
 
 #include "trace_probe.h"
 
@@ -320,7 +319,7 @@ static fetch_func_t get_fetch_size_function(const struct fetch_type *type,
 }
 
 /* Split symbol and offset. */
-int traceprobe_split_symbol_offset(char *symbol, long *offset)
+int traceprobe_split_symbol_offset(char *symbol, unsigned long *offset)
 {
 	char *tmp;
 	int ret;
@@ -328,11 +327,13 @@ int traceprobe_split_symbol_offset(char *symbol, long *offset)
 	if (!offset)
 		return -EINVAL;
 
-	tmp = strpbrk(symbol, "+-");
+	tmp = strchr(symbol, '+');
 	if (tmp) {
-		ret = kstrtol(tmp, 0, offset);
+		/* skip sign because kstrtoul doesn't accept '+' */
+		ret = kstrtoul(tmp + 1, 0, offset);
 		if (ret)
 			return ret;
+
 		*tmp = '\0';
 	} else
 		*offset = 0;
@@ -646,7 +647,7 @@ ssize_t traceprobe_probes_write(struct file *file, const char __user *buffer,
 				size_t count, loff_t *ppos,
 				int (*createfn)(int, char **))
 {
-	char *kbuf, *buf, *tmp;
+	char *kbuf, *tmp;
 	int ret = 0;
 	size_t done = 0;
 	size_t size;
@@ -666,38 +667,27 @@ ssize_t traceprobe_probes_write(struct file *file, const char __user *buffer,
 			goto out;
 		}
 		kbuf[size] = '\0';
-		buf = kbuf;
-		do {
-			tmp = strchr(buf, '\n');
-			if (tmp) {
-				*tmp = '\0';
-				size = tmp - buf + 1;
-			} else {
-				size = strlen(buf);
-				if (done + size < count) {
-					if (buf != kbuf)
-						break;
-					/* This can accept WRITE_BUFSIZE - 2 ('\n' + '\0') */
-					pr_warn("Line length is too long: Should be less than %d\n",
-						WRITE_BUFSIZE - 2);
-					ret = -EINVAL;
-					goto out;
-				}
-			}
-			done += size;
+		tmp = strchr(kbuf, '\n');
 
-			/* Remove comments */
-			tmp = strchr(buf, '#');
+		if (tmp) {
+			*tmp = '\0';
+			size = tmp - kbuf + 1;
+		} else if (done + size < count) {
+			pr_warn("Line length is too long: Should be less than %d\n",
+				WRITE_BUFSIZE);
+			ret = -EINVAL;
+			goto out;
+		}
+		done += size;
+		/* Remove comments */
+		tmp = strchr(kbuf, '#');
 
-			if (tmp)
-				*tmp = '\0';
+		if (tmp)
+			*tmp = '\0';
 
-			ret = traceprobe_command(buf, createfn);
-			if (ret)
-				goto out;
-			buf += size;
-
-		} while (done < count);
+		ret = traceprobe_command(kbuf, createfn);
+		if (ret)
+			goto out;
 	}
 	ret = done;
 

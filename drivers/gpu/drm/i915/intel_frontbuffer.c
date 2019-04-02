@@ -114,12 +114,13 @@ static void intel_frontbuffer_flush(struct drm_i915_private *dev_priv,
 }
 
 void __intel_fb_obj_flush(struct drm_i915_gem_object *obj,
+			  bool retire,
 			  enum fb_op_origin origin,
 			  unsigned int frontbuffer_bits)
 {
 	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
 
-	if (origin == ORIGIN_CS) {
+	if (retire) {
 		spin_lock(&dev_priv->fb_tracking.lock);
 		/* Filter out new bits since rendering started. */
 		frontbuffer_bits &= dev_priv->fb_tracking.busy_bits;

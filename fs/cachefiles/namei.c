@@ -195,6 +195,7 @@ wait_for_old_object:
 		pr_err("\n");
 		pr_err("Error: Unexpected object collision\n");
 		cachefiles_printk_object(object, xobject);
+		BUG();
 	}
 	atomic_inc(&xobject->usage);
 	write_unlock(&cache->active_lock);
@@ -203,7 +204,7 @@ wait_for_old_object:
 		wait_queue_head_t *wq;
 
 		signed long timeout = 60 * HZ;
-		wait_queue_entry_t wait;
+		wait_queue_t wait;
 		bool requeue;
 
 		/* if the object we're waiting for is queued for processing,
@@ -340,7 +341,7 @@ try_again:
 	trap = lock_rename(cache->graveyard, dir);
 
 	/* do some checks before getting the grave dentry */
-	if (rep->d_parent != dir || IS_DEADDIR(d_inode(rep))) {
+	if (rep->d_parent != dir) {
 		/* the entry was probably culled when we dropped the parent dir
 		 * lock */
 		unlock_rename(cache->graveyard, dir);

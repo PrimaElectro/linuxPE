@@ -29,7 +29,7 @@
 #include <asm/opal-prd.h>
 #include <asm/opal.h>
 #include <asm/io.h>
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 
 
 /**
@@ -241,9 +241,15 @@ static ssize_t opal_prd_write(struct file *file, const char __user *buf,
 
 	size = be16_to_cpu(hdr.size);
 
-	msg = memdup_user(buf, size);
-	if (IS_ERR(msg))
-		return PTR_ERR(msg);
+	msg = kmalloc(size, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	rc = copy_from_user(msg, buf, size);
+	if (rc) {
+		size = -EFAULT;
+		goto out_free;
+	}
 
 	rc = opal_prd_msg(msg);
 	if (rc) {
@@ -251,6 +257,7 @@ static ssize_t opal_prd_write(struct file *file, const char __user *buf,
 		size = -EIO;
 	}
 
+out_free:
 	kfree(msg);
 
 	return size;

@@ -13,7 +13,7 @@
 
 #include <linux/module.h>
 
-#include <linux/uaccess.h>
+#include <asm/uaccess.h>
 #include <asm/byteorder.h>
 
 #include <linux/time.h>
@@ -30,7 +30,6 @@
 #include <linux/vfs.h>
 #include <linux/mount.h>
 #include <linux/seq_file.h>
-#include <linux/sched/signal.h>
 #include <linux/namei.h>
 
 #include <net/sock.h>
@@ -244,6 +243,7 @@ static void ncp_set_attr(struct inode *inode, struct ncp_entry_info *nwinfo)
 
 #if defined(CONFIG_NCPFS_EXTRAS) || defined(CONFIG_NCPFS_NFS_NS)
 static const struct inode_operations ncp_symlink_inode_operations = {
+	.readlink	= generic_readlink,
 	.get_link	= page_get_link,
 	.setattr	= ncp_notify_change,
 };
@@ -554,11 +554,12 @@ static int ncp_fill_super(struct super_block *sb, void *raw_data, int silent)
 	sb->s_magic = NCP_SUPER_MAGIC;
 	sb->s_op = &ncp_sops;
 	sb->s_d_op = &ncp_dentry_operations;
+	sb->s_bdi = &server->bdi;
 
 	server = NCP_SBP(sb);
 	memset(server, 0, sizeof(*server));
 
-	error = super_setup_bdi(sb);
+	error = bdi_setup_and_register(&server->bdi, "ncpfs");
 	if (error)
 		goto out_fput;
 
@@ -567,7 +568,7 @@ static int ncp_fill_super(struct super_block *sb, void *raw_data, int silent)
 	if (data.info_fd != -1) {
 		struct socket *info_sock = sockfd_lookup(data.info_fd, &error);
 		if (!info_sock)
-			goto out_fput;
+			goto out_bdi;
 		server->info_sock = info_sock;
 		error = -EBADFD;
 		if (info_sock->type != SOCK_STREAM)
@@ -745,6 +746,8 @@ out_nls:
 out_fput2:
 	if (server->info_sock)
 		sockfd_put(server->info_sock);
+out_bdi:
+	bdi_destroy(&server->bdi);
 out_fput:
 	sockfd_put(sock);
 out:
@@ -785,6 +788,7 @@ static void ncp_put_super(struct super_block *sb)
 	kill_pid(server->m.wdog_pid, SIGTERM, 1);
 	put_pid(server->m.wdog_pid);
 
+	bdi_destroy(&server->bdi);
 	kfree(server->priv.data);
 	kfree(server->auth.object_name);
 	vfree(server->rxbuf);

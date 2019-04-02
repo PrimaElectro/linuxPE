@@ -14,7 +14,6 @@
 #include <linux/sched.h>
 #include <linux/types.h>
 
-#include <asm/cacheflush.h>
 #include <asm/fixmap.h>
 #include <asm/kernel-pgtable.h>
 #include <asm/memory.h>
@@ -28,7 +27,7 @@ u16 __initdata memstart_offset_seed;
 static __init u64 get_kaslr_seed(void *fdt)
 {
 	int node, len;
-	fdt64_t *prop;
+	u64 *prop;
 	u64 ret;
 
 	node = fdt_path_offset(fdt, "/chosen");
@@ -44,7 +43,7 @@ static __init u64 get_kaslr_seed(void *fdt)
 	return ret;
 }
 
-static __init const u8 *kaslr_get_cmdline(void *fdt)
+static __init const u8 *get_cmdline(void *fdt)
 {
 	static __initconst const u8 default_cmdline[] = CONFIG_CMDLINE;
 
@@ -76,7 +75,7 @@ extern void *__init __fixmap_remap_fdt(phys_addr_t dt_phys, int *size,
  * containing function pointers) to be reinitialized, and zero-initialized
  * .bss variables will be reset to 0.
  */
-u64 __init kaslr_early_init(u64 dt_phys)
+u64 __init kaslr_early_init(u64 dt_phys, u64 modulo_offset)
 {
 	void *fdt;
 	u64 seed, offset, mask, module_range;
@@ -88,7 +87,6 @@ u64 __init kaslr_early_init(u64 dt_phys)
 	 * we end up running with module randomization disabled.
 	 */
 	module_alloc_base = (u64)_etext - MODULES_VSIZE;
-	__flush_dcache_area(&module_alloc_base, sizeof(module_alloc_base));
 
 	/*
 	 * Try to map the FDT early. If this fails, we simply bail,
@@ -111,7 +109,7 @@ u64 __init kaslr_early_init(u64 dt_phys)
 	 * Check if 'nokaslr' appears on the command line, and
 	 * return 0 if that is the case.
 	 */
-	cmdline = kaslr_get_cmdline(fdt);
+	cmdline = get_cmdline(fdt);
 	str = strstr(cmdline, "nokaslr");
 	if (str == cmdline || (str > cmdline && *(str - 1) == ' '))
 		return 0;
@@ -133,17 +131,15 @@ u64 __init kaslr_early_init(u64 dt_phys)
 	/*
 	 * The kernel Image should not extend across a 1GB/32MB/512MB alignment
 	 * boundary (for 4KB/16KB/64KB granule kernels, respectively). If this
-	 * happens, round down the KASLR offset by (1 << SWAPPER_TABLE_SHIFT).
-	 *
-	 * NOTE: The references to _text and _end below will already take the
-	 *       modulo offset (the physical displacement modulo 2 MB) into
-	 *       account, given that the physical placement is controlled by
-	 *       the loader, and will not change as a result of the virtual
-	 *       mapping we choose.
+	 * happens, increase the KASLR offset by the size of the kernel image
+	 * rounded up by SWAPPER_BLOCK_SIZE.
 	 */
-	if ((((u64)_text + offset) >> SWAPPER_TABLE_SHIFT) !=
-	    (((u64)_end + offset) >> SWAPPER_TABLE_SHIFT))
-		offset = round_down(offset, 1 << SWAPPER_TABLE_SHIFT);
+	if ((((u64)_text + offset + modulo_offset) >> SWAPPER_TABLE_SHIFT) !=
+	    (((u64)_end + offset + modulo_offset) >> SWAPPER_TABLE_SHIFT)) {
+		u64 kimg_sz = _end - _text;
+		offset = (offset + round_up(kimg_sz, SWAPPER_BLOCK_SIZE))
+				& mask;
+	}
 
 	if (IS_ENABLED(CONFIG_KASAN))
 		/*
@@ -181,9 +177,6 @@ u64 __init kaslr_early_init(u64 dt_phys)
 	/* use the lower 21 bits to randomize the base of the module region */
 	module_alloc_base += (module_range * (seed & ((1 << 21) - 1))) >> 21;
 	module_alloc_base &= PAGE_MASK;
-
-	__flush_dcache_area(&module_alloc_base, sizeof(module_alloc_base));
-	__flush_dcache_area(&memstart_offset_seed, sizeof(memstart_offset_seed));
 
 	return offset;
 }

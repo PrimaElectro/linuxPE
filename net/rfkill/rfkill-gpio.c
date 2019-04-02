@@ -81,7 +81,8 @@ static int rfkill_gpio_acpi_probe(struct device *dev,
 
 	rfkill->type = (unsigned)id->driver_data;
 
-	return devm_acpi_dev_add_driver_gpios(dev, acpi_rfkill_default_gpios);
+	return acpi_dev_add_driver_gpios(ACPI_COMPANION(dev),
+					 acpi_rfkill_default_gpios);
 }
 
 static int rfkill_gpio_probe(struct platform_device *pdev)
@@ -137,18 +138,13 @@ static int rfkill_gpio_probe(struct platform_device *pdev)
 
 	ret = rfkill_register(rfkill->rfkill_dev);
 	if (ret < 0)
-		goto err_destroy;
+		return ret;
 
 	platform_set_drvdata(pdev, rfkill);
 
 	dev_info(&pdev->dev, "%s device registered.\n", rfkill->name);
 
 	return 0;
-
-err_destroy:
-	rfkill_destroy(rfkill->rfkill_dev);
-
-	return ret;
 }
 
 static int rfkill_gpio_remove(struct platform_device *pdev)
@@ -157,6 +153,8 @@ static int rfkill_gpio_remove(struct platform_device *pdev)
 
 	rfkill_unregister(rfkill->rfkill_dev);
 	rfkill_destroy(rfkill->rfkill_dev);
+
+	acpi_dev_remove_driver_gpios(ACPI_COMPANION(&pdev->dev));
 
 	return 0;
 }

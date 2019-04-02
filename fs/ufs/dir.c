@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/ufs/ufs_dir.c
  *
@@ -54,7 +53,7 @@ static int ufs_commit_chunk(struct page *page, loff_t pos, unsigned len)
 		mark_inode_dirty(dir);
 	}
 	if (IS_DIRSYNC(dir))
-		err = write_one_page(page);
+		err = write_one_page(page, 1);
 	else
 		unlock_page(page);
 	return err;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2017  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2007-2016  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner, Simon Wunderlich
  *
@@ -679,10 +679,14 @@ static void batadv_iv_ogm_aggregate_new(const unsigned char *packet_buff,
 {
 	struct batadv_priv *bat_priv = netdev_priv(if_incoming->soft_iface);
 	struct batadv_forw_packet *forw_packet_aggr;
-	struct sk_buff *skb;
 	unsigned char *skb_buff;
 	unsigned int skb_size;
 	atomic_t *queue_left = own_packet ? NULL : &bat_priv->batman_queue_left;
+
+	forw_packet_aggr = batadv_forw_packet_alloc(if_incoming, if_outgoing,
+						    queue_left, bat_priv);
+	if (!forw_packet_aggr)
+		return;
 
 	if (atomic_read(&bat_priv->aggregated_ogms) &&
 	    packet_len < BATADV_MAX_AGGREGATION_BYTES)
@@ -692,14 +696,9 @@ static void batadv_iv_ogm_aggregate_new(const unsigned char *packet_buff,
 
 	skb_size += ETH_HLEN;
 
-	skb = netdev_alloc_skb_ip_align(NULL, skb_size);
-	if (!skb)
-		return;
-
-	forw_packet_aggr = batadv_forw_packet_alloc(if_incoming, if_outgoing,
-						    queue_left, bat_priv, skb);
-	if (!forw_packet_aggr) {
-		kfree_skb(skb);
+	forw_packet_aggr->skb = netdev_alloc_skb_ip_align(NULL, skb_size);
+	if (!forw_packet_aggr->skb) {
+		batadv_forw_packet_free(forw_packet_aggr);
 		return;
 	}
 
@@ -718,10 +717,17 @@ static void batadv_iv_ogm_aggregate_new(const unsigned char *packet_buff,
 	if (direct_link)
 		forw_packet_aggr->direct_link_flags |= 1;
 
+	/* add new packet to packet list */
+	spin_lock_bh(&bat_priv->forw_bat_list_lock);
+	hlist_add_head(&forw_packet_aggr->list, &bat_priv->forw_bat_list);
+	spin_unlock_bh(&bat_priv->forw_bat_list_lock);
+
+	/* start timer for this packet */
 	INIT_DELAYED_WORK(&forw_packet_aggr->delayed_work,
 			  batadv_iv_send_outstanding_bat_ogm_packet);
-
-	batadv_forw_packet_ogmv1_queue(bat_priv, forw_packet_aggr, send_time);
+	queue_delayed_work(batadv_event_workqueue,
+			   &forw_packet_aggr->delayed_work,
+			   send_time - jiffies);
 }
 
 /* aggregate a new packet into the existing ogm packet */
@@ -729,9 +735,11 @@ static void batadv_iv_ogm_aggregate(struct batadv_forw_packet *forw_packet_aggr,
 				    const unsigned char *packet_buff,
 				    int packet_len, bool direct_link)
 {
+	unsigned char *skb_buff;
 	unsigned long new_direct_link_flag;
 
-	skb_put_data(forw_packet_aggr->skb, packet_buff, packet_len);
+	skb_buff = skb_put(forw_packet_aggr->skb, packet_len);
+	memcpy(skb_buff, packet_buff, packet_len);
 	forw_packet_aggr->packet_len += packet_len;
 	forw_packet_aggr->num_packets++;
 
@@ -1020,8 +1028,7 @@ batadv_iv_ogm_orig_update(struct batadv_priv *bat_priv,
 	u8 tq_avg;
 
 	batadv_dbg(BATADV_DBG_BATMAN, bat_priv,
-		   "%s(): Searching and updating originator entry of received packet\n",
-		   __func__);
+		   "update_originator(): Searching and updating originator entry of received packet\n");
 
 	rcu_read_lock();
 	hlist_for_each_entry_rcu(tmp_neigh_node,
@@ -1265,7 +1272,7 @@ static bool batadv_iv_ogm_calc_tq(struct batadv_orig_node *orig_node,
 	 */
 	tq_iface_penalty = BATADV_TQ_MAX_VALUE;
 	if (if_outgoing && (if_incoming == if_outgoing) &&
-	    batadv_is_wifi_hardif(if_outgoing))
+	    batadv_is_wifi_netdev(if_outgoing->net_dev))
 		tq_iface_penalty = batadv_hop_penalty(BATADV_TQ_MAX_VALUE,
 						      bat_priv);
 
@@ -1279,7 +1286,7 @@ static bool batadv_iv_ogm_calc_tq(struct batadv_orig_node *orig_node,
 	batadv_ogm_packet->tq = combined_tq;
 
 	batadv_dbg(BATADV_DBG_BATMAN, bat_priv,
-		   "bidirectional: orig = %pM neigh = %pM => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penalty: %3i, iface_penalty: %3i, total tq: %3i, if_incoming = %s, if_outgoing = %s\n",
+		   "bidirectional: orig = %-15pM neigh = %-15pM => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penalty: %3i, iface_penalty: %3i, total tq: %3i, if_incoming = %s, if_outgoing = %s\n",
 		   orig_node->orig, orig_neigh_node->orig, total_count,
 		   neigh_rq_count, tq_own, tq_asym_penalty, tq_iface_penalty,
 		   batadv_ogm_packet->tq, if_incoming->net_dev->name,
@@ -1604,7 +1611,7 @@ out:
 	if (hardif_neigh)
 		batadv_hardif_neigh_put(hardif_neigh);
 
-	consume_skb(skb_priv);
+	kfree_skb(skb_priv);
 }
 
 /**
@@ -1776,17 +1783,17 @@ static void batadv_iv_send_outstanding_bat_ogm_packet(struct work_struct *work)
 	struct delayed_work *delayed_work;
 	struct batadv_forw_packet *forw_packet;
 	struct batadv_priv *bat_priv;
-	bool dropped = false;
 
 	delayed_work = to_delayed_work(work);
 	forw_packet = container_of(delayed_work, struct batadv_forw_packet,
 				   delayed_work);
 	bat_priv = netdev_priv(forw_packet->if_incoming->soft_iface);
+	spin_lock_bh(&bat_priv->forw_bat_list_lock);
+	hlist_del(&forw_packet->list);
+	spin_unlock_bh(&bat_priv->forw_bat_list_lock);
 
-	if (atomic_read(&bat_priv->mesh_state) == BATADV_MESH_DEACTIVATING) {
-		dropped = true;
+	if (atomic_read(&bat_priv->mesh_state) == BATADV_MESH_DEACTIVATING)
 		goto out;
-	}
 
 	batadv_iv_ogm_emit(forw_packet);
 
@@ -1803,10 +1810,7 @@ static void batadv_iv_send_outstanding_bat_ogm_packet(struct work_struct *work)
 		batadv_iv_ogm_schedule(forw_packet->if_incoming);
 
 out:
-	/* do we get something for free()? */
-	if (batadv_forw_packet_steal(forw_packet,
-				     &bat_priv->forw_bat_list_lock))
-		batadv_forw_packet_free(forw_packet, dropped);
+	batadv_forw_packet_free(forw_packet);
 }
 
 static int batadv_iv_ogm_receive(struct sk_buff *skb,
@@ -1816,18 +1820,17 @@ static int batadv_iv_ogm_receive(struct sk_buff *skb,
 	struct batadv_ogm_packet *ogm_packet;
 	u8 *packet_pos;
 	int ogm_offset;
-	bool res;
-	int ret = NET_RX_DROP;
+	bool ret;
 
-	res = batadv_check_management_packet(skb, if_incoming, BATADV_OGM_HLEN);
-	if (!res)
-		goto free_skb;
+	ret = batadv_check_management_packet(skb, if_incoming, BATADV_OGM_HLEN);
+	if (!ret)
+		return NET_RX_DROP;
 
 	/* did we receive a B.A.T.M.A.N. IV OGM packet on an interface
 	 * that does not have B.A.T.M.A.N. IV enabled ?
 	 */
 	if (bat_priv->algo_ops->iface.enable != batadv_iv_ogm_iface_enable)
-		goto free_skb;
+		return NET_RX_DROP;
 
 	batadv_inc_counter(bat_priv, BATADV_CNT_MGMT_RX);
 	batadv_add_counter(bat_priv, BATADV_CNT_MGMT_RX_BYTES,
@@ -1848,15 +1851,8 @@ static int batadv_iv_ogm_receive(struct sk_buff *skb,
 		ogm_packet = (struct batadv_ogm_packet *)packet_pos;
 	}
 
-	ret = NET_RX_SUCCESS;
-
-free_skb:
-	if (ret == NET_RX_SUCCESS)
-		consume_skb(skb);
-	else
-		kfree_skb(skb);
-
-	return ret;
+	kfree_skb(skb);
+	return NET_RX_SUCCESS;
 }
 
 #ifdef CONFIG_BATMAN_ADV_DEBUGFS
@@ -1943,7 +1939,7 @@ static void batadv_iv_ogm_orig_print(struct batadv_priv *bat_priv,
 
 			batadv_iv_ogm_orig_print_neigh(orig_node, if_outgoing,
 						       seq);
-			seq_putc(seq, '\n');
+			seq_puts(seq, "\n");
 			batman_count++;
 
 next:
@@ -2477,16 +2473,6 @@ static void batadv_iv_iface_activate(struct batadv_hard_iface *hard_iface)
 	batadv_iv_ogm_schedule(hard_iface);
 }
 
-/**
- * batadv_iv_init_sel_class - initialize GW selection class
- * @bat_priv: the bat priv with all the soft interface information
- */
-static void batadv_iv_init_sel_class(struct batadv_priv *bat_priv)
-{
-	/* set default TQ difference threshold to 20 */
-	atomic_set(&bat_priv->gw.sel_class, 20);
-}
-
 static struct batadv_gw_node *
 batadv_iv_gw_get_best_gw_node(struct batadv_priv *bat_priv)
 {
@@ -2500,7 +2486,7 @@ batadv_iv_gw_get_best_gw_node(struct batadv_priv *bat_priv)
 	struct batadv_orig_node *orig_node;
 
 	rcu_read_lock();
-	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.gateway_list, list) {
+	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.list, list) {
 		orig_node = gw_node->orig_node;
 		router = batadv_orig_router_get(orig_node, BATADV_IF_DEFAULT);
 		if (!router)
@@ -2688,7 +2674,7 @@ static void batadv_iv_gw_print(struct batadv_priv *bat_priv,
 		 "      Gateway      (#/255)           Nexthop [outgoingIF]: advertised uplink bandwidth\n");
 
 	rcu_read_lock();
-	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.gateway_list, list) {
+	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.list, list) {
 		/* fails if orig_node has no router */
 		if (batadv_iv_gw_write_buffer_text(bat_priv, seq, gw_node) < 0)
 			continue;
@@ -2718,8 +2704,8 @@ static int batadv_iv_gw_dump_entry(struct sk_buff *msg, u32 portid, u32 seq,
 {
 	struct batadv_neigh_ifinfo *router_ifinfo = NULL;
 	struct batadv_neigh_node *router;
-	struct batadv_gw_node *curr_gw = NULL;
-	int ret = 0;
+	struct batadv_gw_node *curr_gw;
+	int ret = -EINVAL;
 	void *hdr;
 
 	router = batadv_orig_router_get(gw_node->orig_node, BATADV_IF_DEFAULT);
@@ -2766,8 +2752,6 @@ static int batadv_iv_gw_dump_entry(struct sk_buff *msg, u32 portid, u32 seq,
 	ret = 0;
 
 out:
-	if (curr_gw)
-		batadv_gw_node_put(curr_gw);
 	if (router_ifinfo)
 		batadv_neigh_ifinfo_put(router_ifinfo);
 	if (router)
@@ -2790,7 +2774,7 @@ static void batadv_iv_gw_dump(struct sk_buff *msg, struct netlink_callback *cb,
 	int idx = 0;
 
 	rcu_read_lock();
-	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.gateway_list, list) {
+	hlist_for_each_entry_rcu(gw_node, &bat_priv->gw.list, list) {
 		if (idx++ < idx_skip)
 			continue;
 
@@ -2835,7 +2819,6 @@ static struct batadv_algo_ops batadv_batman_iv __read_mostly = {
 		.del_if = batadv_iv_ogm_orig_del_if,
 	},
 	.gw = {
-		.init_sel_class = batadv_iv_init_sel_class,
 		.get_best_gw_node = batadv_iv_gw_get_best_gw_node,
 		.is_eligible = batadv_iv_gw_is_eligible,
 #ifdef CONFIG_BATMAN_ADV_DEBUGFS

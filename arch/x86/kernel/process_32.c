@@ -12,8 +12,6 @@
 #include <linux/cpu.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
-#include <linux/sched/task.h>
-#include <linux/sched/task_stack.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
@@ -37,7 +35,7 @@
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/kdebug.h>
-#include <linux/syscalls.h>
+#include <linux/highmem.h>
 
 #include <asm/pgtable.h>
 #include <asm/ldt.h>
@@ -52,14 +50,11 @@
 
 #include <asm/tlbflush.h>
 #include <asm/cpu.h>
+#include <asm/idle.h>
 #include <asm/syscalls.h>
 #include <asm/debugreg.h>
 #include <asm/switch_to.h>
 #include <asm/vm86.h>
-#include <asm/intel_rdt_sched.h>
-#include <asm/proto.h>
-
-#include "process.h"
 
 void __show_regs(struct pt_regs *regs, int all)
 {
@@ -70,7 +65,7 @@ void __show_regs(struct pt_regs *regs, int all)
 
 	if (user_mode(regs)) {
 		sp = regs->sp;
-		ss = regs->ss;
+		ss = regs->ss & 0xffff;
 		gs = get_user_gs(regs);
 	} else {
 		sp = kernel_stack_pointer(regs);
@@ -78,9 +73,10 @@ void __show_regs(struct pt_regs *regs, int all)
 		savesegment(gs, gs);
 	}
 
-	printk(KERN_DEFAULT "EIP: %pS\n", (void *)regs->ip);
-	printk(KERN_DEFAULT "EFLAGS: %08lx CPU: %d\n", regs->flags,
-		raw_smp_processor_id());
+	printk(KERN_DEFAULT "EIP: %04x:[<%08lx>] EFLAGS: %08lx CPU: %d\n",
+			(u16)regs->cs, regs->ip, regs->flags,
+			smp_processor_id());
+	print_symbol("EIP is at %s\n", regs->ip);
 
 	printk(KERN_DEFAULT "EAX: %08lx EBX: %08lx ECX: %08lx EDX: %08lx\n",
 		regs->ax, regs->bx, regs->cx, regs->dx);
@@ -94,7 +90,7 @@ void __show_regs(struct pt_regs *regs, int all)
 
 	cr0 = read_cr0();
 	cr2 = read_cr2();
-	cr3 = __read_cr3();
+	cr3 = read_cr3();
 	cr4 = __read_cr4();
 	printk(KERN_DEFAULT "CR0: %08lx CR2: %08lx CR3: %08lx CR4: %08lx\n",
 			cr0, cr2, cr3, cr4);
@@ -200,6 +196,35 @@ start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 }
 EXPORT_SYMBOL_GPL(start_thread);
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+static void switch_kmaps(struct task_struct *prev_p, struct task_struct *next_p)
+{
+	int i;
+
+	/*
+	 * Clear @prev's kmap_atomic mappings
+	 */
+	for (i = 0; i < prev_p->kmap_idx; i++) {
+		int idx = i + KM_TYPE_NR * smp_processor_id();
+		pte_t *ptep = kmap_pte - idx;
+
+		kpte_clear_flush(ptep, __fix_to_virt(FIX_KMAP_BEGIN + idx));
+	}
+	/*
+	 * Restore @next_p's kmap_atomic mappings
+	 */
+	for (i = 0; i < next_p->kmap_idx; i++) {
+		int idx = i + KM_TYPE_NR * smp_processor_id();
+
+		if (!pte_none(next_p->kmap_pte[i]))
+			set_pte(kmap_pte - idx, next_p->kmap_pte[i]);
+	}
+}
+#else
+static inline void
+switch_kmaps(struct task_struct *prev_p, struct task_struct *next_p) { }
+#endif
+
 
 /*
  *	switch_to(x,y) should switch tasks from x to y.
@@ -236,10 +261,12 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	struct fpu *prev_fpu = &prev->fpu;
 	struct fpu *next_fpu = &next->fpu;
 	int cpu = smp_processor_id();
+	struct tss_struct *tss = &per_cpu(cpu_tss, cpu);
+	fpu_switch_t fpu_switch;
 
 	/* never put a printk in __switch_to... printk() calls wake_up*() indirectly */
 
-	switch_fpu_prepare(prev_fpu, cpu);
+	fpu_switch = switch_fpu_prepare(prev_fpu, next_fpu, cpu);
 
 	/*
 	 * Save away %gs. No need to save %fs, as it was saved on the
@@ -267,7 +294,14 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	if (get_kernel_rpl() && unlikely(prev->iopl != next->iopl))
 		set_iopl_mask(next->iopl);
 
-	switch_to_extra(prev_p, next_p);
+	/*
+	 * Now maybe handle debug registers and/or IO bitmaps
+	 */
+	if (unlikely(task_thread_info(prev_p)->flags & _TIF_WORK_CTXSW_PREV ||
+		     task_thread_info(next_p)->flags & _TIF_WORK_CTXSW_NEXT))
+		__switch_to_xtra(prev_p, next_p, tss);
+
+	switch_kmaps(prev_p, next_p);
 
 	/*
 	 * Leave lazy mode, flushing any hypercalls made here.
@@ -280,11 +314,9 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 
 	/*
 	 * Reload esp0 and cpu_current_top_of_stack.  This changes
-	 * current_thread_info().  Refresh the SYSENTER configuration in
-	 * case prev or next is vm86.
+	 * current_thread_info().
 	 */
-	update_sp0(next_p);
-	refresh_sysenter_cs(next);
+	load_sp0(tss, next);
 	this_cpu_write(cpu_current_top_of_stack,
 		       (unsigned long)task_stack_page(next_p) +
 		       THREAD_SIZE);
@@ -295,17 +327,9 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	if (prev->gs | next->gs)
 		lazy_load_gs(next->gs);
 
-	switch_fpu_finish(next_fpu, cpu);
+	switch_fpu_finish(next_fpu, fpu_switch);
 
 	this_cpu_write(current_task, next_p);
 
-	/* Load the Intel cache allocation PQR MSR. */
-	intel_rdt_sched_in();
-
 	return prev_p;
-}
-
-SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
-{
-	return do_arch_prctl_common(current, option, arg2);
 }

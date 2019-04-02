@@ -20,7 +20,6 @@
 #include <linux/mm.h>
 #include "nd-core.h"
 #include "label.h"
-#include "pmem.h"
 #include "nd.h"
 
 static DEFINE_IDA(dimm_ida);
@@ -35,7 +34,7 @@ int nvdimm_check_config_data(struct device *dev)
 
 	if (!nvdimm->cmd_mask ||
 	    !test_bit(ND_CMD_GET_CONFIG_DATA, &nvdimm->cmd_mask)) {
-		if (test_bit(NDD_ALIASING, &nvdimm->flags))
+		if (nvdimm->flags & NDD_ALIASING)
 			return -ENXIO;
 		else
 			return -ENOTTY;
@@ -68,7 +67,6 @@ int nvdimm_init_nsarea(struct nvdimm_drvdata *ndd)
 	struct nvdimm_bus *nvdimm_bus = walk_to_nvdimm_bus(ndd->dev);
 	struct nvdimm_bus_descriptor *nd_desc;
 	int rc = validate_dimm(ndd);
-	int cmd_rc = 0;
 
 	if (rc)
 		return rc;
@@ -78,11 +76,8 @@ int nvdimm_init_nsarea(struct nvdimm_drvdata *ndd)
 
 	memset(cmd, 0, sizeof(*cmd));
 	nd_desc = nvdimm_bus->nd_desc;
-	rc = nd_desc->ndctl(nd_desc, to_nvdimm(ndd->dev),
-			ND_CMD_GET_CONFIG_SIZE, cmd, sizeof(*cmd), &cmd_rc);
-	if (rc < 0)
-		return rc;
-	return cmd_rc;
+	return nd_desc->ndctl(nd_desc, to_nvdimm(ndd->dev),
+			ND_CMD_GET_CONFIG_SIZE, cmd, sizeof(*cmd), NULL);
 }
 
 int nvdimm_init_config_data(struct nvdimm_drvdata *ndd)
@@ -107,7 +102,10 @@ int nvdimm_init_config_data(struct nvdimm_drvdata *ndd)
 		return -ENXIO;
 	}
 
-	ndd->data = kvmalloc(ndd->nsarea.config_size, GFP_KERNEL);
+	ndd->data = kmalloc(ndd->nsarea.config_size, GFP_KERNEL);
+	if (!ndd->data)
+		ndd->data = vmalloc(ndd->nsarea.config_size);
+
 	if (!ndd->data)
 		return -ENOMEM;
 
@@ -186,27 +184,6 @@ int nvdimm_set_config_data(struct nvdimm_drvdata *ndd, size_t offset,
 	return rc;
 }
 
-void nvdimm_set_aliasing(struct device *dev)
-{
-	struct nvdimm *nvdimm = to_nvdimm(dev);
-
-	set_bit(NDD_ALIASING, &nvdimm->flags);
-}
-
-void nvdimm_set_locked(struct device *dev)
-{
-	struct nvdimm *nvdimm = to_nvdimm(dev);
-
-	set_bit(NDD_LOCKED, &nvdimm->flags);
-}
-
-void nvdimm_clear_locked(struct device *dev)
-{
-	struct nvdimm *nvdimm = to_nvdimm(dev);
-
-	clear_bit(NDD_LOCKED, &nvdimm->flags);
-}
-
 static void nvdimm_release(struct device *dev)
 {
 	struct nvdimm *nvdimm = to_nvdimm(dev);
@@ -242,13 +219,6 @@ struct nvdimm *nd_blk_region_to_dimm(struct nd_blk_region *ndbr)
 	return nd_mapping->nvdimm;
 }
 EXPORT_SYMBOL_GPL(nd_blk_region_to_dimm);
-
-unsigned long nd_blk_memremap_flags(struct nd_blk_region *ndbr)
-{
-	/* pmem mapping properties are private to libnvdimm */
-	return ARCH_MEMREMAP_PMEM;
-}
-EXPORT_SYMBOL_GPL(nd_blk_memremap_flags);
 
 struct nvdimm_drvdata *to_ndd(struct nd_mapping *nd_mapping)
 {
@@ -426,7 +396,7 @@ int alias_dpa_busy(struct device *dev, void *data)
 	struct resource *res;
 	int i;
 
-	if (!is_memory(dev))
+	if (!is_nd_pmem(dev))
 		return 0;
 
 	nd_region = to_nd_region(dev);

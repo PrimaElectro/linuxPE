@@ -340,7 +340,7 @@ static int amsdu_to_msdu(struct _adapter *padapter, union recv_frame *prframe)
 	int	a_len, padding_len;
 	u16	eth_type, nSubframe_Length;
 	u8	nr_subframes, i;
-	unsigned char *pdata;
+	unsigned char *data_ptr, *pdata;
 	struct rx_pkt_attrib *pattrib;
 	_pkt *sub_skb, *subframes[MAX_SUBFRAME_COUNT];
 	struct recv_priv *precvpriv = &padapter->recvpriv;
@@ -372,7 +372,8 @@ static int amsdu_to_msdu(struct _adapter *padapter, union recv_frame *prframe)
 		if (!sub_skb)
 			break;
 		skb_reserve(sub_skb, 12);
-		skb_put_data(sub_skb, pdata, nSubframe_Length);
+		data_ptr = (u8 *)skb_put(sub_skb, nSubframe_Length);
+		memcpy(data_ptr, pdata, nSubframe_Length);
 		subframes[nr_subframes++] = sub_skb;
 		if (nr_subframes >= MAX_SUBFRAME_COUNT) {
 			netdev_warn(padapter->pnetdev, "r8712u: ParseSubframe(): Too many Subframes! Packets dropped!\n");
@@ -407,7 +408,7 @@ static int amsdu_to_msdu(struct _adapter *padapter, union recv_frame *prframe)
 			memcpy(skb_push(sub_skb, ETH_ALEN), pattrib->dst,
 				ETH_ALEN);
 		} else {
-			__be16 len;
+			u16 len;
 			/* Leave Ethernet header part of hdr and full payload */
 			len = htons(sub_skb->len);
 			memcpy(skb_push(sub_skb, 2), &len, 2);
@@ -438,21 +439,21 @@ exit:
 
 void r8712_rxcmd_event_hdl(struct _adapter *padapter, void *prxcmdbuf)
 {
-	__le32 voffset;
+	uint voffset;
 	u8 *poffset;
 	u16 cmd_len, drvinfo_sz;
 	struct recv_stat *prxstat;
 
-	poffset = prxcmdbuf;
-	voffset = *(__le32 *)poffset;
-	prxstat = prxcmdbuf;
+	poffset = (u8 *)prxcmdbuf;
+	voffset = *(uint *)poffset;
+	prxstat = (struct recv_stat *)prxcmdbuf;
 	drvinfo_sz = (le32_to_cpu(prxstat->rxdw0) & 0x000f0000) >> 16;
 	drvinfo_sz <<= 3;
 	poffset += RXDESC_SIZE + drvinfo_sz;
 	do {
-		voffset  = *(__le32 *)poffset;
+		voffset  = *(uint *)poffset;
 		cmd_len = (u16)(le32_to_cpu(voffset) & 0xffff);
-		r8712_event_handle(padapter, (__le32 *)poffset);
+		r8712_event_handle(padapter, (uint *)poffset);
 		poffset += (cmd_len + 8);/*8 bytes alignment*/
 	} while (le32_to_cpu(voffset) & BIT(31));
 
@@ -633,7 +634,8 @@ _err_exit:
 void r8712_reordering_ctrl_timeout_handler(void *pcontext)
 {
 	unsigned long irql;
-	struct recv_reorder_ctrl *preorder_ctrl = pcontext;
+	struct recv_reorder_ctrl *preorder_ctrl =
+				 (struct recv_reorder_ctrl *)pcontext;
 	struct _adapter *padapter = preorder_ctrl->padapter;
 	struct  __queue *ppending_recvframe_queue =
 				 &preorder_ctrl->pending_recvframe_queue;
@@ -756,7 +758,7 @@ static void query_rx_phy_status(struct _adapter *padapter,
 		/* CCK Driver info Structure is not the same as OFDM packet.*/
 		pcck_buf = (struct phy_cck_rx_status *)pphy_stat;
 		/* (1)Hardware does not provide RSSI for CCK
-		 * (2)PWDB, Average PWDB calculated by hardware
+		 * (2)PWDB, Average PWDB cacluated by hardware
 		 * (for rate adaptive)
 		 */
 		if (!cck_highpwr) {
@@ -851,7 +853,7 @@ static void query_rx_phy_status(struct _adapter *padapter,
 			rssi = query_rx_pwr_percentage(rx_pwr[i]);
 			total_rssi += rssi;
 		}
-		/* (2)PWDB, Average PWDB calculated by hardware (for
+		/* (2)PWDB, Average PWDB cacluated by hardware (for
 		 * rate adaptive)
 		 */
 		rx_pwr_all = (((pphy_head[PHY_STAT_PWDB_ALL_SHT]) >> 1) & 0x7f)
@@ -974,7 +976,7 @@ int recv_func(struct _adapter *padapter, void *pcontext)
 	struct  __queue *pfree_recv_queue = &padapter->recvpriv.free_recv_queue;
 	struct	mlme_priv	*pmlmepriv = &padapter->mlmepriv;
 
-	prframe = pcontext;
+	prframe = (union recv_frame *)pcontext;
 	orig_prframe = prframe;
 	pattrib = &prframe->u.hdr.attrib;
 	if (check_fwstate(pmlmepriv, WIFI_MP_STATE)) {
@@ -1122,7 +1124,7 @@ _exit_recvbuf2recvframe:
 static void recv_tasklet(void *priv)
 {
 	struct sk_buff *pskb;
-	struct _adapter *padapter = priv;
+	struct _adapter *padapter = (struct _adapter *)priv;
 	struct recv_priv *precvpriv = &padapter->recvpriv;
 
 	while (NULL != (pskb = skb_dequeue(&precvpriv->rx_skb_queue))) {

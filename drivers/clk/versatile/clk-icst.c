@@ -22,7 +22,6 @@
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 
-#include "icst.h"
 #include "clk-icst.h"
 
 /* Magic unlocking token used on all Versatile boards */

@@ -16,7 +16,6 @@
 
 #include <media/videobuf2-v4l2.h>
 #include <linux/mm.h>
-#include <linux/refcount.h>
 
 /**
  * struct vb2_vmarea_handler - common vma refcount tracking handler
@@ -26,7 +25,7 @@
  * @arg:	argument for @put callback
  */
 struct vb2_vmarea_handler {
-	refcount_t		*refcount;
+	atomic_t		*refcount;
 	void			(*put)(void *arg);
 	void			*arg;
 };

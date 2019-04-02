@@ -62,7 +62,8 @@
 
 #include <xen/hvm.h>
 
-#include "xenbus.h"
+#include "xenbus_comms.h"
+#include "xenbus_probe.h"
 
 
 int xen_store_evtchn;
@@ -169,7 +170,7 @@ int xenbus_read_otherend_details(struct xenbus_device *xendev,
 EXPORT_SYMBOL_GPL(xenbus_read_otherend_details);
 
 void xenbus_otherend_changed(struct xenbus_watch *watch,
-			     const char *path, const char *token,
+			     const char **vec, unsigned int len,
 			     int ignore_on_shutdown)
 {
 	struct xenbus_device *dev =
@@ -180,15 +181,18 @@ void xenbus_otherend_changed(struct xenbus_watch *watch,
 	/* Protect us against watches firing on old details when the otherend
 	   details change, say immediately after a resume. */
 	if (!dev->otherend ||
-	    strncmp(dev->otherend, path, strlen(dev->otherend))) {
-		dev_dbg(&dev->dev, "Ignoring watch at %s\n", path);
+	    strncmp(dev->otherend, vec[XS_WATCH_PATH],
+		    strlen(dev->otherend))) {
+		dev_dbg(&dev->dev, "Ignoring watch at %s\n",
+			vec[XS_WATCH_PATH]);
 		return;
 	}
 
 	state = xenbus_read_driver_state(dev->otherend);
 
 	dev_dbg(&dev->dev, "state is %d, (%s), %s, %s\n",
-		state, xenbus_strstate(state), dev->otherend_watch.node, path);
+		state, xenbus_strstate(state), dev->otherend_watch.node,
+		vec[XS_WATCH_PATH]);
 
 	/*
 	 * Ignore xenbus transitions during shutdown. This prevents us doing
@@ -466,11 +470,8 @@ int xenbus_probe_node(struct xen_bus_type *bus,
 
 	/* Register with generic device framework. */
 	err = device_register(&xendev->dev);
-	if (err) {
-		put_device(&xendev->dev);
-		xendev = NULL;
+	if (err)
 		goto fail;
-	}
 
 	return 0;
 fail:
@@ -701,7 +702,7 @@ device_initcall(xenbus_probe_initcall);
  */
 static int __init xenstored_local_init(void)
 {
-	int err = -ENOMEM;
+	int err = 0;
 	unsigned long page = 0;
 	struct evtchn_alloc_unbound alloc_unbound;
 
@@ -825,7 +826,7 @@ static int __init xenbus_init(void)
 	 * Create xenfs mountpoint in /proc for compatibility with
 	 * utilities that expect to find "xenbus" under "/proc/xen".
 	 */
-	proc_create_mount_point("xen");
+	proc_mkdir("xen", NULL);
 #endif
 
 out_error:

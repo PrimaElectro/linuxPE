@@ -84,6 +84,7 @@ static inline struct acpi_processor_performance *to_perf_data(struct acpi_cpufre
 static struct cpufreq_driver acpi_cpufreq_driver;
 
 static unsigned int acpi_pstate_strict;
+static struct msr __percpu *msrs;
 
 static bool boost_state(unsigned int cpu)
 {
@@ -103,10 +104,11 @@ static bool boost_state(unsigned int cpu)
 	return false;
 }
 
-static int boost_set_msr(bool enable)
+static void boost_set_msrs(bool enable, const struct cpumask *cpumask)
 {
+	u32 cpu;
 	u32 msr_addr;
-	u64 msr_mask, val;
+	u64 msr_mask;
 
 	switch (boot_cpu_data.x86_vendor) {
 	case X86_VENDOR_INTEL:
@@ -118,31 +120,26 @@ static int boost_set_msr(bool enable)
 		msr_mask = MSR_K7_HWCR_CPB_DIS;
 		break;
 	default:
-		return -EINVAL;
+		return;
 	}
 
-	rdmsrl(msr_addr, val);
+	rdmsr_on_cpus(cpumask, msr_addr, msrs);
 
-	if (enable)
-		val &= ~msr_mask;
-	else
-		val |= msr_mask;
+	for_each_cpu(cpu, cpumask) {
+		struct msr *reg = per_cpu_ptr(msrs, cpu);
+		if (enable)
+			reg->q &= ~msr_mask;
+		else
+			reg->q |= msr_mask;
+	}
 
-	wrmsrl(msr_addr, val);
-	return 0;
-}
-
-static void boost_set_msr_each(void *p_en)
-{
-	bool enable = (bool) p_en;
-
-	boost_set_msr(enable);
+	wrmsr_on_cpus(cpumask, msr_addr, msrs);
 }
 
 static int set_boost(int val)
 {
 	get_online_cpus();
-	on_each_cpu(boost_set_msr_each, (void *)(long)val, 1);
+	boost_set_msrs(val, cpu_online_mask);
 	put_online_cpus();
 	pr_debug("Core Boosting %sabled.\n", val ? "en" : "dis");
 
@@ -539,23 +536,45 @@ static void free_acpi_perf_data(void)
 	free_percpu(acpi_perf_data);
 }
 
-static int cpufreq_boost_online(unsigned int cpu)
+static int boost_notify(struct notifier_block *nb, unsigned long action,
+		      void *hcpu)
 {
-	/*
-	 * On the CPU_UP path we simply keep the boost-disable flag
-	 * in sync with the current global state.
-	 */
-	return boost_set_msr(acpi_cpufreq_driver.boost_enabled);
-}
+	unsigned cpu = (long)hcpu;
+	const struct cpumask *cpumask;
 
-static int cpufreq_boost_down_prep(unsigned int cpu)
-{
+	cpumask = get_cpu_mask(cpu);
+
 	/*
 	 * Clear the boost-disable bit on the CPU_DOWN path so that
-	 * this cpu cannot block the remaining ones from boosting.
+	 * this cpu cannot block the remaining ones from boosting. On
+	 * the CPU_UP path we simply keep the boost-disable flag in
+	 * sync with the current global state.
 	 */
-	return boost_set_msr(1);
+
+	switch (action) {
+	case CPU_DOWN_FAILED:
+	case CPU_DOWN_FAILED_FROZEN:
+	case CPU_ONLINE:
+	case CPU_ONLINE_FROZEN:
+		boost_set_msrs(acpi_cpufreq_driver.boost_enabled, cpumask);
+		break;
+
+	case CPU_DOWN_PREPARE:
+	case CPU_DOWN_PREPARE_FROZEN:
+		boost_set_msrs(1, cpumask);
+		break;
+
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
 }
+
+
+static struct notifier_block boost_nb = {
+	.notifier_call          = boost_notify,
+};
 
 /*
  * acpi_cpufreq_early_init - initialize ACPI P-States library
@@ -903,35 +922,37 @@ static struct cpufreq_driver acpi_cpufreq_driver = {
 	.attr		= acpi_cpufreq_attr,
 };
 
-static enum cpuhp_state acpi_cpufreq_online;
-
 static void __init acpi_cpufreq_boost_init(void)
 {
-	int ret;
+	if (boot_cpu_has(X86_FEATURE_CPB) || boot_cpu_has(X86_FEATURE_IDA)) {
+		msrs = msrs_alloc();
 
-	if (!(boot_cpu_has(X86_FEATURE_CPB) || boot_cpu_has(X86_FEATURE_IDA)))
-		return;
+		if (!msrs)
+			return;
 
-	acpi_cpufreq_driver.set_boost = set_boost;
-	acpi_cpufreq_driver.boost_enabled = boost_state(0);
+		acpi_cpufreq_driver.set_boost = set_boost;
+		acpi_cpufreq_driver.boost_enabled = boost_state(0);
 
-	/*
-	 * This calls the online callback on all online cpu and forces all
-	 * MSRs to the same value.
-	 */
-	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "cpufreq/acpi:online",
-				cpufreq_boost_online, cpufreq_boost_down_prep);
-	if (ret < 0) {
-		pr_err("acpi_cpufreq: failed to register hotplug callbacks\n");
-		return;
+		cpu_notifier_register_begin();
+
+		/* Force all MSRs to the same value */
+		boost_set_msrs(acpi_cpufreq_driver.boost_enabled,
+			       cpu_online_mask);
+
+		__register_cpu_notifier(&boost_nb);
+
+		cpu_notifier_register_done();
 	}
-	acpi_cpufreq_online = ret;
 }
 
 static void acpi_cpufreq_boost_exit(void)
 {
-	if (acpi_cpufreq_online > 0)
-		cpuhp_remove_state_nocalls(acpi_cpufreq_online);
+	if (msrs) {
+		unregister_cpu_notifier(&boost_nb);
+
+		msrs_free(msrs);
+		msrs = NULL;
+	}
 }
 
 static int __init acpi_cpufreq_init(void)

@@ -16,7 +16,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/etherdevice.h>
@@ -925,6 +924,8 @@ static int ncm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 			 */
 			ncm->port.is_zlp_ok =
 				gadget_is_zlp_supported(cdev->gadget);
+			ncm->port.no_skb_reserve =
+				gadget_avoids_skb_reserve(cdev->gadget);
 			ncm->port.cdc_filter = DEFAULT_FILTER;
 			DBG(cdev, "activate ncm\n");
 			net = gether_connect(&ncm->port);
@@ -997,20 +998,23 @@ static struct sk_buff *package_for_tx(struct f_ncm *ncm)
 	/* Merge the skbs */
 	swap(skb2, ncm->skb_tx_data);
 	if (ncm->skb_tx_data) {
-		dev_consume_skb_any(ncm->skb_tx_data);
+		dev_kfree_skb_any(ncm->skb_tx_data);
 		ncm->skb_tx_data = NULL;
 	}
 
 	/* Insert NDP alignment. */
-	skb_put_zero(skb2, ndp_pad);
+	ntb_iter = (void *) skb_put(skb2, ndp_pad);
+	memset(ntb_iter, 0, ndp_pad);
 
 	/* Copy NTB across. */
-	skb_put_data(skb2, ncm->skb_tx_ndp->data, ncm->skb_tx_ndp->len);
-	dev_consume_skb_any(ncm->skb_tx_ndp);
+	ntb_iter = (void *) skb_put(skb2, ncm->skb_tx_ndp->len);
+	memcpy(ntb_iter, ncm->skb_tx_ndp->data, ncm->skb_tx_ndp->len);
+	dev_kfree_skb_any(ncm->skb_tx_ndp);
 	ncm->skb_tx_ndp = NULL;
 
 	/* Insert zero'd datagram. */
-	skb_put_zero(skb2, dgram_idx_len);
+	ntb_iter = (void *) skb_put(skb2, dgram_idx_len);
+	memset(ntb_iter, 0, dgram_idx_len);
 
 	return skb2;
 }
@@ -1044,7 +1048,7 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 			crc = ~crc32_le(~0,
 					skb->data,
 					skb->len);
-			crc_pos = skb_put(skb, sizeof(uint32_t));
+			crc_pos = (void *) skb_put(skb, sizeof(uint32_t));
 			put_unaligned_le32(crc, crc_pos);
 		}
 
@@ -1074,8 +1078,8 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 			if (!ncm->skb_tx_data)
 				goto err;
 
-			ncm->skb_tx_data->dev = ncm->netdev;
-			ntb_data = skb_put_zero(ncm->skb_tx_data, ncb_len);
+			ntb_data = (void *) skb_put(ncm->skb_tx_data, ncb_len);
+			memset(ntb_data, 0, ncb_len);
 			/* dwSignature */
 			put_unaligned_le32(opts->nth_sign, ntb_data);
 			ntb_data += 2;
@@ -1092,9 +1096,8 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 						    GFP_ATOMIC);
 			if (!ncm->skb_tx_ndp)
 				goto err;
-
-			ncm->skb_tx_ndp->dev = ncm->netdev;
-			ntb_ndp = skb_put(ncm->skb_tx_ndp, opts->ndp_size);
+			ntb_ndp = (void *) skb_put(ncm->skb_tx_ndp,
+						    opts->ndp_size);
 			memset(ntb_ndp, 0, ncb_len);
 			/* dwSignature */
 			put_unaligned_le32(ncm->ndp_sign, ntb_ndp);
@@ -1107,11 +1110,13 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 		}
 
 		/* Delay the timer. */
-		hrtimer_start(&ncm->task_timer, TX_TIMEOUT_NSECS,
+		hrtimer_start(&ncm->task_timer,
+			      ktime_set(0, TX_TIMEOUT_NSECS),
 			      HRTIMER_MODE_REL);
 
 		/* Add the datagram position entries */
-		ntb_ndp = skb_put_zero(ncm->skb_tx_ndp, dgram_idx_len);
+		ntb_ndp = (void *) skb_put(ncm->skb_tx_ndp, dgram_idx_len);
+		memset(ntb_ndp, 0, dgram_idx_len);
 
 		ncb_len = ncm->skb_tx_data->len;
 		dgram_pad = ALIGN(ncb_len, div) + rem - ncb_len;
@@ -1124,9 +1129,11 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 		ncm->ndp_dgram_count++;
 
 		/* Add the new data to the skb */
-		skb_put_zero(ncm->skb_tx_data, dgram_pad);
-		skb_put_data(ncm->skb_tx_data, skb->data, skb->len);
-		dev_consume_skb_any(skb);
+		ntb_data = (void *) skb_put(ncm->skb_tx_data, dgram_pad);
+		memset(ntb_data, 0, dgram_pad);
+		ntb_data = (void *) skb_put(ncm->skb_tx_data, skb->len);
+		memcpy(ntb_data, skb->data, skb->len);
+		dev_kfree_skb_any(skb);
 		skb = NULL;
 
 	} else if (ncm->skb_tx_data && ncm->timer_force_tx) {
@@ -1308,8 +1315,8 @@ static int ncm_unwrap_ntb(struct gether *port,
 							 dg_len - crc_len);
 			if (skb2 == NULL)
 				goto err;
-			skb_put_data(skb2, skb->data + index,
-				     dg_len - crc_len);
+			memcpy(skb_put(skb2, dg_len - crc_len),
+			       skb->data + index, dg_len - crc_len);
 
 			skb_queue_tail(list, skb2);
 
@@ -1322,7 +1329,7 @@ static int ncm_unwrap_ntb(struct gether *port,
 		} while (ndp_len > 2 * (opts->dgram_item_len * 2));
 	} while (ndp_index);
 
-	dev_consume_skb_any(skb);
+	dev_kfree_skb_any(skb);
 
 	VDBG(port->func.config->cdev,
 	     "Parsed NTB with %d frames\n", dgram_counter);

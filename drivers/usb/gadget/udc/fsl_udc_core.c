@@ -520,7 +520,7 @@ static void struct_ep_qh_setup(struct fsl_udc *udc, unsigned char ep_num,
 /* Setup qh structure and ep register for ep0. */
 static void ep0_setup(struct fsl_udc *udc)
 {
-	/* the initialization of an ep includes: fields in QH, Regs,
+	/* the intialization of an ep includes: fields in QH, Regs,
 	 * fsl_ep struct */
 	struct_ep_qh_setup(udc, 0, USB_RECV, USB_ENDPOINT_XFER_CONTROL,
 			USB_MAX_CTRL_PAYLOAD, 0, 0);
@@ -585,7 +585,8 @@ static int fsl_ep_enable(struct usb_ep *_ep,
 		break;
 	case USB_ENDPOINT_XFER_ISOC:
 		/* Calculate transactions needed for high bandwidth iso */
-		mult = usb_endpoint_maxp_mult(desc);
+		mult = (unsigned char)(1 + ((max >> 11) & 0x03));
+		max = max & 0x7ff;	/* bit 0~10 */
 		/* 3 transactions at most */
 		if (mult > 3)
 			goto en_done;
@@ -1118,7 +1119,7 @@ static void fsl_ep_fifo_flush(struct usb_ep *_ep)
 	} while (fsl_readl(&dr_regs->endptstatus) & bits);
 }
 
-static const struct usb_ep_ops fsl_ep_ops = {
+static struct usb_ep_ops fsl_ep_ops = {
 	.enable = fsl_ep_enable,
 	.disable = fsl_ep_disable,
 
@@ -1309,7 +1310,7 @@ static void udc_reset_ep_queue(struct fsl_udc *udc, u8 pipe)
 {
 	struct fsl_ep *ep = get_ep_by_pipe(udc, pipe);
 
-	if (ep->ep.name)
+	if (ep->name)
 		nuke(ep, -ESHUTDOWN);
 }
 
@@ -1697,7 +1698,7 @@ static void dtd_complete_irq(struct fsl_udc *udc)
 		curr_ep = get_ep_by_pipe(udc, i);
 
 		/* If the ep is configured */
-		if (!curr_ep->ep.name) {
+		if (curr_ep->name == NULL) {
 			WARNING("Invalid EP?");
 			continue;
 		}
@@ -2349,7 +2350,7 @@ static int struct_ep_setup(struct fsl_udc *udc, unsigned char index,
 }
 
 /* Driver probe function
- * all initialization operations implemented here except enabling usb_intr reg
+ * all intialization operations implemented here except enabling usb_intr reg
  * board setup should have been done in the platform code
  */
 static int fsl_udc_probe(struct platform_device *pdev)
@@ -2675,8 +2676,6 @@ static const struct platform_device_id fsl_udc_devtype[] = {
 		.name = "imx-udc-mx27",
 	}, {
 		.name = "imx-udc-mx51",
-	}, {
-		.name = "fsl-usb2-udc",
 	}, {
 		/* sentinel */
 	}

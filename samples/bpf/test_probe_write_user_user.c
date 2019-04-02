@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <stdio.h>
 #include <assert.h>
 #include <linux/bpf.h>
@@ -51,7 +50,7 @@ int main(int ac, char **argv)
 	mapped_addr_in->sin_port = htons(5555);
 	mapped_addr_in->sin_addr.s_addr = inet_addr("255.255.255.255");
 
-	assert(!bpf_map_update_elem(map_fd[0], &mapped_addr, &serv_addr, BPF_ANY));
+	assert(!bpf_update_elem(map_fd[0], &mapped_addr, &serv_addr, BPF_ANY));
 
 	assert(listen(serverfd, 5) == 0);
 

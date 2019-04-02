@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _SCSI_SCSI_HOST_H
 #define _SCSI_SCSI_HOST_H
 
@@ -279,14 +278,6 @@ struct scsi_host_template {
 	int (* change_queue_depth)(struct scsi_device *, int);
 
 	/*
-	 * This functions lets the driver expose the queue mapping
-	 * to the block layer.
-	 *
-	 * Status: OPTIONAL
-	 */
-	int (* map_queues)(struct Scsi_Host *shost);
-
-	/*
 	 * This function determines the BIOS parameters for a given
 	 * harddisk.  These tend to be numbers that are made up by
 	 * the host adapter.  Parameters:
@@ -452,8 +443,10 @@ struct scsi_host_template {
 	/* True if the controller does not support WRITE SAME */
 	unsigned no_write_same:1;
 
-	/* True if the low-level driver supports blk-mq only */
-	unsigned force_blk_mq:1;
+	/*
+	 * True if asynchronous aborts are not supported
+	 */
+	unsigned no_async_abort:1;
 
 	/*
 	 * Countdown for host blocking with no commands outstanding.
@@ -550,6 +543,9 @@ struct Scsi_Host {
 	struct list_head	__devices;
 	struct list_head	__targets;
 	
+	struct scsi_host_cmd_pool *cmd_pool;
+	spinlock_t		free_list_lock;
+	struct list_head	free_list; /* backup store of cmd structs */
 	struct list_head	starved_list;
 
 	spinlock_t		default_lock;
@@ -695,6 +691,12 @@ struct Scsi_Host {
 	unsigned int prot_capabilities;
 	unsigned char prot_guard_type;
 
+	/*
+	 * q used for scsi_tgt msgs, async events or any other requests that
+	 * need to be processed in userspace
+	 */
+	struct request_queue *uspace_req_q;
+
 	/* legacy crap */
 	unsigned long base;
 	unsigned long io_port;
@@ -816,6 +818,8 @@ extern void scsi_block_requests(struct Scsi_Host *);
 
 struct class_container;
 
+extern struct request_queue *__scsi_alloc_queue(struct Scsi_Host *shost,
+						void (*) (struct request_queue *));
 /*
  * These two functions are used to allocate and free a pseudo device
  * which will connect to the host adapter itself rather than any

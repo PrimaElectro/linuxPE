@@ -56,7 +56,8 @@ MODULE_PARM_DESC(no_poweroff, "0 (default) powers device off when not used.\n"
 static char audio_std[8];
 module_param_string(audio_std, audio_std, sizeof(audio_std), 0);
 MODULE_PARM_DESC(audio_std,
-	"Audio standard. XC3028 audio decoder explicitly needs to know what audio\n"
+	"Audio standard. XC3028 audio decoder explicitly "
+	"needs to know what audio\n"
 	"standard is needed for some video standards with audio A2 or NICAM.\n"
 	"The valid values are:\n"
 	"A2\n"
@@ -68,8 +69,8 @@ MODULE_PARM_DESC(audio_std,
 
 static char firmware_name[30];
 module_param_string(firmware_name, firmware_name, sizeof(firmware_name), 0);
-MODULE_PARM_DESC(firmware_name,
-		 "Firmware file name. Allows overriding the default firmware name\n");
+MODULE_PARM_DESC(firmware_name, "Firmware file name. Allows overriding the "
+				"default firmware name\n");
 
 static LIST_HEAD(hybrid_tuner_instance_list);
 static DEFINE_MUTEX(xc2028_list_mutex);
@@ -178,67 +179,67 @@ static int xc2028_get_reg(struct xc2028_data *priv, u16 reg, u16 *val)
 static void dump_firm_type_and_int_freq(unsigned int type, u16 int_freq)
 {
 	if (type & BASE)
-		printk(KERN_CONT "BASE ");
+		printk("BASE ");
 	if (type & INIT1)
-		printk(KERN_CONT "INIT1 ");
+		printk("INIT1 ");
 	if (type & F8MHZ)
-		printk(KERN_CONT "F8MHZ ");
+		printk("F8MHZ ");
 	if (type & MTS)
-		printk(KERN_CONT "MTS ");
+		printk("MTS ");
 	if (type & D2620)
-		printk(KERN_CONT "D2620 ");
+		printk("D2620 ");
 	if (type & D2633)
-		printk(KERN_CONT "D2633 ");
+		printk("D2633 ");
 	if (type & DTV6)
-		printk(KERN_CONT "DTV6 ");
+		printk("DTV6 ");
 	if (type & QAM)
-		printk(KERN_CONT "QAM ");
+		printk("QAM ");
 	if (type & DTV7)
-		printk(KERN_CONT "DTV7 ");
+		printk("DTV7 ");
 	if (type & DTV78)
-		printk(KERN_CONT "DTV78 ");
+		printk("DTV78 ");
 	if (type & DTV8)
-		printk(KERN_CONT "DTV8 ");
+		printk("DTV8 ");
 	if (type & FM)
-		printk(KERN_CONT "FM ");
+		printk("FM ");
 	if (type & INPUT1)
-		printk(KERN_CONT "INPUT1 ");
+		printk("INPUT1 ");
 	if (type & LCD)
-		printk(KERN_CONT "LCD ");
+		printk("LCD ");
 	if (type & NOGD)
-		printk(KERN_CONT "NOGD ");
+		printk("NOGD ");
 	if (type & MONO)
-		printk(KERN_CONT "MONO ");
+		printk("MONO ");
 	if (type & ATSC)
-		printk(KERN_CONT "ATSC ");
+		printk("ATSC ");
 	if (type & IF)
-		printk(KERN_CONT "IF ");
+		printk("IF ");
 	if (type & LG60)
-		printk(KERN_CONT "LG60 ");
+		printk("LG60 ");
 	if (type & ATI638)
-		printk(KERN_CONT "ATI638 ");
+		printk("ATI638 ");
 	if (type & OREN538)
-		printk(KERN_CONT "OREN538 ");
+		printk("OREN538 ");
 	if (type & OREN36)
-		printk(KERN_CONT "OREN36 ");
+		printk("OREN36 ");
 	if (type & TOYOTA388)
-		printk(KERN_CONT "TOYOTA388 ");
+		printk("TOYOTA388 ");
 	if (type & TOYOTA794)
-		printk(KERN_CONT "TOYOTA794 ");
+		printk("TOYOTA794 ");
 	if (type & DIBCOM52)
-		printk(KERN_CONT "DIBCOM52 ");
+		printk("DIBCOM52 ");
 	if (type & ZARLINK456)
-		printk(KERN_CONT "ZARLINK456 ");
+		printk("ZARLINK456 ");
 	if (type & CHINA)
-		printk(KERN_CONT "CHINA ");
+		printk("CHINA ");
 	if (type & F6MHZ)
-		printk(KERN_CONT "F6MHZ ");
+		printk("F6MHZ ");
 	if (type & INPUT2)
-		printk(KERN_CONT "INPUT2 ");
+		printk("INPUT2 ");
 	if (type & SCODE)
-		printk(KERN_CONT "SCODE ");
+		printk("SCODE ");
 	if (type & HAS_IF)
-		printk(KERN_CONT "HAS_IF_%d ", int_freq);
+		printk("HAS_IF_%d ", int_freq);
 }
 
 static  v4l2_std_id parse_audio_std_option(void)
@@ -350,7 +351,8 @@ static int load_all_firmwares(struct dvb_frontend *fe,
 
 		n++;
 		if (n >= n_array) {
-			tuner_err("More firmware images in file than were expected!\n");
+			tuner_err("More firmware images in file than "
+				  "were expected!\n");
 			goto corrupt;
 		}
 
@@ -377,8 +379,8 @@ static int load_all_firmwares(struct dvb_frontend *fe,
 		if (!size || size > endp - p) {
 			tuner_err("Firmware type ");
 			dump_firm_type(type);
-			printk(KERN_CONT
-			       "(%x), id %llx is corrupted (size=%d, expected %d)\n",
+			printk("(%x), id %llx is corrupted "
+			       "(size=%d, expected %d)\n",
 			       type, (unsigned long long)id,
 			       (unsigned)(endp - p), size);
 			goto corrupt;
@@ -393,7 +395,7 @@ static int load_all_firmwares(struct dvb_frontend *fe,
 		tuner_dbg("Reading firmware type ");
 		if (debug) {
 			dump_firm_type_and_int_freq(type, int_freq);
-			printk(KERN_CONT "(%x), id %llx, size=%d.\n",
+			printk("(%x), id %llx, size=%d.\n",
 			       type, (unsigned long long)id, size);
 		}
 
@@ -442,8 +444,7 @@ static int seek_firmware(struct dvb_frontend *fe, unsigned int type,
 	tuner_dbg("%s called, want type=", __func__);
 	if (debug) {
 		dump_firm_type(type);
-		printk(KERN_CONT "(%x), id %016llx.\n",
-		       type, (unsigned long long)*id);
+		printk("(%x), id %016llx.\n", type, (unsigned long long)*id);
 	}
 
 	if (!priv->firm) {
@@ -499,11 +500,10 @@ static int seek_firmware(struct dvb_frontend *fe, unsigned int type,
 	}
 
 	if (best_nr_matches > 0) {
-		tuner_dbg("Selecting best matching firmware (%d bits) for type=",
-			  best_nr_matches);
+		tuner_dbg("Selecting best matching firmware (%d bits) for "
+			  "type=", best_nr_matches);
 		dump_firm_type(type);
-		printk(KERN_CONT
-		       "(%x), id %016llx:\n", type, (unsigned long long)*id);
+		printk("(%x), id %016llx:\n", type, (unsigned long long)*id);
 		i = best_i;
 		goto found;
 	}
@@ -520,8 +520,7 @@ ret:
 	tuner_dbg("%s firmware for type=", (i < 0) ? "Can't find" : "Found");
 	if (debug) {
 		dump_firm_type(type);
-		printk(KERN_CONT "(%x), id %016llx.\n",
-		       type, (unsigned long long)*id);
+		printk("(%x), id %016llx.\n", type, (unsigned long long)*id);
 	}
 	return i;
 }
@@ -561,8 +560,8 @@ static int load_firmware(struct dvb_frontend *fe, unsigned int type,
 
 	tuner_info("Loading firmware for type=");
 	dump_firm_type(priv->firm[pos].type);
-	printk(KERN_CONT "(%x), id %016llx.\n",
-	       priv->firm[pos].type, (unsigned long long)*id);
+	printk("(%x), id %016llx.\n", priv->firm[pos].type,
+	       (unsigned long long)*id);
 
 	p = priv->firm[pos].ptr;
 	endp = p + priv->firm[pos].size;
@@ -695,7 +694,7 @@ static int load_scode(struct dvb_frontend *fe, unsigned int type,
 	tuner_info("Loading SCODE for type=");
 	dump_firm_type_and_int_freq(priv->firm[pos].type,
 				    priv->firm[pos].int_freq);
-	printk(KERN_CONT "(%x), id %016llx.\n", priv->firm[pos].type,
+	printk("(%x), id %016llx.\n", priv->firm[pos].type,
 	       (unsigned long long)*id);
 
 	if (priv->firm_version < 0x0202)
@@ -747,15 +746,15 @@ retry:
 	tuner_dbg("checking firmware, user requested type=");
 	if (debug) {
 		dump_firm_type(new_fw.type);
-		printk(KERN_CONT "(%x), id %016llx, ", new_fw.type,
+		printk("(%x), id %016llx, ", new_fw.type,
 		       (unsigned long long)new_fw.std_req);
 		if (!int_freq) {
-			printk(KERN_CONT "scode_tbl ");
+			printk("scode_tbl ");
 			dump_firm_type(priv->ctrl.scode_table);
-			printk(KERN_CONT "(%x), ", priv->ctrl.scode_table);
+			printk("(%x), ", priv->ctrl.scode_table);
 		} else
-			printk(KERN_CONT "int_freq %d, ", new_fw.int_freq);
-		printk(KERN_CONT "scode_nr %d\n", new_fw.scode_nr);
+			printk("int_freq %d, ", new_fw.int_freq);
+		printk("scode_nr %d\n", new_fw.scode_nr);
 	}
 
 	/*
@@ -843,7 +842,8 @@ check_device:
 		goto fail;
 	}
 
-	tuner_dbg("Device is Xceive %d version %d.%d, firmware version %d.%d\n",
+	tuner_dbg("Device is Xceive %d version %d.%d, "
+		  "firmware version %d.%d\n",
 		  hwmodel, (version & 0xf000) >> 12, (version & 0xf00) >> 8,
 		  (version & 0xf0) >> 4, version & 0xf);
 
@@ -857,7 +857,8 @@ check_device:
 			tuner_err("Incorrect readback of firmware version.\n");
 			goto fail;
 		} else {
-			tuner_err("Returned an incorrect version. However, read is not reliable enough. Ignoring it.\n");
+			tuner_err("Returned an incorrect version. However, "
+				  "read is not reliable enough. Ignoring it.\n");
 			hwmodel = 3028;
 		}
 	}
@@ -868,7 +869,8 @@ check_device:
 		priv->hwvers  = version & 0xff00;
 	} else if (priv->hwmodel == 0 || priv->hwmodel != hwmodel ||
 		   priv->hwvers != (version & 0xff00)) {
-		tuner_err("Read invalid device hardware information - tuner hung?\n");
+		tuner_err("Read invalid device hardware information - tuner "
+			  "hung?\n");
 		goto fail;
 	}
 
@@ -1325,7 +1327,7 @@ static int xc2028_sleep(struct dvb_frontend *fe)
 	return rc;
 }
 
-static void xc2028_dvb_release(struct dvb_frontend *fe)
+static int xc2028_dvb_release(struct dvb_frontend *fe)
 {
 	struct xc2028_data *priv = fe->tuner_priv;
 
@@ -1343,6 +1345,8 @@ static void xc2028_dvb_release(struct dvb_frontend *fe)
 	mutex_unlock(&xc2028_list_mutex);
 
 	fe->tuner_priv = NULL;
+
+	return 0;
 }
 
 static int xc2028_get_frequency(struct dvb_frontend *fe, u32 *frequency)

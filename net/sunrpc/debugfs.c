@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /**
  * debugfs interface for sunrpc
  *
@@ -16,6 +15,11 @@ static struct dentry *rpc_clnt_dir;
 static struct dentry *rpc_xprt_dir;
 
 unsigned int rpc_inject_disconnect;
+
+struct rpc_clnt_iter {
+	struct rpc_clnt	*clnt;
+	loff_t		pos;
+};
 
 static int
 tasks_show(struct seq_file *f, void *v)
@@ -43,10 +47,12 @@ static void *
 tasks_start(struct seq_file *f, loff_t *ppos)
 	__acquires(&clnt->cl_lock)
 {
-	struct rpc_clnt *clnt = f->private;
+	struct rpc_clnt_iter *iter = f->private;
 	loff_t pos = *ppos;
+	struct rpc_clnt *clnt = iter->clnt;
 	struct rpc_task *task;
 
+	iter->pos = pos + 1;
 	spin_lock(&clnt->cl_lock);
 	list_for_each_entry(task, &clnt->cl_tasks, tk_task)
 		if (pos-- == 0)
@@ -57,10 +63,12 @@ tasks_start(struct seq_file *f, loff_t *ppos)
 static void *
 tasks_next(struct seq_file *f, void *v, loff_t *pos)
 {
-	struct rpc_clnt *clnt = f->private;
+	struct rpc_clnt_iter *iter = f->private;
+	struct rpc_clnt *clnt = iter->clnt;
 	struct rpc_task *task = v;
 	struct list_head *next = task->tk_task.next;
 
+	++iter->pos;
 	++*pos;
 
 	/* If there's another task on list, return it */
@@ -73,7 +81,9 @@ static void
 tasks_stop(struct seq_file *f, void *v)
 	__releases(&clnt->cl_lock)
 {
-	struct rpc_clnt *clnt = f->private;
+	struct rpc_clnt_iter *iter = f->private;
+	struct rpc_clnt *clnt = iter->clnt;
+
 	spin_unlock(&clnt->cl_lock);
 }
 
@@ -86,13 +96,17 @@ static const struct seq_operations tasks_seq_operations = {
 
 static int tasks_open(struct inode *inode, struct file *filp)
 {
-	int ret = seq_open(filp, &tasks_seq_operations);
+	int ret = seq_open_private(filp, &tasks_seq_operations,
+					sizeof(struct rpc_clnt_iter));
+
 	if (!ret) {
 		struct seq_file *seq = filp->private_data;
-		struct rpc_clnt *clnt = seq->private = inode->i_private;
+		struct rpc_clnt_iter *iter = seq->private;
 
-		if (!atomic_inc_not_zero(&clnt->cl_count)) {
-			seq_release(inode, filp);
+		iter->clnt = inode->i_private;
+
+		if (!atomic_inc_not_zero(&iter->clnt->cl_count)) {
+			seq_release_private(inode, filp);
 			ret = -EINVAL;
 		}
 	}
@@ -104,10 +118,10 @@ static int
 tasks_release(struct inode *inode, struct file *filp)
 {
 	struct seq_file *seq = filp->private_data;
-	struct rpc_clnt *clnt = seq->private;
+	struct rpc_clnt_iter *iter = seq->private;
 
-	rpc_release_client(clnt);
-	return seq_release(inode, filp);
+	rpc_release_client(iter->clnt);
+	return seq_release_private(inode, filp);
 }
 
 static const struct file_operations tasks_fops = {

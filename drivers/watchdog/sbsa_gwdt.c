@@ -50,7 +50,6 @@
  */
 
 #include <linux/io.h>
-#include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -160,7 +159,7 @@ static unsigned int sbsa_gwdt_get_timeleft(struct watchdog_device *wdd)
 	    !(readl(gwdt->control_base + SBSA_GWDT_WCS) & SBSA_GWDT_WCS_WS0))
 		timeleft += readl(gwdt->control_base + SBSA_GWDT_WOR);
 
-	timeleft += lo_hi_readq(gwdt->control_base + SBSA_GWDT_WCV) -
+	timeleft += readq(gwdt->control_base + SBSA_GWDT_WCV) -
 		    arch_counter_get_cntvct();
 
 	do_div(timeleft, gwdt->clk);
@@ -208,7 +207,7 @@ static irqreturn_t sbsa_gwdt_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static const struct watchdog_info sbsa_gwdt_info = {
+static struct watchdog_info sbsa_gwdt_info = {
 	.identity	= WATCHDOG_NAME,
 	.options	= WDIOF_SETTIMEOUT |
 			  WDIOF_KEEPALIVEPING |
@@ -216,7 +215,7 @@ static const struct watchdog_info sbsa_gwdt_info = {
 			  WDIOF_CARDRESET,
 };
 
-static const struct watchdog_ops sbsa_gwdt_ops = {
+static struct watchdog_ops sbsa_gwdt_ops = {
 	.owner		= THIS_MODULE,
 	.start		= sbsa_gwdt_start,
 	.stop		= sbsa_gwdt_stop,

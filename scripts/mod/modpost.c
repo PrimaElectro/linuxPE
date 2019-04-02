@@ -47,12 +47,6 @@ enum export {
 	export_unused_gpl, export_gpl_future, export_unknown
 };
 
-/* In kernel, this size is defined in linux/module.h;
- * here we use Elf_Addr instead of long for covering cross-compile
- */
-
-#define MODULE_NAME_LEN (64 - sizeof(Elf_Addr))
-
 #define PRINTF __attribute__ ((format (printf, 1, 2)))
 
 PRINTF void fatal(const char *fmt, ...)
@@ -267,17 +261,7 @@ static enum export export_no(const char *s)
 	return export_unknown;
 }
 
-static const char *sech_name(struct elf_info *elf, Elf_Shdr *sechdr)
-{
-	return (void *)elf->hdr +
-		elf->sechdrs[elf->secindex_strings].sh_offset +
-		sechdr->sh_name;
-}
-
-static const char *sec_name(struct elf_info *elf, int secindex)
-{
-	return sech_name(elf, &elf->sechdrs[secindex]);
-}
+static const char *sec_name(struct elf_info *elf, int secindex);
 
 #define strstarts(str, prefix) (strncmp(str, prefix, strlen(prefix)) == 0)
 
@@ -625,7 +609,6 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 {
 	unsigned int crc;
 	enum export export;
-	bool is_crc = false;
 
 	if ((!is_vmlinux(mod->name) || mod->is_dot_o) &&
 	    strncmp(symname, "__ksymtab", 9) == 0)
@@ -635,18 +618,7 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 
 	/* CRC'd symbol */
 	if (strncmp(symname, CRC_PFX, strlen(CRC_PFX)) == 0) {
-		is_crc = true;
 		crc = (unsigned int) sym->st_value;
-		if (sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS) {
-			unsigned int *crcp;
-
-			/* symbol points to the CRC in the ELF object */
-			crcp = (void *)info->hdr + sym->st_value +
-			       info->sechdrs[sym->st_shndx].sh_offset -
-			       (info->hdr->e_type != ET_REL ?
-				info->sechdrs[sym->st_shndx].sh_addr : 0);
-			crc = *crcp;
-		}
 		sym_update_crc(symname + strlen(CRC_PFX), mod, crc,
 				export);
 	}
@@ -677,7 +649,7 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 			if (ELF_ST_TYPE(sym->st_info) == STT_SPARC_REGISTER)
 				break;
 			if (symname[0] == '.') {
-				char *munged = NOFAIL(strdup(symname));
+				char *munged = strdup(symname);
 				munged[0] = '_';
 				munged[1] = toupper(munged[1]);
 				symname = munged;
@@ -691,10 +663,6 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 		else
 			symname++;
 #endif
-		if (is_crc) {
-			const char *e = is_vmlinux(mod->name) ?"":".ko";
-			warn("EXPORT symbol \"%s\" [%s%s] version generation failed, symbol will not be versioned.\n", symname + strlen(CRC_PFX), mod->name, e);
-		}
 		mod->unres = alloc_symbol(symname,
 					  ELF_ST_BIND(sym->st_info) == STB_WEAK,
 					  mod->unres);
@@ -789,6 +757,21 @@ static const char *sym_name(struct elf_info *elf, Elf_Sym *sym)
 		return elf->strtab + sym->st_name;
 	else
 		return "(unknown)";
+}
+
+static const char *sec_name(struct elf_info *elf, int secindex)
+{
+	Elf_Shdr *sechdrs = elf->sechdrs;
+	return (void *)elf->hdr +
+		elf->sechdrs[elf->secindex_strings].sh_offset +
+		sechdrs[secindex].sh_name;
+}
+
+static const char *sech_name(struct elf_info *elf, Elf_Shdr *sechdr)
+{
+	return (void *)elf->hdr +
+		elf->sechdrs[elf->secindex_strings].sh_offset +
+		sechdr->sh_name;
 }
 
 /* The pattern is an array of simple patterns.
@@ -1215,30 +1198,6 @@ static int secref_whitelist(const struct sectioncheck *mismatch,
 	return 1;
 }
 
-static inline int is_arm_mapping_symbol(const char *str)
-{
-	return str[0] == '$' && strchr("axtd", str[1])
-	       && (str[2] == '\0' || str[2] == '.');
-}
-
-/*
- * If there's no name there, ignore it; likewise, ignore it if it's
- * one of the magic symbols emitted used by current ARM tools.
- *
- * Otherwise if find_symbols_between() returns those symbols, they'll
- * fail the whitelist tests and cause lots of false alarms ... fixable
- * only by merging __exit and __init sections into __text, bloating
- * the kernel (which is especially evil on embedded platforms).
- */
-static inline int is_valid_name(struct elf_info *elf, Elf_Sym *sym)
-{
-	const char *name = elf->strtab + sym->st_name;
-
-	if (!name || !strlen(name))
-		return 0;
-	return !is_arm_mapping_symbol(name);
-}
-
 /**
  * Find symbol based on relocation record info.
  * In some cases the symbol supplied is a valid symbol so
@@ -1264,8 +1223,6 @@ static Elf_Sym *find_elf_symbol(struct elf_info *elf, Elf64_Sword addr,
 			continue;
 		if (ELF_ST_TYPE(sym->st_info) == STT_SECTION)
 			continue;
-		if (!is_valid_name(elf, sym))
-			continue;
 		if (sym->st_value == addr)
 			return sym;
 		/* Find a symbol nearby - addr are maybe negative */
@@ -1282,6 +1239,30 @@ static Elf_Sym *find_elf_symbol(struct elf_info *elf, Elf64_Sword addr,
 		return near;
 	else
 		return NULL;
+}
+
+static inline int is_arm_mapping_symbol(const char *str)
+{
+	return str[0] == '$' && strchr("axtd", str[1])
+	       && (str[2] == '\0' || str[2] == '.');
+}
+
+/*
+ * If there's no name there, ignore it; likewise, ignore it if it's
+ * one of the magic symbols emitted used by current ARM tools.
+ *
+ * Otherwise if find_symbols_between() returns those symbols, they'll
+ * fail the whitelist tests and cause lots of false alarms ... fixable
+ * only by merging __exit and __init sections into __text, bloating
+ * the kernel (which is especially evil on embedded platforms).
+ */
+static inline int is_valid_name(struct elf_info *elf, Elf_Sym *sym)
+{
+	const char *name = elf->strtab + sym->st_name;
+
+	if (!name || !strlen(name))
+		return 0;
+	return !is_arm_mapping_symbol(name);
 }
 
 /*
@@ -1331,7 +1312,7 @@ static Elf_Sym *find_elf_symbol2(struct elf_info *elf, Elf_Addr addr,
 static char *sec2annotation(const char *s)
 {
 	if (match(s, init_exit_sections)) {
-		char *p = NOFAIL(malloc(20));
+		char *p = malloc(20);
 		char *r = p;
 
 		*p++ = '_';
@@ -1351,7 +1332,7 @@ static char *sec2annotation(const char *s)
 			strcat(p, " ");
 		return r;
 	} else {
-		return NOFAIL(strdup(""));
+		return strdup("");
 	}
 }
 
@@ -2052,7 +2033,7 @@ void buf_write(struct buffer *buf, const char *s, int len)
 {
 	if (buf->size - buf->pos < len) {
 		buf->size += len + SZ;
-		buf->p = NOFAIL(realloc(buf->p, buf->size));
+		buf->p = realloc(buf->p, buf->size);
 	}
 	strncpy(buf->p + buf->pos, s, len);
 	buf->pos += len;
@@ -2119,23 +2100,6 @@ static void check_exports(struct module *mod)
 	}
 }
 
-static int check_modname_len(struct module *mod)
-{
-	const char *mod_name;
-
-	mod_name = strrchr(mod->name, '/');
-	if (mod_name == NULL)
-		mod_name = mod->name;
-	else
-		mod_name++;
-	if (strlen(mod_name) >= MODULE_NAME_LEN) {
-		merror("module name is too long [%s.ko]\n", mod->name);
-		return 1;
-	}
-
-	return 0;
-}
-
 /**
  * Header for the generated file
  **/
@@ -2146,7 +2110,6 @@ static void add_header(struct buffer *b, struct module *mod)
 	buf_printf(b, "#include <linux/compiler.h>\n");
 	buf_printf(b, "\n");
 	buf_printf(b, "MODULE_INFO(vermagic, VERMAGIC_STRING);\n");
-	buf_printf(b, "MODULE_INFO(name, KBUILD_MODNAME);\n");
 	buf_printf(b, "\n");
 	buf_printf(b, "__visible struct module __this_module\n");
 	buf_printf(b, "__attribute__((section(\".gnu.linkonce.this_module\"))) = {\n");
@@ -2170,7 +2133,7 @@ static void add_intree_flag(struct buffer *b, int is_intree)
 /* Cannot check for assembler */
 static void add_retpoline(struct buffer *b)
 {
-	buf_printf(b, "\n#ifdef CONFIG_RETPOLINE\n");
+	buf_printf(b, "\n#ifdef RETPOLINE\n");
 	buf_printf(b, "MODULE_INFO(retpoline, \"Y\");\n");
 	buf_printf(b, "#endif\n");
 }
@@ -2182,6 +2145,11 @@ static void add_staging_flag(struct buffer *b, const char *name)
 	if (strncmp(staging_dir, name, strlen(staging_dir)) == 0)
 		buf_printf(b, "\nMODULE_INFO(staging, \"Y\");\n");
 }
+
+/* In kernel, this size is defined in linux/module.h;
+ * here we use Elf_Addr instead of long for covering cross-compile
+ */
+#define MODULE_NAME_LEN (64 - sizeof(Elf_Addr))
 
 /**
  * Record CRCs for unresolved symbols
@@ -2412,7 +2380,6 @@ static void write_dump(const char *fname)
 		}
 	}
 	write_if_changed(&buf, fname);
-	free(buf.p);
 }
 
 struct ext_sym_list {
@@ -2513,7 +2480,6 @@ int main(int argc, char **argv)
 
 		buf.pos = 0;
 
-		err |= check_modname_len(mod);
 		add_header(&buf, mod);
 		add_intree_flag(&buf, !external_module);
 		add_retpoline(&buf);
@@ -2540,7 +2506,6 @@ int main(int argc, char **argv)
 			      "Set CONFIG_SECTION_MISMATCH_WARN_ONLY=y to allow them.\n");
 		}
 	}
-	free(buf.p);
 
 	return err;
 }

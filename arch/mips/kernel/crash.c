@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <linux/kernel.h>
 #include <linux/smp.h>
 #include <linux/reboot.h>
@@ -9,7 +8,6 @@
 #include <linux/irq.h>
 #include <linux/types.h>
 #include <linux/sched.h>
-#include <linux/sched/task_stack.h>
 
 /* This keeps a track of which one is crashing cpu. */
 static int crashing_cpu = -1;
@@ -36,9 +34,6 @@ static void crash_shutdown_secondary(void *passed_regs)
 	if (!cpu_online(cpu))
 		return;
 
-	/* We won't be sent IPIs any more. */
-	set_cpu_online(cpu, false);
-
 	local_irq_disable();
 	if (!cpumask_test_cpu(cpu, &cpus_in_crash))
 		crash_save_cpu(regs, cpu);
@@ -61,7 +56,7 @@ static void crash_kexec_prepare_cpus(void)
 
 	ncpus = num_online_cpus() - 1;/* Excluding the panic cpu */
 
-	smp_call_function(crash_shutdown_secondary, NULL, 0);
+	dump_send_ipi(crash_shutdown_secondary);
 	smp_wmb();
 
 	/*

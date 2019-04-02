@@ -926,7 +926,7 @@ static void g2d_finish_event(struct g2d_data *g2d, u32 cmdlist_no)
 	struct drm_device *drm_dev = g2d->subdrv.drm_dev;
 	struct g2d_runqueue_node *runqueue_node = g2d->runqueue_node;
 	struct drm_exynos_pending_g2d_event *e;
-	struct timespec64 now;
+	struct timeval now;
 
 	if (list_empty(&runqueue_node->event_list))
 		return;
@@ -934,9 +934,9 @@ static void g2d_finish_event(struct g2d_data *g2d, u32 cmdlist_no)
 	e = list_first_entry(&runqueue_node->event_list,
 			     struct drm_exynos_pending_g2d_event, base.link);
 
-	ktime_get_ts64(&now);
+	do_gettimeofday(&now);
 	e->event.tv_sec = now.tv_sec;
-	e->event.tv_usec = now.tv_nsec / NSEC_PER_USEC;
+	e->event.tv_usec = now.tv_usec;
 	e->event.cmdlist_no = cmdlist_no;
 
 	drm_send_event(drm_dev, &e->base);
@@ -1683,7 +1683,7 @@ struct platform_driver g2d_driver = {
 	.probe		= g2d_probe,
 	.remove		= g2d_remove,
 	.driver		= {
-		.name	= "exynos-drm-g2d",
+		.name	= "s5p-g2d",
 		.owner	= THIS_MODULE,
 		.pm	= &g2d_pm_ops,
 		.of_match_table = exynos_g2d_match,

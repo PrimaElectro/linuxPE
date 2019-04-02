@@ -28,10 +28,6 @@
 
 #include "qcom_scm.h"
 
-#define SCM_HAS_CORE_CLK	BIT(0)
-#define SCM_HAS_IFACE_CLK	BIT(1)
-#define SCM_HAS_BUS_CLK		BIT(2)
-
 struct qcom_scm {
 	struct device *dev;
 	struct clk *core_clk;
@@ -315,24 +311,6 @@ static const struct reset_control_ops qcom_scm_pas_reset_ops = {
 	.deassert = qcom_scm_pas_reset_deassert,
 };
 
-int qcom_scm_restore_sec_cfg(u32 device_id, u32 spare)
-{
-	return __qcom_scm_restore_sec_cfg(__scm->dev, device_id, spare);
-}
-EXPORT_SYMBOL(qcom_scm_restore_sec_cfg);
-
-int qcom_scm_iommu_secure_ptbl_size(u32 spare, size_t *size)
-{
-	return __qcom_scm_iommu_secure_ptbl_size(__scm->dev, spare, size);
-}
-EXPORT_SYMBOL(qcom_scm_iommu_secure_ptbl_size);
-
-int qcom_scm_iommu_secure_ptbl_init(u64 addr, u32 size, u32 spare)
-{
-	return __qcom_scm_iommu_secure_ptbl_init(__scm->dev, addr, size, spare);
-}
-EXPORT_SYMBOL(qcom_scm_iommu_secure_ptbl_init);
-
 /**
  * qcom_scm_is_available() - Checks if SCM is available
  */
@@ -342,49 +320,35 @@ bool qcom_scm_is_available(void)
 }
 EXPORT_SYMBOL(qcom_scm_is_available);
 
-int qcom_scm_set_remote_state(u32 state, u32 id)
-{
-	return __qcom_scm_set_remote_state(__scm->dev, state, id);
-}
-EXPORT_SYMBOL(qcom_scm_set_remote_state);
-
 static int qcom_scm_probe(struct platform_device *pdev)
 {
 	struct qcom_scm *scm;
-	unsigned long clks;
 	int ret;
 
 	scm = devm_kzalloc(&pdev->dev, sizeof(*scm), GFP_KERNEL);
 	if (!scm)
 		return -ENOMEM;
 
-	clks = (unsigned long)of_device_get_match_data(&pdev->dev);
-	if (clks & SCM_HAS_CORE_CLK) {
-		scm->core_clk = devm_clk_get(&pdev->dev, "core");
-		if (IS_ERR(scm->core_clk)) {
-			if (PTR_ERR(scm->core_clk) != -EPROBE_DEFER)
-				dev_err(&pdev->dev,
-					"failed to acquire core clk\n");
+	scm->core_clk = devm_clk_get(&pdev->dev, "core");
+	if (IS_ERR(scm->core_clk)) {
+		if (PTR_ERR(scm->core_clk) == -EPROBE_DEFER)
 			return PTR_ERR(scm->core_clk);
-		}
+
+		scm->core_clk = NULL;
 	}
 
-	if (clks & SCM_HAS_IFACE_CLK) {
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,scm")) {
 		scm->iface_clk = devm_clk_get(&pdev->dev, "iface");
 		if (IS_ERR(scm->iface_clk)) {
 			if (PTR_ERR(scm->iface_clk) != -EPROBE_DEFER)
-				dev_err(&pdev->dev,
-					"failed to acquire iface clk\n");
+				dev_err(&pdev->dev, "failed to acquire iface clk\n");
 			return PTR_ERR(scm->iface_clk);
 		}
-	}
 
-	if (clks & SCM_HAS_BUS_CLK) {
 		scm->bus_clk = devm_clk_get(&pdev->dev, "bus");
 		if (IS_ERR(scm->bus_clk)) {
 			if (PTR_ERR(scm->bus_clk) != -EPROBE_DEFER)
-				dev_err(&pdev->dev,
-					"failed to acquire bus clk\n");
+				dev_err(&pdev->dev, "failed to acquire bus clk\n");
 			return PTR_ERR(scm->bus_clk);
 		}
 	}
@@ -392,9 +356,7 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	scm->reset.ops = &qcom_scm_pas_reset_ops;
 	scm->reset.nr_resets = 1;
 	scm->reset.of_node = pdev->dev.of_node;
-	ret = devm_reset_controller_register(&pdev->dev, &scm->reset);
-	if (ret)
-		return ret;
+	reset_controller_register(&scm->reset);
 
 	/* vote for max clk rate for highest performance */
 	ret = clk_set_rate(scm->core_clk, INT_MAX);
@@ -410,23 +372,10 @@ static int qcom_scm_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id qcom_scm_dt_match[] = {
-	{ .compatible = "qcom,scm-apq8064",
-	  /* FIXME: This should have .data = (void *) SCM_HAS_CORE_CLK */
-	},
-	{ .compatible = "qcom,scm-msm8660",
-	  .data = (void *) SCM_HAS_CORE_CLK,
-	},
-	{ .compatible = "qcom,scm-msm8960",
-	  .data = (void *) SCM_HAS_CORE_CLK,
-	},
-	{ .compatible = "qcom,scm-msm8996",
-	  .data = NULL, /* no clocks */
-	},
-	{ .compatible = "qcom,scm",
-	  .data = (void *)(SCM_HAS_CORE_CLK
-			   | SCM_HAS_IFACE_CLK
-			   | SCM_HAS_BUS_CLK),
-	},
+	{ .compatible = "qcom,scm-apq8064",},
+	{ .compatible = "qcom,scm-msm8660",},
+	{ .compatible = "qcom,scm-msm8960",},
+	{ .compatible = "qcom,scm",},
 	{}
 };
 

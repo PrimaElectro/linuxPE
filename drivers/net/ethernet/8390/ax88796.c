@@ -536,6 +536,7 @@ static const struct net_device_ops ax_netdev_ops = {
 	.ndo_set_rx_mode	= ax_ei_set_multicast_list,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= eth_mac_addr,
+	.ndo_change_mtu		= eth_change_mtu,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= ax_ei_poll,
 #endif
@@ -585,7 +586,7 @@ static int ax_bb_get_data(struct mdiobb_ctrl *ctrl)
 	return reg_memr & AX_MEMR_MDI ? 1 : 0;
 }
 
-static const struct mdiobb_ops bb_ops = {
+static struct mdiobb_ops bb_ops = {
 	.owner = THIS_MODULE,
 	.set_mdc = ax_bb_mdc,
 	.set_mdio_dir = ax_bb_dir,
@@ -723,12 +724,6 @@ static int ax_init_dev(struct net_device *dev)
 	    ax->plat->mac_addr)
 		memcpy(dev->dev_addr, ax->plat->mac_addr, ETH_ALEN);
 
-	if (!is_valid_ether_addr(dev->dev_addr)) {
-		eth_hw_addr_random(dev);
-		dev_info(&dev->dev, "Using random MAC address: %pM\n",
-			 dev->dev_addr);
-	}
-
 	ax_reset_8390(dev);
 
 	ei_local->name = "AX88796";
@@ -754,13 +749,13 @@ static int ax_init_dev(struct net_device *dev)
 
 	ret = ax_mii_init(dev);
 	if (ret)
-		goto err_out;
+		goto out_irq;
 
 	ax_NS8390_init(dev, 0);
 
 	ret = register_netdev(dev);
 	if (ret)
-		goto err_out;
+		goto out_irq;
 
 	netdev_info(dev, "%dbit, irq %d, %lx, MAC: %pM\n",
 		    ei_local->word16 ? 16 : 8, dev->irq, dev->base_addr,
@@ -768,6 +763,9 @@ static int ax_init_dev(struct net_device *dev)
 
 	return 0;
 
+ out_irq:
+	/* cleanup irq */
+	free_irq(dev->irq, dev);
  err_out:
 	return ret;
 }

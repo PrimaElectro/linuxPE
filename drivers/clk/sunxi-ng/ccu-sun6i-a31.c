@@ -195,9 +195,6 @@ static SUNXI_CCU_DIV_TABLE(axi_clk, "axi", "cpu",
 
 static const char * const ahb1_parents[] = { "osc32k", "osc24M",
 					     "axi", "pll-periph" };
-static const struct ccu_mux_var_prediv ahb1_predivs[] = {
-	{ .index = 3, .shift = 6, .width = 2 },
-};
 
 static struct ccu_div ahb1_clk = {
 	.div		= _SUNXI_CCU_DIV_FLAGS(4, 2, CLK_DIVIDER_POWER_OF_TWO),
@@ -206,8 +203,11 @@ static struct ccu_div ahb1_clk = {
 		.shift	= 12,
 		.width	= 2,
 
-		.var_predivs	= ahb1_predivs,
-		.n_var_predivs	= ARRAY_SIZE(ahb1_predivs),
+		.variable_prediv	= {
+			.index	= 3,
+			.shift	= 6,
+			.width	= 2,
+		},
 	},
 
 	.common		= {
@@ -750,7 +750,7 @@ static struct ccu_mp out_a_clk = {
 		.features	= CCU_FEATURE_FIXED_PREDIV,
 		.hw.init	= CLK_HW_INIT_PARENTS("out-a",
 						      clk_out_parents,
-						      &ccu_mp_ops,
+						      &ccu_div_ops,
 						      0),
 	},
 };
@@ -771,7 +771,7 @@ static struct ccu_mp out_b_clk = {
 		.features	= CCU_FEATURE_FIXED_PREDIV,
 		.hw.init	= CLK_HW_INIT_PARENTS("out-b",
 						      clk_out_parents,
-						      &ccu_mp_ops,
+						      &ccu_div_ops,
 						      0),
 	},
 };
@@ -792,7 +792,7 @@ static struct ccu_mp out_c_clk = {
 		.features	= CCU_FEATURE_FIXED_PREDIV,
 		.hw.init	= CLK_HW_INIT_PARENTS("out-c",
 						      clk_out_parents,
-						      &ccu_mp_ops,
+						      &ccu_div_ops,
 						      0),
 	},
 };
@@ -1217,7 +1217,8 @@ static void __init sun6i_a31_ccu_setup(struct device_node *node)
 
 	reg = of_io_request_and_map(node, 0, of_node_full_name(node));
 	if (IS_ERR(reg)) {
-		pr_err("%pOF: Could not map the clock registers\n", node);
+		pr_err("%s: Could not map the clock registers\n",
+		       of_node_full_name(node));
 		return;
 	}
 

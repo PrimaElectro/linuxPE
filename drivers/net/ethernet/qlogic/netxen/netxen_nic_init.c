@@ -1125,8 +1125,7 @@ netxen_validate_firmware(struct netxen_adapter *adapter)
 		return -EINVAL;
 	}
 	val = nx_get_bios_version(adapter);
-	if (netxen_rom_fast_read(adapter, NX_BIOS_VERSION_OFFSET, (int *)&bios))
-		return -EIO;
+	netxen_rom_fast_read(adapter, NX_BIOS_VERSION_OFFSET, (int *)&bios);
 	if ((__force u32)val != bios) {
 		dev_err(&pdev->dev, "%s: firmware bios is incompatible\n",
 				fw_name[fw_type]);
@@ -1376,8 +1375,13 @@ netxen_receive_peg_ready(struct netxen_adapter *adapter)
 
 	} while (--retries);
 
-	pr_err("Receive Peg initialization not complete, state: 0x%x.\n", val);
-	return -EIO;
+	if (!retries) {
+		printk(KERN_ERR "Receive Peg initialization not "
+			      "complete, state: 0x%x.\n", val);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 int netxen_init_firmware(struct netxen_adapter *adapter)

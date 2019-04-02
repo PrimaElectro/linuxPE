@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_X86_COMPAT_H
 #define _ASM_X86_COMPAT_H
 
@@ -7,7 +6,6 @@
  */
 #include <linux/types.h>
 #include <linux/sched.h>
-#include <linux/sched/task_stack.h>
 #include <asm/processor.h>
 #include <asm/user32.h>
 #include <asm/unistd.h>
@@ -118,6 +116,7 @@ struct compat_statfs {
 	int		f_spare[4];
 };
 
+#define COMPAT_RLIM_OLD_INFINITY	0x7fffffff
 #define COMPAT_RLIM_INFINITY		0xffffffff
 
 typedef u32		compat_old_sigset_t;	/* at least 32 bits */
@@ -210,6 +209,7 @@ typedef struct compat_siginfo {
 } compat_siginfo_t;
 
 #define COMPAT_OFF_T_MAX	0x7fffffff
+#define COMPAT_LOFF_T_MAX	0x7fffffffffffffffL
 
 struct compat_ipc64_perm {
 	compat_key_t key;

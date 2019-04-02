@@ -47,6 +47,7 @@
 #include "sun9i-a80.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/sun4i-a10.h>
 
 / {
 	model = "Cubietech Cubieboard4";
@@ -75,14 +76,6 @@
 			gpios = <&pio 7 6 GPIO_ACTIVE_HIGH>; /* PH6 */
 		};
 	};
-
-	wifi_pwrseq: wifi_pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		clocks = <&ac100_rtc 1>;
-		clock-names = "ext_clock";
-		/* enables internal regulator and de-asserts reset */
-		reset-gpios = <&r_pio 0 2 GPIO_ACTIVE_LOW>; /* PL2 WL-PMU-EN */
-	};
 };
 
 &mmc0 {
@@ -93,21 +86,6 @@
 	cd-gpios = <&pio 7 18 GPIO_ACTIVE_HIGH>; /* PH18 */
 	cd-inverted;
 	status = "okay";
-};
-
-&mmc1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&mmc1_pins>, <&wifi_en_pin_cubieboard4>;
-	vmmc-supply = <&reg_dldo1>;
-	vqmmc-supply = <&reg_cldo3>;
-	mmc-pwrseq = <&wifi_pwrseq>;
-	bus-width = <4>;
-	non-removable;
-	status = "okay";
-};
-
-&mmc1_pins {
-	bias-pull-up;
 };
 
 &mmc2 {
@@ -122,7 +100,7 @@
 
 &mmc2_8bit_pins {
 	/* Increase drive strength for DDR modes */
-	drive-strength = <40>;
+	allwinner,drive = <SUN4I_PINCTRL_40_MA>;
 };
 
 &osc32k {
@@ -132,26 +110,22 @@
 
 &pio {
 	led_pins_cubieboard4: led-pins@0 {
-		pins = "PH6", "PH17";
-		function = "gpio_out";
+		allwinner,pins = "PH6", "PH17";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
 	mmc0_cd_pin_cubieboard4: mmc0_cd_pin@0 {
-		pins = "PH18";
-		function = "gpio_in";
-		bias-pull-up;
+		allwinner,pins = "PH18";
+		allwinner,function = "gpio_in";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 	};
 };
 
 &r_ir {
 	status = "okay";
-};
-
-&r_pio {
-	wifi_en_pin_cubieboard4: wifi_en_pin@0 {
-		pins = "PL2";
-		function = "gpio_out";
-	};
 };
 
 &r_rsb {
